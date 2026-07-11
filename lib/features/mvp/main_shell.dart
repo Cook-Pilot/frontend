@@ -26,6 +26,7 @@ class _MainShellState extends State<MainShell> {
     return Scaffold(
       body: pages[index],
       bottomNavigationBar: NavigationBar(
+        labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
         selectedIndex: index,
         onDestinationSelected: (value) => setState(() => index = value),
         destinations: const [
@@ -174,6 +175,8 @@ class MemoryScreen extends StatelessWidget {
                 children: [
                   Text(
                     memory.variant,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
                       color: AppColors.ink,
                       fontWeight: FontWeight.w900,
@@ -182,11 +185,15 @@ class MemoryScreen extends StatelessWidget {
                   const SizedBox(height: 6),
                   Text(
                     memory.summary,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
                     style: const TextStyle(color: AppColors.slate),
                   ),
                   const SizedBox(height: 10),
                   Text(
                     '${memory.lastCooked} · ★ ${memory.rating}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: const TextStyle(color: AppColors.muted),
                   ),
                 ],

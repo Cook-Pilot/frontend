@@ -21,20 +21,37 @@ class PageShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final media = MediaQuery.of(context);
+    final horizontalPadding = media.size.width < 390 ? 16.0 : 20.0;
+
     return Scaffold(
       appBar: title == null
           ? null
-          : AppBar(leading: leading, title: Text(title!), actions: actions),
+          : AppBar(
+              leading: leading,
+              title: Text(title!, maxLines: 1, overflow: TextOverflow.ellipsis),
+              actions: actions,
+            ),
       body: SafeArea(
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+          padding: EdgeInsets.fromLTRB(
+            horizontalPadding,
+            12,
+            horizontalPadding,
+            24,
+          ),
           children: children,
         ),
       ),
       bottomNavigationBar: bottom == null
           ? null
           : SafeArea(
-              minimum: const EdgeInsets.fromLTRB(20, 8, 20, 20),
+              minimum: EdgeInsets.fromLTRB(
+                horizontalPadding,
+                8,
+                horizontalPadding,
+                20,
+              ),
               child: bottom!,
             ),
     );
@@ -101,6 +118,8 @@ class FoodTile extends StatelessWidget {
                   children: [
                     Text(
                       title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                         fontWeight: FontWeight.w800,
                         color: AppColors.ink,
@@ -109,6 +128,8 @@ class FoodTile extends StatelessWidget {
                     const SizedBox(height: 4),
                     Text(
                       subtitle,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
                       style: const TextStyle(color: AppColors.slate),
                     ),
                   ],
@@ -137,7 +158,11 @@ class FoodPreview extends StatelessWidget {
       width: width,
       height: height,
       decoration: BoxDecoration(
-        color: const Color(0xFFE2E8F0),
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFFEFF6FF), Color(0xFFE2E8F0)],
+        ),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Icon(
@@ -197,6 +222,8 @@ class RecipeHeroCard extends StatelessWidget {
               const SizedBox(height: 14),
               Text(
                 recipe.title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
                 style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                   fontWeight: FontWeight.w900,
                   color: AppColors.ink,
@@ -205,6 +232,8 @@ class RecipeHeroCard extends StatelessWidget {
               const SizedBox(height: 6),
               Text(
                 '${recipe.minutes}분 · ${recipe.difficulty} · 2인분 · ★ ${recipe.rating}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
                 style: const TextStyle(color: AppColors.slate),
               ),
               const SizedBox(height: 12),
@@ -252,6 +281,8 @@ class InfoStrip extends StatelessWidget {
               children: [
                 Text(
                   title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                     fontWeight: FontWeight.w800,
                     color: AppColors.ink,

@@ -12,6 +12,8 @@ class RecipeDetailScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final canCook = recipe.steps.isNotEmpty;
+
     return PageShell(
       title: '레시피 상세',
       leading: IconButton(
@@ -44,16 +46,23 @@ class RecipeDetailScreen extends StatelessWidget {
           style: const TextStyle(color: AppColors.slate),
         ),
         const SectionTitle('필요한 재료'),
-        ...recipe.ingredients.map(
-          (item) => CheckboxListTile(
-            value: false,
-            onChanged: (_) {},
-            dense: true,
-            contentPadding: EdgeInsets.zero,
-            title: Text('${item.name} ${item.amount}'),
-            subtitle: item.note.isEmpty ? null : Text(item.note),
+        if (recipe.ingredients.isEmpty)
+          const InfoStrip(
+            icon: Icons.info_outline_rounded,
+            title: '상세 재료 준비 중',
+            body: '현재 MVP에서는 두부 조림 레시피를 중심으로 조리 흐름을 확인할 수 있어요.',
+          )
+        else
+          ...recipe.ingredients.map(
+            (item) => CheckboxListTile(
+              value: false,
+              onChanged: (_) {},
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              title: Text('${item.name} ${item.amount}'),
+              subtitle: item.note.isEmpty ? null : Text(item.note),
+            ),
           ),
-        ),
         const SectionTitle('내 기록'),
         InfoStrip(
           icon: Icons.history_rounded,
@@ -61,27 +70,40 @@ class RecipeDetailScreen extends StatelessWidget {
           body: recipe.memorySummary,
         ),
         const SectionTitle('조리 순서'),
-        for (var i = 0; i < recipe.steps.length; i++)
-          ListTile(
-            contentPadding: EdgeInsets.zero,
-            leading: CircleAvatar(
-              backgroundColor: AppColors.ink,
-              foregroundColor: Colors.white,
-              child: Text('${i + 1}'),
+        if (recipe.steps.isEmpty)
+          const InfoStrip(
+            icon: Icons.construction_rounded,
+            title: '조리 단계 준비 중',
+            body: '전체 조리 플로우는 두부 조림에서 먼저 검증합니다.',
+          )
+        else
+          for (var i = 0; i < recipe.steps.length; i++)
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: CircleAvatar(
+                backgroundColor: AppColors.ink,
+                foregroundColor: Colors.white,
+                child: Text('${i + 1}'),
+              ),
+              title: Text(
+                recipe.steps[i].title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              subtitle: Text('약 ${recipe.steps[i].minutes}분'),
             ),
-            title: Text(recipe.steps[i].title),
-            subtitle: Text('약 ${recipe.steps[i].minutes}분'),
-          ),
       ],
       bottom: FilledButton(
-        onPressed: () {
-          Navigator.of(context).push(
-            MaterialPageRoute<void>(
-              builder: (_) => CookSetupScreen(recipe: recipe),
-            ),
-          );
-        },
-        child: const Text('조리 설정하기'),
+        onPressed: canCook
+            ? () {
+                Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => CookSetupScreen(recipe: recipe),
+                  ),
+                );
+              }
+            : null,
+        child: Text(canCook ? '조리 설정하기' : '조리 단계 준비 중'),
       ),
     );
   }
@@ -150,8 +172,16 @@ class _CookSetupScreenState extends State<CookSetupScreen> {
         for (final ingredient in widget.recipe.ingredients)
           Card(
             child: ListTile(
-              title: Text(ingredient.name),
-              subtitle: Text(ingredient.amount),
+              title: Text(
+                ingredient.name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              subtitle: Text(
+                ingredient.amount,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
               trailing: TextButton(
                 onPressed: () => _openIngredientSheet(context, ingredient),
                 child: const Text('수정'),
@@ -276,7 +306,11 @@ class _CookSessionScreenState extends State<CookSessionScreen> {
           onPressed: () => Navigator.of(context).pop(),
           icon: const Icon(Icons.close_rounded),
         ),
-        title: Text('${widget.recipe.title} · ${widget.servings}인분'),
+        title: Text(
+          '${widget.recipe.title} · ${widget.servings}인분',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
         actions: [
           IconButton(onPressed: () {}, icon: const Icon(Icons.pause_rounded)),
         ],
@@ -291,8 +325,16 @@ class _CookSessionScreenState extends State<CookSessionScreen> {
                   '$step / ${widget.recipe.steps.length} 단계',
                   style: const TextStyle(fontWeight: FontWeight.w900),
                 ),
-                const Spacer(),
-                const Text('자동 저장됨', style: TextStyle(color: AppColors.slate)),
+                const SizedBox(width: 12),
+                const Expanded(
+                  child: Text(
+                    '자동 저장됨',
+                    textAlign: TextAlign.right,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(color: AppColors.slate),
+                  ),
+                ),
               ],
             ),
             const SizedBox(height: 8),
@@ -325,6 +367,8 @@ class _CookSessionScreenState extends State<CookSessionScreen> {
                   const SizedBox(height: 8),
                   Text(
                     '0${current.minutes}:00',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
                       color: Colors.white,
                       fontSize: 42,
@@ -404,12 +448,19 @@ class ReviewScreen extends StatelessWidget {
         const SizedBox(height: 18),
         const Row(
           children: [
-            Icon(Icons.star_rounded, color: AppColors.ink, size: 34),
-            Icon(Icons.star_rounded, color: AppColors.ink, size: 34),
-            Icon(Icons.star_rounded, color: AppColors.ink, size: 34),
-            Icon(Icons.star_rounded, color: AppColors.ink, size: 34),
-            Icon(Icons.star_half_rounded, color: AppColors.ink, size: 34),
-            Spacer(),
+            Expanded(
+              child: Wrap(
+                spacing: 2,
+                children: [
+                  Icon(Icons.star_rounded, color: AppColors.ink, size: 32),
+                  Icon(Icons.star_rounded, color: AppColors.ink, size: 32),
+                  Icon(Icons.star_rounded, color: AppColors.ink, size: 32),
+                  Icon(Icons.star_rounded, color: AppColors.ink, size: 32),
+                  Icon(Icons.star_half_rounded, color: AppColors.ink, size: 32),
+                ],
+              ),
+            ),
+            SizedBox(width: 10),
             Text('4.5 / 5', style: TextStyle(fontWeight: FontWeight.w900)),
           ],
         ),

@@ -12,14 +12,14 @@ class AuthScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return PageShell(
       children: [
-        const SizedBox(height: 70),
+        const SizedBox(height: 40),
         Center(
           child: Container(
-            width: 64,
-            height: 64,
+            width: 58,
+            height: 58,
             decoration: BoxDecoration(
               color: AppColors.ink,
-              borderRadius: BorderRadius.circular(18),
+              borderRadius: BorderRadius.circular(16),
             ),
             child: const Icon(
               Icons.local_fire_department_rounded,
@@ -28,11 +28,11 @@ class AuthScreen extends StatelessWidget {
             ),
           ),
         ),
-        const SizedBox(height: 22),
+        const SizedBox(height: 18),
         Text(
           'CookPilot',
           textAlign: TextAlign.center,
-          style: Theme.of(context).textTheme.displaySmall?.copyWith(
+          style: Theme.of(context).textTheme.headlineLarge?.copyWith(
             color: AppColors.ink,
             fontWeight: FontWeight.w900,
           ),
@@ -41,9 +41,9 @@ class AuthScreen extends StatelessWidget {
         const Text(
           '내 입맛을 기억하는 요리 파트너',
           textAlign: TextAlign.center,
-          style: TextStyle(color: AppColors.slate, fontSize: 16),
+          style: TextStyle(color: AppColors.slate, fontSize: 15),
         ),
-        const SizedBox(height: 36),
+        const SizedBox(height: 28),
         FilledButton.icon(
           style: FilledButton.styleFrom(
             backgroundColor: AppColors.accent,
@@ -132,6 +132,8 @@ class _TasteProfileScreenState extends State<TasteProfileScreen> {
       children: [
         Text(
           '끌리는 음식을 3개 이상 골라주세요',
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
           style: Theme.of(context).textTheme.headlineSmall?.copyWith(
             fontWeight: FontWeight.w900,
             color: AppColors.ink,
@@ -179,6 +181,7 @@ class _TasteProfileScreenState extends State<TasteProfileScreen> {
               ),
               title: Text(label),
               subtitle: Text(label.startsWith('신라면') ? '맵기 2~3' : '맵기 선택'),
+              dense: true,
             ),
           ),
         ),
@@ -225,8 +228,21 @@ class _TasteOption extends StatelessWidget {
         ),
         child: Stack(
           children: [
-            const Positioned.fill(
-              child: Padding(padding: EdgeInsets.all(16), child: FoodPreview()),
+            Positioned.fill(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 30),
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF1F5F9),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(
+                    Icons.restaurant_menu_rounded,
+                    color: AppColors.slate,
+                    size: 26,
+                  ),
+                ),
+              ),
             ),
             if (selected)
               const Positioned(
