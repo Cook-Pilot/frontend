@@ -1,4 +1,4 @@
-import 'package:cookpilot/main.dart';
+import 'package:cookpilot/app/cookpilot_app.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
