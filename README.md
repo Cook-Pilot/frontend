@@ -16,6 +16,10 @@ Cook-Pilot의 Frontend 레포입니다.
 - 조리 중 단계 안내 / 타이머 / 음성 코치 자리 표시
 - 조리 후 리뷰 / 저장 방식 선택
 
+## 문서
+
+- [프론트 기능 명세서](docs/frontend-feature-spec.md)
+
 ## 개발 환경
 
 ```bash
