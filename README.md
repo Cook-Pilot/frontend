@@ -3,6 +3,53 @@ Cook-Pilot의 Frontend 레포입니다.
 
 ---
 
+# CookPilot Flutter MVP
+
+요리할수록 사용자의 입맛을 기억하는 실시간 AI 조리 코치의 Flutter 클라이언트입니다.
+
+## 현재 구현 범위
+
+- 로그인 / 게스트 진입
+- 입맛 프로필 콜드스타트 화면
+- 홈 / 검색 / 레시피 메모리 탭
+- 레시피 상세 / 조리 전 설정
+- 조리 중 단계 안내 / 타이머 / 음성 코치 자리 표시
+- 조리 후 리뷰 / 저장 방식 선택
+
+## 문서
+
+- [프론트 기능 명세서](docs/frontend-feature-spec.md)
+
+## 개발 환경
+
+```bash
+flutter --version
+flutter pub get
+flutter analyze
+flutter run
+```
+
+Android Studio에서 열 때는 이 레포 루트를 엽니다.
+
+```text
+/Users/jeondonghun/Documents/Codex/2026-07-10/https-github-com-cook-pilot-https/frontend
+```
+
+이 작업에서 사용한 로컬 Flutter SDK 경로는 다음과 같습니다.
+
+```text
+/Users/jeondonghun/Documents/Codex/2026-07-10/https-github-com-cook-pilot-https/work/flutter_sdk
+```
+
+Apple Silicon Mac에서 `flutter test`가 `darwin-x64/impellerc` 아키텍처 오류로 실패하면 Rosetta 설치 후 다시 실행합니다.
+
+```bash
+sudo softwareupdate --install-rosetta --agree-to-license
+flutter test
+```
+
+---
+
 # Git Convention
 
 ## TAG
