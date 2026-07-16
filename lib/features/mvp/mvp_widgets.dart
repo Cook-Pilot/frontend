@@ -212,7 +212,7 @@ class FoodTile extends StatelessWidget {
     return PressableScale(
       child: Card(
         child: InkWell(
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(AppShape.container),
           onTap: onTap,
           child: Padding(
             padding: const EdgeInsets.all(12),
@@ -272,13 +272,13 @@ class FoodPreview extends StatelessWidget {
         gradient: const LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [Color(0xFFEFF6FF), Color(0xFFE2E8F0)],
+          colors: [Color(0xFFFBEBD9), Color(0xFFF3D8BC)],
         ),
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(AppShape.inner),
       ),
       child: Icon(
         Icons.restaurant_rounded,
-        color: AppColors.slate,
+        color: const Color(0xFFC08A5A),
         size: height * 0.34,
       ),
     );
@@ -296,16 +296,19 @@ class Pill extends StatelessWidget {
     return AnimatedContainer(
       duration: AppMotion.short,
       curve: AppMotion.easeInOut,
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
       decoration: BoxDecoration(
-        color: selected ? AppColors.ink : Colors.white,
+        color: selected ? AppColors.accent : AppColors.card,
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: selected ? AppColors.ink : AppColors.line),
+        border: Border.all(color: selected ? AppColors.accent : AppColors.line),
       ),
       child: AnimatedDefaultTextStyle(
         duration: AppMotion.short,
         curve: AppMotion.easeInOut,
+        // AnimatedDefaultTextStyle은 테마의 DefaultTextStyle을 대체하므로
+        // fontFamily를 명시하지 않으면 한글이 없는 플랫폼 기본 폰트로 떨어진다.
         style: TextStyle(
+          fontFamily: 'Pretendard',
           color: selected ? Colors.white : AppColors.slate,
           fontSize: 12,
           fontWeight: FontWeight.w700,
@@ -327,7 +330,7 @@ class RecipeHeroCard extends StatelessWidget {
     return PressableScale(
       child: Card(
         child: InkWell(
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(AppShape.container),
           onTap: onTap,
           child: Padding(
             padding: const EdgeInsets.all(14),
@@ -385,15 +388,15 @@ class InfoStrip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: const Color(0xFFF1F5F9),
-        borderRadius: BorderRadius.circular(8),
+        color: AppColors.wash,
+        borderRadius: BorderRadius.circular(AppShape.inner),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, color: AppColors.ink),
+          Icon(icon, color: AppColors.accent),
           const SizedBox(width: 10),
           Expanded(
             child: Column(

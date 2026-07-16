@@ -84,9 +84,12 @@ class RecipeDetailScreen extends StatelessWidget {
             ListTile(
               contentPadding: EdgeInsets.zero,
               leading: CircleAvatar(
-                backgroundColor: AppColors.ink,
-                foregroundColor: Colors.white,
-                child: Text('${i + 1}'),
+                backgroundColor: AppColors.accentSoft,
+                foregroundColor: AppColors.accent,
+                child: Text(
+                  '${i + 1}',
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
               ),
               title: Text(
                 recipe.steps[i].title,
@@ -418,14 +421,24 @@ class _CookSessionScreenState extends State<CookSessionScreen> {
             ),
             const SizedBox(height: 18),
             Container(
-              padding: const EdgeInsets.all(18),
+              padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
                 color: AppColors.ink,
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: BorderRadius.circular(AppShape.container),
+                boxShadow: const [
+                  BoxShadow(
+                    color: AppColors.shadow,
+                    blurRadius: 22,
+                    offset: Offset(0, 8),
+                  ),
+                ],
               ),
               child: Column(
                 children: [
-                  const Text('남은 시간', style: TextStyle(color: Colors.white70)),
+                  const Text(
+                    '남은 시간',
+                    style: TextStyle(color: Color(0xB3FFFFFF)),
+                  ),
                   const SizedBox(height: 8),
                   Text(
                     '0${current.minutes}:00',
@@ -433,16 +446,19 @@ class _CookSessionScreenState extends State<CookSessionScreen> {
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
                       color: Colors.white,
-                      fontSize: 42,
-                      fontWeight: FontWeight.w900,
+                      fontSize: 44,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: -1,
+                      fontFeatures: [FontFeature.tabularFigures()],
                     ),
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 10),
                   PressableScale(
-                    child: OutlinedButton(
+                    child: FilledButton(
                       onPressed: () {},
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: Colors.white,
+                      style: FilledButton.styleFrom(
+                        backgroundColor: AppColors.accent,
+                        minimumSize: const Size.fromHeight(48),
                       ),
                       child: const Text('타이머 시작'),
                     ),
@@ -537,7 +553,9 @@ class _ReviewScreenState extends State<ReviewScreen> {
                           child: Icon(
                             Icons.star_rounded,
                             key: ValueKey(i <= rating),
-                            color: i <= rating ? AppColors.ink : AppColors.line,
+                            color: i <= rating
+                                ? AppColors.accent
+                                : AppColors.line,
                             size: 32,
                           ),
                         ),
@@ -668,27 +686,28 @@ class _SaveOption extends StatelessWidget {
   Widget build(BuildContext context) {
     return PressableScale(
       child: InkWell(
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(AppShape.inner),
         onTap: onTap,
         child: AnimatedContainer(
           duration: AppMotion.short,
           curve: AppMotion.easeInOut,
+          margin: const EdgeInsets.symmetric(vertical: 5),
           decoration: BoxDecoration(
-            color: selected ? const Color(0xFFF1F5F9) : Colors.white,
-            borderRadius: BorderRadius.circular(8),
+            color: selected ? AppColors.accentSoft : AppColors.card,
+            borderRadius: BorderRadius.circular(AppShape.inner),
             border: Border.all(
-              color: selected ? AppColors.ink : AppColors.line,
+              color: selected ? AppColors.accent : AppColors.line,
               width: selected ? 1.4 : 1,
             ),
           ),
           child: ListTile(
             leading: Icon(
               icon,
-              color: selected ? AppColors.success : AppColors.slate,
+              color: selected ? AppColors.accent : AppColors.slate,
             ),
             title: Text(
               title,
-              style: const TextStyle(fontWeight: FontWeight.w900),
+              style: const TextStyle(fontWeight: FontWeight.w800),
             ),
             subtitle: Text(subtitle),
             trailing: AnimatedSwitcher(
@@ -701,7 +720,7 @@ class _SaveOption extends StatelessWidget {
                   ? const Icon(
                       Icons.check_rounded,
                       key: ValueKey('checked'),
-                      color: AppColors.ink,
+                      color: AppColors.accent,
                     )
                   : const SizedBox.shrink(key: ValueKey('unchecked')),
             ),

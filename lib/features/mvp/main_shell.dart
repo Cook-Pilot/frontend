@@ -247,7 +247,7 @@ class _HorizontalRecipeList extends StatelessWidget {
               width: 104,
               child: PressableScale(
                 child: InkWell(
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(AppShape.inner),
                   onTap: onTap,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,

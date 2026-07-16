@@ -15,16 +15,23 @@ class AuthScreen extends StatelessWidget {
         const SizedBox(height: 40),
         Center(
           child: Container(
-            width: 58,
-            height: 58,
+            width: 64,
+            height: 64,
             decoration: BoxDecoration(
-              color: AppColors.ink,
-              borderRadius: BorderRadius.circular(16),
+              color: AppColors.accent,
+              borderRadius: BorderRadius.circular(20),
+              boxShadow: const [
+                BoxShadow(
+                  color: AppColors.shadow,
+                  blurRadius: 18,
+                  offset: Offset(0, 6),
+                ),
+              ],
             ),
             child: const Icon(
               Icons.local_fire_department_rounded,
               color: Colors.white,
-              size: 34,
+              size: 36,
             ),
           ),
         ),
@@ -47,8 +54,8 @@ class AuthScreen extends StatelessWidget {
         PressableScale(
           child: FilledButton.icon(
             style: FilledButton.styleFrom(
-              backgroundColor: AppColors.accent,
-              foregroundColor: AppColors.ink,
+              backgroundColor: AppColors.kakao,
+              foregroundColor: const Color(0xFF191600),
             ),
             onPressed: () => _openHome(context),
             icon: const Icon(Icons.chat_bubble_rounded),
@@ -186,7 +193,9 @@ class _TasteProfileScreenState extends State<TasteProfileScreen> {
                 label.startsWith('신라면')
                     ? Icons.radio_button_checked_rounded
                     : Icons.radio_button_off_rounded,
-                color: AppColors.ink,
+                color: label.startsWith('신라면')
+                    ? AppColors.accent
+                    : AppColors.muted,
               ),
               title: Text(label),
               subtitle: Text(label.startsWith('신라면') ? '맵기 2~3' : '맵기 선택'),
@@ -227,16 +236,16 @@ class _TasteOption extends StatelessWidget {
   Widget build(BuildContext context) {
     return PressableScale(
       child: InkWell(
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(AppShape.inner),
         onTap: onTap,
         child: AnimatedContainer(
           duration: AppMotion.short,
           curve: AppMotion.easeInOut,
           decoration: BoxDecoration(
-            color: selected ? const Color(0xFFEFF6FF) : Colors.white,
-            borderRadius: BorderRadius.circular(8),
+            color: selected ? AppColors.accentSoft : AppColors.card,
+            borderRadius: BorderRadius.circular(AppShape.inner),
             border: Border.all(
-              color: selected ? AppColors.ink : AppColors.line,
+              color: selected ? AppColors.accent : AppColors.line,
               width: selected ? 1.4 : 1,
             ),
           ),
@@ -247,12 +256,12 @@ class _TasteOption extends StatelessWidget {
                   padding: const EdgeInsets.fromLTRB(16, 12, 16, 30),
                   child: DecoratedBox(
                     decoration: BoxDecoration(
-                      color: const Color(0xFFF1F5F9),
-                      borderRadius: BorderRadius.circular(8),
+                      color: AppColors.wash,
+                      borderRadius: BorderRadius.circular(10),
                     ),
                     child: const Icon(
                       Icons.restaurant_menu_rounded,
-                      color: AppColors.slate,
+                      color: Color(0xFFC08A5A),
                       size: 26,
                     ),
                   ),
@@ -271,7 +280,7 @@ class _TasteOption extends StatelessWidget {
                     curve: AppMotion.easeOut,
                     child: const Icon(
                       Icons.check_circle,
-                      color: AppColors.ink,
+                      color: AppColors.accent,
                       size: 18,
                     ),
                   ),
