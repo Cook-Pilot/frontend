@@ -14,105 +14,316 @@ class RecipeDetailScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final canCook = recipe.steps.isNotEmpty;
 
-    return PageShell(
-      title: '레시피 상세',
-      leading: IconButton(
-        onPressed: () => Navigator.of(context).pop(),
-        icon: const Icon(Icons.chevron_left_rounded),
-      ),
-      actions: [
-        IconButton(
-          onPressed: () {},
-          icon: const Icon(Icons.star_border_rounded),
-        ),
-        IconButton(
-          onPressed: () {},
-          icon: const Icon(Icons.more_horiz_rounded),
-        ),
-      ],
-      children: [
-        Hero(
-          tag: 'recipe-image-${recipe.title}',
-          child: const FoodPreview(size: double.infinity),
-        ),
-        const SizedBox(height: 18),
-        Text(
-          recipe.title,
-          style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-            color: AppColors.ink,
-            fontWeight: FontWeight.w900,
-          ),
-        ),
-        const SizedBox(height: 6),
-        Text(
-          '${recipe.minutes}분 · ${recipe.difficulty} · 2인분 · ★ ${recipe.rating}',
-          style: const TextStyle(color: AppColors.slate),
-        ),
-        const SectionTitle('필요한 재료'),
-        if (recipe.ingredients.isEmpty)
-          const InfoStrip(
-            icon: Icons.info_outline_rounded,
-            title: '상세 재료 준비 중',
-            body: '현재 MVP에서는 두부 조림 레시피를 중심으로 조리 흐름을 확인할 수 있어요.',
-          )
-        else
-          ...recipe.ingredients.map(
-            (item) => CheckboxListTile(
-              value: false,
-              onChanged: (_) {},
-              dense: true,
-              contentPadding: EdgeInsets.zero,
-              title: Text('${item.name} ${item.amount}'),
-              subtitle: item.note.isEmpty ? null : Text(item.note),
+    return Scaffold(
+      body: CustomScrollView(
+        slivers: [
+          SliverAppBar(
+            expandedHeight: 300,
+            pinned: true,
+            backgroundColor: AppColors.surface,
+            leading: const _CircleAction(icon: Icons.chevron_left_rounded),
+            actions: const [
+              _CircleAction(icon: Icons.bookmark_outline_rounded),
+              SizedBox(width: 6),
+              _CircleAction(icon: Icons.ios_share_rounded),
+              SizedBox(width: 12),
+            ],
+            flexibleSpace: FlexibleSpaceBar(
+              collapseMode: CollapseMode.parallax,
+              background: Stack(
+                fit: StackFit.expand,
+                children: [
+                  Hero(
+                    tag: 'recipe-image-${recipe.title}',
+                    child: Image.asset(recipe.image, fit: BoxFit.cover),
+                  ),
+                  // 상단 시스템 아이콘, 하단 본문 경계 가독성용 그라데이션.
+                  const DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        stops: [0, 0.25, 0.8, 1],
+                        colors: [
+                          Color(0x66201005),
+                          Colors.transparent,
+                          Colors.transparent,
+                          Color(0x33201005),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
-        const SectionTitle('내 기록'),
-        InfoStrip(
-          icon: Icons.history_rounded,
-          title: '나 맞춤 버전 있음',
-          body: recipe.memorySummary,
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: Text(
+                          recipe.title,
+                          style: Theme.of(context).textTheme.headlineMedium,
+                        ),
+                      ),
+                      if (recipe.badge != null) ImageLabelChip(recipe.badge!),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    recipe.subtitle,
+                    style: const TextStyle(color: AppColors.slate),
+                  ),
+                  const SizedBox(height: 8),
+                  RatingBadge(recipe.rating, reviewCount: recipe.reviewCount),
+                  const SizedBox(height: 18),
+                  // 핵심 스탯 타일 3개
+                  Row(
+                    children: [
+                      _StatTile(
+                        icon: Icons.schedule_rounded,
+                        label: '조리 시간',
+                        value: '${recipe.minutes}분',
+                      ),
+                      const SizedBox(width: 10),
+                      _StatTile(
+                        icon: Icons.local_fire_department_rounded,
+                        label: '난이도',
+                        value: recipe.difficulty,
+                      ),
+                      const SizedBox(width: 10),
+                      const _StatTile(
+                        icon: Icons.people_alt_rounded,
+                        label: '기준',
+                        value: '2인분',
+                      ),
+                    ],
+                  ),
+                  const SectionTitle('필요한 재료'),
+                  if (recipe.ingredients.isEmpty)
+                    const InfoStrip(
+                      icon: Icons.info_outline_rounded,
+                      title: '상세 재료 준비 중',
+                      body: '현재 MVP에서는 두부 조림 레시피를 중심으로 조리 흐름을 확인할 수 있어요.',
+                    )
+                  else
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: AppColors.card,
+                        borderRadius: BorderRadius.circular(AppShape.inner),
+                        boxShadow: const [
+                          BoxShadow(
+                            color: AppColors.shadow,
+                            blurRadius: 14,
+                            offset: Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      child: Column(
+                        children: [
+                          for (final (i, item) in recipe.ingredients.indexed)
+                            _IngredientRow(
+                              item: item,
+                              showDivider: i < recipe.ingredients.length - 1,
+                            ),
+                        ],
+                      ),
+                    ),
+                  const SectionTitle('내 기록'),
+                  InfoStrip(
+                    icon: Icons.history_rounded,
+                    title: '나 맞춤 버전 있음',
+                    body: recipe.memorySummary,
+                  ),
+                  const SectionTitle('조리 순서'),
+                  if (recipe.steps.isEmpty)
+                    const InfoStrip(
+                      icon: Icons.construction_rounded,
+                      title: '조리 단계 준비 중',
+                      body: '전체 조리 플로우는 두부 조림에서 먼저 검증합니다.',
+                    )
+                  else
+                    for (var i = 0; i < recipe.steps.length; i++)
+                      ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: CircleAvatar(
+                          backgroundColor: AppColors.accentSoft,
+                          foregroundColor: AppColors.accent,
+                          child: Text(
+                            '${i + 1}',
+                            style: const TextStyle(fontWeight: FontWeight.w700),
+                          ),
+                        ),
+                        title: Text(
+                          recipe.steps[i].title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontWeight: FontWeight.w600),
+                        ),
+                        subtitle: Text('약 ${recipe.steps[i].minutes}분'),
+                      ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+      bottomNavigationBar: SafeArea(
+        minimum: const EdgeInsets.fromLTRB(20, 8, 20, 20),
+        child: PressableScale(
+          child: FilledButton(
+            onPressed: canCook
+                ? () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => CookSetupScreen(recipe: recipe),
+                      ),
+                    );
+                  }
+                : null,
+            child: Text(canCook ? '조리 설정하기' : '조리 단계 준비 중'),
+          ),
         ),
-        const SectionTitle('조리 순서'),
-        if (recipe.steps.isEmpty)
-          const InfoStrip(
-            icon: Icons.construction_rounded,
-            title: '조리 단계 준비 중',
-            body: '전체 조리 플로우는 두부 조림에서 먼저 검증합니다.',
-          )
-        else
-          for (var i = 0; i < recipe.steps.length; i++)
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: CircleAvatar(
-                backgroundColor: AppColors.accentSoft,
-                foregroundColor: AppColors.accent,
-                child: Text(
-                  '${i + 1}',
-                  style: const TextStyle(fontWeight: FontWeight.w700),
+      ),
+    );
+  }
+}
+
+/// SliverAppBar 위에 얹는 반투명 원형 아이콘 버튼.
+class _CircleAction extends StatelessWidget {
+  const _CircleAction({required this.icon});
+
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    final canPop = Navigator.of(context).canPop();
+    final isBack = icon == Icons.chevron_left_rounded;
+    return Center(
+      child: PressableScale(
+        child: GestureDetector(
+          onTap: isBack && canPop ? () => Navigator.of(context).pop() : () {},
+          child: Container(
+            width: 38,
+            height: 38,
+            decoration: const BoxDecoration(
+              color: Color(0xD9FFFFFF),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(icon, color: AppColors.ink, size: 22),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _StatTile extends StatelessWidget {
+  const _StatTile({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 14),
+        decoration: BoxDecoration(
+          color: AppColors.wash,
+          borderRadius: BorderRadius.circular(AppShape.inner),
+        ),
+        child: Column(
+          children: [
+            Icon(icon, color: AppColors.accent, size: 22),
+            const SizedBox(height: 6),
+            Text(
+              value,
+              style: const TextStyle(
+                color: AppColors.ink,
+                fontWeight: FontWeight.w700,
+                fontSize: 15,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              label,
+              style: const TextStyle(color: AppColors.muted, fontSize: 11.5),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _IngredientRow extends StatelessWidget {
+  const _IngredientRow({required this.item, required this.showDivider});
+
+  final Ingredient item;
+  final bool showDivider;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      item.name,
+                      style: const TextStyle(
+                        color: AppColors.ink,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 15,
+                      ),
+                    ),
+                    if (item.note.isNotEmpty) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        item.note,
+                        style: const TextStyle(
+                          color: AppColors.accent,
+                          fontSize: 12.5,
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
               ),
-              title: Text(
-                recipe.steps[i].title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
+              Text(
+                item.amount,
+                style: const TextStyle(
+                  color: AppColors.slate,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 15,
+                ),
               ),
-              subtitle: Text('약 ${recipe.steps[i].minutes}분'),
-            ),
-      ],
-      bottom: PressableScale(
-        child: FilledButton(
-          onPressed: canCook
-              ? () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (_) => CookSetupScreen(recipe: recipe),
-                    ),
-                  );
-                }
-              : null,
-          child: Text(canCook ? '조리 설정하기' : '조리 단계 준비 중'),
+            ],
+          ),
         ),
-      ),
+        if (showDivider) const Divider(height: 1),
+      ],
     );
   }
 }
@@ -402,7 +613,12 @@ class _CookSessionScreenState extends State<CookSessionScreen> {
                 key: ValueKey(step),
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const FoodPreview(size: double.infinity),
+                  FoodImage(
+                    image: widget.recipe.image,
+                    width: double.infinity,
+                    height: 210,
+                    radius: AppShape.container,
+                  ),
                   const SizedBox(height: 18),
                   Text(
                     current.title,
