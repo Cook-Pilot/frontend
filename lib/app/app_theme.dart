@@ -12,6 +12,53 @@ class AppColors {
   static const success = Color(0xFF16A34A);
 }
 
+/// Shared easing curves and durations, tuned per the "ease-out for entering,
+/// ease-in-out for on-screen movement" rule of thumb. Keep every ad-hoc
+/// animation in the app pulling from here so motion feels like one system.
+class AppMotion {
+  const AppMotion._();
+
+  /// Entering / exiting elements. Starts fast, feels responsive.
+  static const easeOut = Cubic(0.23, 1, 0.32, 1);
+
+  /// Elements moving or morphing on screen (progress bars, step swaps).
+  static const easeInOut = Cubic(0.77, 0, 0.175, 1);
+
+  static const fast = Duration(milliseconds: 120);
+  static const short = Duration(milliseconds: 180);
+  static const medium = Duration(milliseconds: 260);
+  static const long = Duration(milliseconds: 400);
+}
+
+class _CookPilotPageTransitionsBuilder extends PageTransitionsBuilder {
+  const _CookPilotPageTransitionsBuilder();
+
+  @override
+  Widget buildTransitions<T>(
+    PageRoute<T> route,
+    BuildContext context,
+    Animation<double> animation,
+    Animation<double> secondaryAnimation,
+    Widget child,
+  ) {
+    if (MediaQuery.maybeOf(context)?.disableAnimations ?? false) {
+      return child;
+    }
+
+    final curved = CurvedAnimation(parent: animation, curve: AppMotion.easeOut);
+    return FadeTransition(
+      opacity: curved,
+      child: SlideTransition(
+        position: Tween<Offset>(
+          begin: const Offset(0.06, 0),
+          end: Offset.zero,
+        ).animate(curved),
+        child: child,
+      ),
+    );
+  }
+}
+
 ThemeData buildCookPilotTheme() {
   final colorScheme = ColorScheme.fromSeed(
     seedColor: AppColors.ink,
@@ -24,6 +71,12 @@ ThemeData buildCookPilotTheme() {
     colorScheme: colorScheme,
     scaffoldBackgroundColor: AppColors.surface,
     useMaterial3: true,
+    pageTransitionsTheme: const PageTransitionsTheme(
+      builders: {
+        TargetPlatform.android: _CookPilotPageTransitionsBuilder(),
+        TargetPlatform.iOS: _CookPilotPageTransitionsBuilder(),
+      },
+    ),
     appBarTheme: const AppBarTheme(
       centerTitle: false,
       backgroundColor: AppColors.surface,

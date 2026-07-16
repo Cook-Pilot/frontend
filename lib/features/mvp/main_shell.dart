@@ -125,15 +125,19 @@ class SearchScreen extends StatelessWidget {
           children: [Pill('15분 이내'), Pill('한식'), Pill('매운맛 낮음'), Pill('필터 +')],
         ),
         const SectionTitle('검색 결과 24'),
-        for (final recipe in recipes)
-          FoodTile(
-            title: recipe.title,
-            subtitle:
-                '${recipe.minutes}분 · ${recipe.difficulty} · ★ ${recipe.rating}',
-            trailing: const Icon(Icons.star_border_rounded),
-            onTap: () => Navigator.of(context).push(
-              MaterialPageRoute<void>(
-                builder: (_) => RecipeDetailScreen(recipe: recipe),
+        for (final (i, recipe) in recipes.indexed)
+          FadeSlideIn(
+            delay: Duration(milliseconds: 40 * i),
+            child: FoodTile(
+              title: recipe.title,
+              subtitle:
+                  '${recipe.minutes}분 · ${recipe.difficulty} · ★ ${recipe.rating}',
+              trailing: const Icon(Icons.star_border_rounded),
+              heroTag: 'recipe-image-${recipe.title}',
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => RecipeDetailScreen(recipe: recipe),
+                ),
               ),
             ),
           ),
@@ -166,48 +170,53 @@ class MemoryScreen extends StatelessWidget {
           body: '나 맞춤 ★5 · 변형 2 · 기본 레시피',
         ),
         const SizedBox(height: 10),
-        for (final memory in memories)
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(14),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    memory.variant,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: AppColors.ink,
-                      fontWeight: FontWeight.w900,
+        for (final (i, memory) in memories.indexed)
+          FadeSlideIn(
+            delay: Duration(milliseconds: 40 * i),
+            child: Card(
+              child: Padding(
+                padding: const EdgeInsets.all(14),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      memory.variant,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: AppColors.ink,
+                        fontWeight: FontWeight.w900,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    memory.summary,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(color: AppColors.slate),
-                  ),
-                  const SizedBox(height: 10),
-                  Text(
-                    '${memory.lastCooked} · ★ ${memory.rating}',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(color: AppColors.muted),
-                  ),
-                ],
+                    const SizedBox(height: 6),
+                    Text(
+                      memory.summary,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(color: AppColors.slate),
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      '${memory.lastCooked} · ★ ${memory.rating}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(color: AppColors.muted),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
         const SizedBox(height: 12),
-        FilledButton(
-          onPressed: () => Navigator.of(context).push(
-            MaterialPageRoute<void>(
-              builder: (_) => const CookSetupScreen(recipe: tofuRecipe),
+        PressableScale(
+          child: FilledButton(
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => const CookSetupScreen(recipe: tofuRecipe),
+              ),
             ),
+            child: const Text('선택한 버전으로 조리'),
           ),
-          child: const Text('선택한 버전으로 조리'),
         ),
       ],
     );
@@ -232,48 +241,53 @@ class _HorizontalRecipeList extends StatelessWidget {
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         itemBuilder: (context, index) {
-          return SizedBox(
-            width: 104,
-            child: InkWell(
-              borderRadius: BorderRadius.circular(8),
-              onTap: onTap,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const FoodPreview(size: 84),
-                  const SizedBox(height: 8),
-                  SizedBox(
-                    height: 40,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisAlignment: MainAxisAlignment.start,
-                      children: [
-                        Text(
-                          items[index],
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: AppColors.ink,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w800,
-                            height: 1.2,
-                          ),
+          return FadeSlideIn(
+            delay: Duration(milliseconds: 40 * index),
+            child: SizedBox(
+              width: 104,
+              child: PressableScale(
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(8),
+                  onTap: onTap,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const FoodPreview(size: 84),
+                      const SizedBox(height: 8),
+                      SizedBox(
+                        height: 40,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisAlignment: MainAxisAlignment.start,
+                          children: [
+                            Text(
+                              items[index],
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: AppColors.ink,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w800,
+                                height: 1.2,
+                              ),
+                            ),
+                            const SizedBox(height: 3),
+                            Text(
+                              labels[index],
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: AppColors.slate,
+                                fontSize: 11,
+                                height: 1.2,
+                              ),
+                            ),
+                          ],
                         ),
-                        const SizedBox(height: 3),
-                        Text(
-                          labels[index],
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: AppColors.slate,
-                            fontSize: 11,
-                            height: 1.2,
-                          ),
-                        ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
-                ],
+                ),
               ),
             ),
           );

@@ -44,20 +44,24 @@ class AuthScreen extends StatelessWidget {
           style: TextStyle(color: AppColors.slate, fontSize: 15),
         ),
         const SizedBox(height: 28),
-        FilledButton.icon(
-          style: FilledButton.styleFrom(
-            backgroundColor: AppColors.accent,
-            foregroundColor: AppColors.ink,
+        PressableScale(
+          child: FilledButton.icon(
+            style: FilledButton.styleFrom(
+              backgroundColor: AppColors.accent,
+              foregroundColor: AppColors.ink,
+            ),
+            onPressed: () => _openHome(context),
+            icon: const Icon(Icons.chat_bubble_rounded),
+            label: const Text('카카오로 시작하기'),
           ),
-          onPressed: () => _openHome(context),
-          icon: const Icon(Icons.chat_bubble_rounded),
-          label: const Text('카카오로 시작하기'),
         ),
         const SizedBox(height: 10),
-        OutlinedButton.icon(
-          onPressed: () => _openHome(context),
-          icon: const Icon(Icons.g_mobiledata_rounded),
-          label: const Text('Google로 시작하기'),
+        PressableScale(
+          child: OutlinedButton.icon(
+            onPressed: () => _openHome(context),
+            icon: const Icon(Icons.g_mobiledata_rounded),
+            label: const Text('Google로 시작하기'),
+          ),
         ),
         const Padding(
           padding: EdgeInsets.symmetric(vertical: 18),
@@ -82,9 +86,11 @@ class AuthScreen extends StatelessWidget {
           decoration: InputDecoration(labelText: '비밀번호'),
         ),
         const SizedBox(height: 14),
-        FilledButton(
-          onPressed: () => _openHome(context),
-          child: const Text('로그인'),
+        PressableScale(
+          child: FilledButton(
+            onPressed: () => _openHome(context),
+            child: const Text('로그인'),
+          ),
         ),
         TextButton(
           onPressed: () => _openHome(context),
@@ -153,19 +159,22 @@ class _TasteProfileScreenState extends State<TasteProfileScreen> {
           childAspectRatio: 1,
           physics: const NeverScrollableScrollPhysics(),
           children: [
-            for (final option in tasteOptions)
-              _TasteOption(
-                label: option,
-                selected: selected.contains(option),
-                onTap: () {
-                  setState(() {
-                    if (selected.contains(option)) {
-                      selected.remove(option);
-                    } else {
-                      selected.add(option);
-                    }
-                  });
-                },
+            for (final (i, option) in tasteOptions.indexed)
+              FadeSlideIn(
+                delay: Duration(milliseconds: 30 * i),
+                child: _TasteOption(
+                  label: option,
+                  selected: selected.contains(option),
+                  onTap: () {
+                    setState(() {
+                      if (selected.contains(option)) {
+                        selected.remove(option);
+                      } else {
+                        selected.add(option);
+                      }
+                    });
+                  },
+                ),
               ),
           ],
         ),
@@ -186,16 +195,18 @@ class _TasteProfileScreenState extends State<TasteProfileScreen> {
           ),
         ),
       ],
-      bottom: FilledButton(
-        onPressed: selected.length >= 3
-            ? () {
-                Navigator.of(context).pushAndRemoveUntil(
-                  MaterialPageRoute<void>(builder: (_) => const MainShell()),
-                  (route) => false,
-                );
-              }
-            : null,
-        child: Text('다음 · ${selected.length}개 선택됨'),
+      bottom: PressableScale(
+        child: FilledButton(
+          onPressed: selected.length >= 3
+              ? () {
+                  Navigator.of(context).pushAndRemoveUntil(
+                    MaterialPageRoute<void>(builder: (_) => const MainShell()),
+                    (route) => false,
+                  );
+                }
+              : null,
+          child: Text('다음 · ${selected.length}개 선택됨'),
+        ),
       ),
     );
   }
@@ -214,59 +225,76 @@ class _TasteOption extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      borderRadius: BorderRadius.circular(8),
-      onTap: onTap,
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: selected ? const Color(0xFFEFF6FF) : Colors.white,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(
-            color: selected ? AppColors.ink : AppColors.line,
-            width: selected ? 1.4 : 1,
+    return PressableScale(
+      child: InkWell(
+        borderRadius: BorderRadius.circular(8),
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: AppMotion.short,
+          curve: AppMotion.easeInOut,
+          decoration: BoxDecoration(
+            color: selected ? const Color(0xFFEFF6FF) : Colors.white,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+              color: selected ? AppColors.ink : AppColors.line,
+              width: selected ? 1.4 : 1,
+            ),
           ),
-        ),
-        child: Stack(
-          children: [
-            Positioned.fill(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 30),
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF1F5F9),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: const Icon(
-                    Icons.restaurant_menu_rounded,
-                    color: AppColors.slate,
-                    size: 26,
+          child: Stack(
+            children: [
+              Positioned.fill(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 30),
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF1F5F9),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Icon(
+                      Icons.restaurant_menu_rounded,
+                      color: AppColors.slate,
+                      size: 26,
+                    ),
                   ),
                 ),
               ),
-            ),
-            if (selected)
-              const Positioned(
+              Positioned(
                 right: 8,
                 top: 8,
-                child: Icon(Icons.check_circle, color: AppColors.ink, size: 18),
-              ),
-            Positioned(
-              left: 8,
-              right: 8,
-              bottom: 8,
-              child: Text(
-                label,
-                textAlign: TextAlign.center,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: AppColors.ink,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
+                child: AnimatedScale(
+                  scale: selected ? 1 : 0.6,
+                  duration: AppMotion.fast,
+                  curve: AppMotion.easeOut,
+                  child: AnimatedOpacity(
+                    opacity: selected ? 1 : 0,
+                    duration: AppMotion.fast,
+                    curve: AppMotion.easeOut,
+                    child: const Icon(
+                      Icons.check_circle,
+                      color: AppColors.ink,
+                      size: 18,
+                    ),
+                  ),
                 ),
               ),
-            ),
-          ],
+              Positioned(
+                left: 8,
+                right: 8,
+                bottom: 8,
+                child: Text(
+                  label,
+                  textAlign: TextAlign.center,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: AppColors.ink,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
