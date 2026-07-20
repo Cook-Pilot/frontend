@@ -79,6 +79,8 @@ final class _CookingScreenState extends State<CookingScreen>
             ? 104.0
             : compact
             ? 190.0
+            : screenHeight >= 800
+            ? 320.0
             : 260.0;
         final timerStatus = widget.controller.timer.status;
 
