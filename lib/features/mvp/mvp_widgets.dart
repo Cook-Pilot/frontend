@@ -91,12 +91,14 @@ class FoodTile extends StatelessWidget {
     super.key,
     required this.title,
     required this.subtitle,
+    required this.imageAsset,
     this.trailing,
     this.onTap,
   });
 
   final String title;
   final String subtitle;
+  final String imageAsset;
   final Widget? trailing;
   final VoidCallback? onTap;
 
@@ -110,7 +112,7 @@ class FoodTile extends StatelessWidget {
           padding: const EdgeInsets.all(12),
           child: Row(
             children: [
-              const FoodPreview(size: 58),
+              FoodPreview(size: 58, imageAsset: imageAsset),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
@@ -145,8 +147,15 @@ class FoodTile extends StatelessWidget {
 }
 
 class FoodPreview extends StatelessWidget {
-  const FoodPreview({super.key, this.size = 96});
+  const FoodPreview({
+    super.key,
+    required this.imageAsset,
+    this.semanticLabel,
+    this.size = 96,
+  });
 
+  final String imageAsset;
+  final String? semanticLabel;
   final double size;
 
   @override
@@ -154,21 +163,30 @@ class FoodPreview extends StatelessWidget {
     final width = size.isFinite ? size : double.infinity;
     final height = size.isFinite ? size : 138.0;
 
-    return Container(
-      width: width,
-      height: height,
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFFEFF6FF), Color(0xFFE2E8F0)],
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(8),
+      child: Image.asset(
+        imageAsset,
+        width: width,
+        height: height,
+        fit: BoxFit.cover,
+        semanticLabel: semanticLabel,
+        errorBuilder: (context, error, stackTrace) => Container(
+          width: width,
+          height: height,
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [Color(0xFFEFF6FF), Color(0xFFE2E8F0)],
+            ),
+          ),
+          child: Icon(
+            Icons.restaurant_rounded,
+            color: AppColors.slate,
+            size: height * 0.34,
+          ),
         ),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Icon(
-        Icons.restaurant_rounded,
-        color: AppColors.slate,
-        size: height * 0.34,
       ),
     );
   }
@@ -218,7 +236,7 @@ class RecipeHeroCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const FoodPreview(size: double.infinity),
+              FoodPreview(size: double.infinity, imageAsset: recipe.imageAsset),
               const SizedBox(height: 14),
               Text(
                 recipe.title,

@@ -71,33 +71,36 @@ class HomeScreen extends StatelessWidget {
           ),
         ),
         const SectionTitle('오늘의 메뉴'),
-        RecipeHeroCard(recipe: tofuRecipe, onTap: () => _openDetail(context)),
+        RecipeHeroCard(
+          recipe: tofuRecipe,
+          onTap: () => _openDetail(context, tofuRecipe),
+        ),
         const SectionTitle('최근 조리'),
         _HorizontalRecipeList(
           items: const ['김치볶음밥', '된장찌개', '오일 파스타'],
           labels: const ['나 맞춤', '기본', '변형 1'],
-          onTap: () => _openDetail(context),
+          onTap: (title) => _openDetail(context, recipeByTitle(title)),
         ),
         const SectionTitle('즐겨찾기'),
         _HorizontalRecipeList(
           items: const ['두부 조림', '닭갈비', '크림 파스타'],
           labels: const ['나 맞춤', '기본', '변형 1'],
-          onTap: () => _openDetail(context),
+          onTap: (title) => _openDetail(context, recipeByTitle(title)),
         ),
         const SectionTitle('오늘 뭐 먹지?'),
         _HorizontalRecipeList(
           items: const ['매콤 제육', '두부 조림', '치킨 샐러드'],
           labels: const ['인기', '추천', '가벼움'],
-          onTap: () => _openDetail(context),
+          onTap: (title) => _openDetail(context, recipeByTitle(title)),
         ),
       ],
     );
   }
 
-  void _openDetail(BuildContext context) {
+  void _openDetail(BuildContext context, Recipe recipe) {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) => const RecipeDetailScreen(recipe: tofuRecipe),
+        builder: (_) => RecipeDetailScreen(recipe: recipe),
       ),
     );
   }
@@ -130,6 +133,7 @@ class SearchScreen extends StatelessWidget {
             title: recipe.title,
             subtitle:
                 '${recipe.minutes}분 · ${recipe.difficulty} · ★ ${recipe.rating}',
+            imageAsset: recipe.imageAsset,
             trailing: const Icon(Icons.star_border_rounded),
             onTap: () => Navigator.of(context).push(
               MaterialPageRoute<void>(
@@ -223,7 +227,7 @@ class _HorizontalRecipeList extends StatelessWidget {
 
   final List<String> items;
   final List<String> labels;
-  final VoidCallback onTap;
+  final ValueChanged<String> onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -236,11 +240,14 @@ class _HorizontalRecipeList extends StatelessWidget {
             width: 104,
             child: InkWell(
               borderRadius: BorderRadius.circular(8),
-              onTap: onTap,
+              onTap: () => onTap(items[index]),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const FoodPreview(size: 84),
+                  FoodPreview(
+                    size: 84,
+                    imageAsset: recipeImageAssets[items[index]]!,
+                  ),
                   const SizedBox(height: 8),
                   SizedBox(
                     height: 40,

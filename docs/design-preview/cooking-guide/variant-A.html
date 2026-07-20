@@ -1,0 +1,462 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>CookPilot — Command Kitchen</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --ink: #070b10;
+      --navy: #0c1621;
+      --panel: #111e2b;
+      --line: #314151;
+      --muted: #99a8b5;
+      --white: #f5f8f2;
+      --lime: #c8ff3d;
+      --danger: #ff816e;
+      --focus: #ffffff;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      width: 100%;
+      min-width: 320px;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background: var(--ink);
+    }
+
+    body {
+      font-family: Bahnschrift, "Malgun Gothic", "Apple SD Gothic Neo", sans-serif;
+      color: var(--white);
+    }
+
+    button {
+      min-height: 44px;
+      border: 0;
+      border-radius: 0;
+      font: inherit;
+      color: inherit;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    button:focus-visible {
+      outline: 3px solid var(--focus);
+      outline-offset: 3px;
+      position: relative;
+      z-index: 2;
+    }
+
+    button:active {
+      transform: translateY(1px);
+    }
+
+    .app {
+      width: min(100%, 390px);
+      height: 100dvh;
+      min-height: 568px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      background: var(--navy);
+      border-inline: 1px solid #1d2a36;
+    }
+
+    .topbar {
+      flex: 0 0 58px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: max(8px, env(safe-area-inset-top)) 18px 8px;
+      border-bottom: 1px solid var(--line);
+      background: var(--ink);
+    }
+
+    .brand {
+      display: flex;
+      align-items: baseline;
+      gap: 9px;
+    }
+
+    .brand-mark {
+      width: 9px;
+      height: 9px;
+      background: var(--lime);
+      box-shadow: 0 0 0 3px rgba(200, 255, 61, .14);
+    }
+
+    .recipe {
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: -.02em;
+    }
+
+    .product-name {
+      color: var(--muted);
+      font-family: Consolas, monospace;
+      font-size: 10px;
+      letter-spacing: .14em;
+      text-transform: uppercase;
+    }
+
+    .progress {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-family: Consolas, monospace;
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: .08em;
+    }
+
+    .progress-track {
+      width: 54px;
+      height: 4px;
+      background: #2b3947;
+    }
+
+    .progress-track::before {
+      content: "";
+      display: block;
+      width: 33.333%;
+      height: 100%;
+      background: var(--lime);
+    }
+
+    .workspace {
+      min-height: 0;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .instruction-band {
+      flex: 0 0 166px;
+      padding: 17px 20px 14px;
+      background: var(--white);
+      color: #0b131b;
+      border-bottom: 5px solid var(--lime);
+    }
+
+    .eyebrow {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin: 0 0 10px;
+      color: #42505c;
+      font-family: Consolas, monospace;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: .12em;
+    }
+
+    .eyebrow::before {
+      content: "01";
+      display: grid;
+      width: 25px;
+      height: 25px;
+      place-items: center;
+      color: #0b131b;
+      background: var(--lime);
+      border: 1px solid #0b131b;
+      font-size: 10px;
+    }
+
+    h1 {
+      max-width: 345px;
+      margin: 0;
+      font-size: clamp(28px, 7.7vw, 33px);
+      line-height: 1.18;
+      letter-spacing: -.045em;
+      word-break: keep-all;
+    }
+
+    .completion-cue {
+      margin: 10px 0 0;
+      color: #4c5964;
+      font-size: 13px;
+      font-weight: 600;
+      line-height: 1.35;
+      word-break: keep-all;
+    }
+
+    .instrument {
+      flex: 1 1 auto;
+      min-height: 154px;
+      display: grid;
+      align-content: center;
+      padding: 12px 20px 8px;
+      background: var(--navy);
+    }
+
+    .timer-label {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 1px;
+      color: var(--muted);
+      font-family: Consolas, monospace;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: .14em;
+    }
+
+    .timer-label span:last-child {
+      color: var(--lime);
+    }
+
+    .timer {
+      margin: 0;
+      color: var(--white);
+      font-family: Consolas, "Courier New", monospace;
+      font-size: clamp(74px, 24vw, 102px);
+      font-weight: 700;
+      line-height: .98;
+      letter-spacing: -.085em;
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+
+    .timer-rule {
+      display: grid;
+      grid-template-columns: 1fr 2fr;
+      gap: 4px;
+      height: 5px;
+      margin-top: 8px;
+    }
+
+    .timer-rule span:first-child {
+      background: var(--lime);
+    }
+
+    .timer-rule span:last-child {
+      background: var(--line);
+    }
+
+    .voice-strip {
+      flex: 0 0 72px;
+      display: grid;
+      grid-template-columns: auto 1fr;
+      align-items: center;
+      gap: 12px;
+      margin: 0 14px 10px;
+      padding: 10px 12px;
+      border: 1px solid #61703f;
+      border-left: 5px solid var(--lime);
+      background: #141e1b;
+    }
+
+    .signal {
+      width: 38px;
+      height: 38px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 3px;
+      border: 1px solid #687655;
+      background: #0d1514;
+    }
+
+    .signal i {
+      display: block;
+      width: 3px;
+      background: var(--lime);
+    }
+
+    .signal i:nth-child(1),
+    .signal i:nth-child(5) { height: 9px; }
+    .signal i:nth-child(2),
+    .signal i:nth-child(4) { height: 19px; }
+    .signal i:nth-child(3) { height: 27px; }
+
+    .voice-copy {
+      min-width: 0;
+    }
+
+    .voice-title {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin: 0 0 3px;
+      font-family: Consolas, monospace;
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: .04em;
+    }
+
+    .voice-title::before {
+      content: "";
+      width: 7px;
+      height: 7px;
+      background: var(--lime);
+    }
+
+    .voice-helper {
+      margin: 0;
+      overflow: hidden;
+      color: #bec9b0;
+      font-size: 11px;
+      line-height: 1.35;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .control-dock {
+      flex: 0 0 auto;
+      margin-top: auto;
+      padding: 10px 14px calc(10px + env(safe-area-inset-bottom));
+      border-top: 1px solid var(--line);
+      background: var(--ink);
+    }
+
+    .fallback-controls {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 6px;
+    }
+
+    .fallback {
+      height: 54px;
+      padding: 4px 2px;
+      display: grid;
+      place-items: center;
+      border: 1px solid #4b5a68;
+      background: var(--panel);
+      color: var(--white);
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: -.03em;
+      white-space: nowrap;
+    }
+
+    .fallback.primary {
+      border-color: var(--lime);
+      background: var(--lime);
+      color: #10170d;
+    }
+
+    .session-controls {
+      display: grid;
+      grid-template-columns: 1fr 1.65fr;
+      gap: 8px;
+      margin-top: 8px;
+    }
+
+    .session {
+      height: 48px;
+      background: transparent;
+      border: 1px solid #566574;
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .session.abort {
+      color: #d5dce2;
+    }
+
+    .session.complete {
+      background: var(--white);
+      border-color: var(--white);
+      color: #0b131b;
+    }
+
+    @media (max-height: 700px) {
+      .topbar { flex-basis: 50px; }
+      .instruction-band { flex-basis: 134px; padding-block: 12px 9px; }
+      .eyebrow { margin-bottom: 6px; }
+      h1 { font-size: 25px; }
+      .completion-cue { margin-top: 6px; font-size: 12px; }
+      .instrument { min-height: 124px; padding-block: 8px 5px; }
+      .timer { font-size: 68px; }
+      .voice-strip { flex-basis: 62px; margin-bottom: 7px; padding-block: 7px; }
+      .signal { width: 34px; height: 34px; }
+      .fallback { height: 48px; }
+      .session { height: 44px; }
+      .control-dock { padding-top: 7px; }
+    }
+
+    @media (min-width: 431px) {
+      body {
+        display: grid;
+        place-items: center;
+        background: #030507;
+      }
+
+      .app {
+        height: min(100dvh, 844px);
+        box-shadow: 0 0 0 1px #2a3744;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        scroll-behavior: auto !important;
+        animation-duration: .01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: .01ms !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="app" aria-labelledby="current-step-title">
+    <header class="topbar">
+      <div class="brand" aria-label="CookPilot, 라면 조리">
+        <span class="brand-mark" aria-hidden="true"></span>
+        <span class="recipe">라면</span>
+        <span class="product-name">CookPilot</span>
+      </div>
+      <div class="progress" aria-label="전체 3단계 중 1단계">
+        <span>1 / 3</span>
+        <span class="progress-track" aria-hidden="true"></span>
+      </div>
+    </header>
+
+    <div class="workspace">
+      <section class="instruction-band" aria-labelledby="current-step-title">
+        <p class="eyebrow">현재 단계</p>
+        <h1 id="current-step-title">물 500ml를 넣고 끓이세요.</h1>
+        <p class="completion-cue">기포가 올라오면 다음 단계로 넘어가세요.</p>
+      </section>
+
+      <section class="instrument" aria-label="남은 시간">
+        <div class="timer-label">
+          <span>남은 시간</span>
+          <span>RUNNING</span>
+        </div>
+        <p class="timer" aria-label="2분 14초">02:14</p>
+        <div class="timer-rule" aria-hidden="true"><span></span><span></span></div>
+      </section>
+
+      <section class="voice-strip" role="status" aria-live="polite" aria-label="음성 상태: 듣는 중">
+        <div class="signal" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
+        <div class="voice-copy">
+          <p class="voice-title">듣는 중</p>
+          <p class="voice-helper">“다음”, “다시 말해줘”, “1분 더”라고 말해보세요.</p>
+        </div>
+      </section>
+
+      <footer class="control-dock" aria-label="조리 제어">
+        <nav class="fallback-controls" aria-label="빠른 조작">
+          <button class="fallback" type="button" aria-label="이전 단계">이전</button>
+          <button class="fallback" type="button">다시 듣기</button>
+          <button class="fallback" type="button">1분 추가</button>
+          <button class="fallback primary" type="button" aria-label="다음 단계">다음</button>
+        </nav>
+        <div class="session-controls">
+          <button class="session abort" type="button">조리 중단</button>
+          <button class="session complete" type="button">조리 완료</button>
+        </div>
+      </footer>
+    </div>
+  </main>
+</body>
+</html>
