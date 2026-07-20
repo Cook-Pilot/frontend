@@ -1,0 +1,399 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>CookPilot — Shotgun D refined by Impeccable</title>
+  <script>
+    (() => {
+      const theme = new URLSearchParams(window.location.search).get('theme');
+      if (['A', 'B', 'C'].includes(theme)) document.documentElement.dataset.theme = theme;
+    })();
+  </script>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: oklch(1 0 0);
+      --surface: oklch(.965 .008 258);
+      --surface-active: oklch(.92 .018 258);
+      --ink: oklch(.20 .025 258);
+      --muted: oklch(.43 .035 258);
+      --line: oklch(.85 .018 258);
+      --primary: oklch(.45 .105 258);
+      --primary-hover: oklch(.40 .105 258);
+      --primary-active: oklch(.35 .095 258);
+      --primary-soft: oklch(.91 .030 258);
+      --progress: oklch(.76 .085 258);
+      --panel: oklch(.13 .018 258);
+      --panel-muted: oklch(.76 .026 258);
+      --panel-line: oklch(.30 .032 258);
+      --focus: oklch(.68 .17 65);
+      font-family: Pretendard, "Apple SD Gothic Neo", "Noto Sans KR", system-ui, sans-serif;
+    }
+
+    html[data-theme="A"] {
+      --bg: oklch(1 0 0);
+      --surface: oklch(.965 .008 258);
+      --surface-active: oklch(.92 .018 258);
+      --ink: oklch(.20 .025 258);
+      --muted: oklch(.43 .035 258);
+      --line: oklch(.85 .018 258);
+      --primary: oklch(.45 .105 258);
+      --primary-hover: oklch(.40 .105 258);
+      --primary-active: oklch(.35 .095 258);
+      --primary-soft: oklch(.91 .030 258);
+      --progress: oklch(.76 .085 258);
+      --panel: oklch(.13 .018 258);
+      --panel-muted: oklch(.76 .026 258);
+      --panel-line: oklch(.30 .032 258);
+      --focus: oklch(.68 .17 65);
+    }
+
+    html[data-theme="B"] {
+      --bg: oklch(1 0 0);
+      --surface: oklch(.968 .008 32);
+      --surface-active: oklch(.925 .028 32);
+      --ink: oklch(.21 .024 32);
+      --muted: oklch(.43 .035 32);
+      --line: oklch(.86 .018 32);
+      --primary: oklch(.49 .16 32);
+      --primary-hover: oklch(.43 .16 32);
+      --primary-active: oklch(.37 .14 32);
+      --primary-soft: oklch(.92 .052 32);
+      --progress: oklch(.76 .13 32);
+      --panel: oklch(.14 .018 32);
+      --panel-muted: oklch(.77 .025 32);
+      --panel-line: oklch(.31 .028 32);
+      --focus: oklch(.58 .17 250);
+    }
+
+    html[data-theme="C"] {
+      --bg: oklch(1 0 0);
+      --surface: oklch(.965 .005 245);
+      --surface-active: oklch(.92 .012 245);
+      --ink: oklch(.18 .010 245);
+      --muted: oklch(.42 .018 245);
+      --line: oklch(.84 .010 245);
+      --primary: oklch(.38 .050 245);
+      --primary-hover: oklch(.33 .050 245);
+      --primary-active: oklch(.28 .045 245);
+      --primary-soft: oklch(.90 .022 245);
+      --progress: oklch(.72 .055 245);
+      --panel: oklch(.105 .006 245);
+      --panel-muted: oklch(.75 .014 245);
+      --panel-line: oklch(.28 .016 245);
+      --focus: oklch(.63 .16 55);
+    }
+
+    * { box-sizing: border-box; }
+
+    html,
+    body {
+      width: 100%;
+      min-width: 320px;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background: oklch(.91 .004 258);
+      color: var(--ink);
+    }
+
+    body { display: grid; place-items: center; }
+
+    button {
+      min-height: 44px;
+      border: 0;
+      font: inherit;
+      color: inherit;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+      transition: background-color 180ms cubic-bezier(.22, 1, .36, 1), color 180ms cubic-bezier(.22, 1, .36, 1), transform 180ms cubic-bezier(.22, 1, .36, 1);
+    }
+
+    button:focus-visible {
+      outline: 3px solid var(--focus);
+      outline-offset: 2px;
+      position: relative;
+      z-index: 3;
+    }
+
+    button:active { transform: translateY(1px); }
+    button:disabled { cursor: not-allowed; opacity: .45; }
+
+    .app {
+      width: min(100%, 390px);
+      height: min(100dvh, 844px);
+      min-height: 620px;
+      display: grid;
+      grid-template-rows: auto auto minmax(0, 1fr) auto auto;
+      overflow: hidden;
+      background: var(--bg);
+      box-shadow: 0 8px 8px oklch(.2 .01 258 / .14);
+    }
+
+    .topbar {
+      min-height: 62px;
+      padding: max(12px, env(safe-area-inset-top)) 18px 10px;
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--line);
+      background: var(--bg);
+    }
+
+    .brand { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 780; letter-spacing: -.01em; }
+    .brand-mark { width: 24px; height: 24px; display: grid; place-items: center; border-radius: 7px; background: var(--primary); color: var(--bg); }
+    .brand-mark svg { width: 14px; height: 14px; }
+    .recipe-meta { text-align: right; line-height: 1.18; }
+    .recipe-name { display: block; font-size: 14px; font-weight: 800; }
+    .step-count { display: block; margin-top: 2px; color: var(--muted); font-size: 12px; font-weight: 700; }
+
+    .instruction { padding: 14px 20px 13px; background: var(--bg); }
+    .step-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 7px; }
+    .step-label { color: var(--primary); font-size: 13px; font-weight: 800; }
+    .step-progress { width: 70px; height: 4px; background: var(--line); }
+    .step-progress::before { content: ""; display: block; width: 33.333%; height: 100%; background: var(--primary); }
+
+    h1 {
+      max-width: 348px;
+      margin: 0;
+      font-size: 27px;
+      line-height: 1.21;
+      letter-spacing: -.03em;
+      text-wrap: balance;
+      word-break: keep-all;
+    }
+
+    .completion-cue { margin: 7px 0 0; color: var(--muted); font-size: 13px; font-weight: 640; line-height: 1.4; word-break: keep-all; }
+
+    .experience {
+      min-height: 0;
+      display: grid;
+      grid-template-rows: auto minmax(118px, 1fr) auto;
+      overflow: hidden;
+      background: var(--panel);
+    }
+
+    .voice-bar {
+      min-height: 50px;
+      padding: 7px 18px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      background: var(--primary);
+      color: var(--bg);
+    }
+
+    .voice-state { display: inline-flex; align-items: center; gap: 9px; font-size: 15px; font-weight: 820; }
+    .voice-icon { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 8px; background: oklch(1 0 0 / .14); }
+    .voice-icon svg { width: 17px; height: 17px; }
+    .voice-copy { display: grid; gap: 1px; }
+    .voice-copy small { color: oklch(.94 .02 258); font-size: 12px; font-weight: 650; }
+    .signal { display: flex; align-items: center; gap: 4px; height: 25px; }
+    .signal span { width: 3px; height: var(--h); background: var(--bg); animation: listen 800ms cubic-bezier(.22, 1, .36, 1) infinite alternate; animation-delay: var(--delay); }
+    @keyframes listen { from { transform: scaleY(.38); } to { transform: scaleY(1); } }
+
+    .media {
+      min-height: 0;
+      margin: 0;
+      position: relative;
+      overflow: hidden;
+      background: var(--panel);
+    }
+
+    .media img { width: 100%; height: 100%; min-height: 118px; display: block; object-fit: cover; object-position: center 52%; }
+    .media figcaption {
+      position: absolute;
+      right: 10px;
+      bottom: 9px;
+      left: 10px;
+      min-height: 38px;
+      padding: 7px 10px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      border-radius: 8px;
+      background: oklch(.12 .01 258 / .86);
+      color: var(--bg);
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .media figcaption span:last-child { color: var(--panel-muted); white-space: nowrap; }
+
+    .timer-panel {
+      min-height: 105px;
+      padding: 10px 20px;
+      display: grid;
+      grid-template-columns: 74px minmax(0, 1fr);
+      align-items: center;
+      gap: 15px;
+      background: var(--panel);
+      color: var(--bg);
+      border-top: 1px solid var(--panel-line);
+    }
+
+    .dial { width: 72px; height: 72px; transform: rotate(-90deg); }
+    .dial-track { fill: none; stroke: var(--panel-line); stroke-width: 7; }
+    .dial-value { fill: none; stroke: var(--progress); stroke-width: 7; stroke-linecap: round; stroke-dasharray: 126 201; }
+    .timer-copy { min-width: 0; }
+    .timer-label { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0 0 1px; color: var(--panel-muted); font-size: 12px; font-weight: 700; }
+    .timer-label strong { color: var(--progress); font-size: 12px; }
+    .timer { display: block; font-size: 54px; font-weight: 720; line-height: .98; letter-spacing: -.035em; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .voice-helper { margin: 4px 0 0; color: var(--panel-muted); font-size: 12px; font-weight: 620; line-height: 1.35; word-break: keep-all; }
+
+    .quick-controls {
+      padding: 10px 12px 9px;
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 6px;
+      background: var(--surface);
+      border-top: 1px solid var(--line);
+    }
+
+    .quick {
+      min-width: 0;
+      min-height: 62px;
+      padding: 6px 2px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      background: var(--bg);
+      font-size: 12px;
+      font-weight: 740;
+    }
+    .quick:hover { background: var(--surface-active); }
+    .quick svg { width: 19px; height: 19px; }
+    .quick.next { border-color: var(--primary); background: var(--primary); color: var(--bg); }
+    .quick.next:hover { background: var(--primary-hover); }
+    .quick.next:active { background: var(--primary-active); }
+
+    .session-bar {
+      min-height: 66px;
+      padding: 8px 12px max(9px, env(safe-area-inset-bottom));
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 7px;
+      background: var(--surface);
+      border-top: 1px solid var(--line);
+    }
+    .session { min-height: 48px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--ink); font-size: 13px; font-weight: 760; }
+    .session:hover { background: var(--surface-active); }
+    .complete { border-color: var(--primary); background: var(--primary-soft); color: var(--primary-active); }
+    .complete:hover { background: var(--primary); color: var(--bg); }
+
+    .activity {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
+
+    @media (max-height: 720px) {
+      .topbar { min-height: 54px; padding-top: max(8px, env(safe-area-inset-top)); }
+      .instruction { padding-top: 10px; padding-bottom: 9px; }
+      h1 { font-size: 24px; }
+      .experience { grid-template-rows: auto minmax(96px, 1fr) auto; }
+      .voice-bar { min-height: 46px; }
+      .timer-panel { min-height: 88px; grid-template-columns: 60px minmax(0, 1fr); padding-top: 7px; padding-bottom: 7px; }
+      .dial { width: 58px; height: 58px; }
+      .timer { font-size: 45px; }
+      .quick { min-height: 54px; }
+      .session-bar { min-height: 46px; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+    }
+
+    @media (min-width: 391px) { .app { border-radius: 14px; } }
+  </style>
+</head>
+<body>
+  <article class="app" aria-label="CookPilot 조리 화면">
+    <header class="topbar">
+      <div class="brand" aria-label="CookPilot">
+        <span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M8 4v5a4 4 0 0 0 8 0V4M12 13v7M9 20h6"/></svg></span>
+        <span>CookPilot</span>
+      </div>
+      <div class="recipe-meta"><strong class="recipe-name">라면</strong><span class="step-count">1 / 3 단계</span></div>
+    </header>
+
+    <section class="instruction" aria-labelledby="combined-action">
+      <div class="step-row"><span class="step-label">현재 단계</span><span class="step-progress" aria-label="전체 3단계 중 1단계"></span></div>
+      <h1 id="combined-action">물 500ml를 넣고 끓이세요.</h1>
+      <p class="completion-cue">기포가 올라오면 다음 단계로 넘어가세요.</p>
+    </section>
+
+    <section class="experience" aria-label="조리 상태와 미디어">
+      <div class="voice-bar" role="status" aria-live="polite">
+        <div class="voice-state">
+          <span class="voice-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><rect x="8" y="3" width="8" height="12" rx="4"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></span>
+          <span class="voice-copy"><strong id="voice-label">듣는 중</strong><small>말하면 바로 실행해요</small></span>
+        </div>
+        <span class="signal" aria-hidden="true"><span style="--h:11px;--delay:-.4s"></span><span style="--h:21px;--delay:-.1s"></span><span style="--h:16px;--delay:-.6s"></span><span style="--h:25px;--delay:-.25s"></span><span style="--h:13px;--delay:-.5s"></span></span>
+      </div>
+
+      <figure class="media">
+        <img src="boiling-pot.jpg" width="1350" height="900" alt="가스레인지 위 냄비에서 물이 기포를 내며 끓고 있는 모습">
+        <figcaption><span>이 정도로 끓으면 준비됐어요</span><span>조리 예시</span></figcaption>
+      </figure>
+
+      <div class="timer-panel" aria-label="타이머">
+        <svg class="dial" viewBox="0 0 76 76" aria-hidden="true"><circle class="dial-track" cx="38" cy="38" r="32"/><circle class="dial-value" cx="38" cy="38" r="32"/></svg>
+        <div class="timer-copy">
+          <p class="timer-label"><span>남은 시간</span><strong>진행 중</strong></p>
+          <time class="timer" id="timer" datetime="PT2M14S" aria-label="남은 시간 2분 14초">02:14</time>
+          <p class="voice-helper">“다음”, “다시 말해줘”, “1분 더”라고 말해보세요.</p>
+        </div>
+      </div>
+    </section>
+
+    <nav class="quick-controls" aria-label="조리 단계 빠른 조작">
+      <button class="quick" id="previous" type="button" aria-label="이전 단계"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m14 17-5-5 5-5"/></svg><span>이전</span></button>
+      <button class="quick" id="repeat" type="button" aria-label="현재 안내 다시 듣기"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12a8 8 0 1 0 2.3-5.7L4 8.6M4 4v4.6h4.6"/></svg><span>다시 듣기</span></button>
+      <button class="quick" id="add-minute" type="button" aria-label="타이머에 1분 추가"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="8"/><path d="M12 8v8M8 12h8"/></svg><span>1분 추가</span></button>
+      <button class="quick next" id="next" type="button" aria-label="다음 단계"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m10 7 5 5-5 5"/></svg><span>다음</span></button>
+    </nav>
+
+    <footer class="session-bar" aria-label="조리 세션 조작">
+      <button class="session" id="stop" type="button">조리 중단</button>
+      <button class="session complete" id="complete" type="button">조리 완료</button>
+    </footer>
+    <p class="activity" id="activity" aria-live="polite"></p>
+  </article>
+
+  <script>
+    const activity = document.querySelector('#activity');
+    const voiceLabel = document.querySelector('#voice-label');
+    const timer = document.querySelector('#timer');
+    const announce = (message) => { activity.textContent = ''; window.requestAnimationFrame(() => { activity.textContent = message; }); };
+
+    document.querySelector('#previous').addEventListener('click', () => announce('이전 단계로 이동합니다.'));
+    document.querySelector('#next').addEventListener('click', () => announce('다음 단계로 이동합니다.'));
+    document.querySelector('#add-minute').addEventListener('click', () => {
+      timer.textContent = '03:14';
+      timer.setAttribute('datetime', 'PT3M14S');
+      timer.setAttribute('aria-label', '남은 시간 3분 14초');
+      announce('타이머에 1분을 추가했습니다.');
+    });
+    document.querySelector('#repeat').addEventListener('click', () => {
+      voiceLabel.textContent = '안내 재생 중';
+      announce('현재 단계 안내를 다시 재생합니다.');
+      window.setTimeout(() => { voiceLabel.textContent = '듣는 중'; }, 1200);
+    });
+    document.querySelector('#stop').addEventListener('click', () => announce('조리 중단 확인이 필요합니다.'));
+    document.querySelector('#complete').addEventListener('click', () => announce('조리 완료 후 피드백 화면으로 이동합니다.'));
+  </script>
+</body>
+</html>

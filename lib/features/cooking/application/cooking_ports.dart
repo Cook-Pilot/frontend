@@ -1,0 +1,120 @@
+import 'package:flutter/foundation.dart';
+
+@immutable
+final class ExceptionAdviceEvent {
+  const ExceptionAdviceEvent({
+    required this.stepIndex,
+    required this.source,
+    required this.command,
+    required this.result,
+    required this.occurredAt,
+  });
+
+  final int stepIndex;
+  final String source;
+  final String command;
+  final String result;
+  final DateTime occurredAt;
+}
+
+@immutable
+final class ExceptionAdviceContext {
+  const ExceptionAdviceContext({
+    required this.sessionId,
+    required this.recipeId,
+    required this.recipeVersionId,
+    required this.stepIndex,
+    required this.requestContextVersion,
+    required this.instruction,
+    required this.remaining,
+    required this.utterance,
+    required this.recentEvents,
+  });
+
+  final String sessionId;
+  final String recipeId;
+  final String recipeVersionId;
+  final int stepIndex;
+  final int requestContextVersion;
+  final String instruction;
+  final Duration remaining;
+  final String utterance;
+  final List<ExceptionAdviceEvent> recentEvents;
+}
+
+@immutable
+final class ExceptionAdvice {
+  const ExceptionAdvice({required this.message});
+
+  final String message;
+}
+
+abstract interface class SpeechOutputPort {
+  /// Completes only after audible playback finishes or is cancelled.
+  Future<void> speak(String text);
+
+  /// Completes after the current playback has actually stopped.
+  Future<void> stop();
+}
+
+enum SpeechInputFailure { retryRequired, permissionDenied, unavailable }
+
+typedef SpeechUtteranceHandler =
+    void Function(String utterance, String? utteranceId);
+typedef SpeechInputFailureHandler = void Function(SpeechInputFailure failure);
+typedef SpeechInputReadyHandler = void Function();
+
+abstract interface class SpeechInputPort {
+  /// Starts recognition without blocking on the recognition session lifetime.
+  /// Readiness and asynchronous failures are reported through callbacks.
+  void start({
+    required SpeechInputReadyHandler onReady,
+    required SpeechUtteranceHandler onUtterance,
+    required SpeechInputFailureHandler onFailure,
+  });
+
+  Future<void> stop();
+}
+
+abstract interface class ExceptionAdvicePort {
+  Future<ExceptionAdvice> requestAdvice(ExceptionAdviceContext context);
+}
+
+final class DemoSpeechInput implements SpeechInputPort {
+  @override
+  void start({
+    required SpeechInputReadyHandler onReady,
+    required SpeechUtteranceHandler onUtterance,
+    required SpeechInputFailureHandler onFailure,
+  }) {
+    onReady();
+  }
+
+  @override
+  Future<void> stop() async {}
+}
+
+final class DemoSpeechOutput implements SpeechOutputPort {
+  @override
+  Future<void> speak(String text) async {}
+
+  @override
+  Future<void> stop() async {}
+}
+
+final class DemoExceptionAdvicePort implements ExceptionAdvicePort {
+  @override
+  Future<ExceptionAdvice> requestAdvice(ExceptionAdviceContext context) async {
+    final normalized = context.utterance.replaceAll(' ', '');
+    if (normalized.contains('안끓') || normalized.contains('끓지않')) {
+      return const ExceptionAdvice(
+        message:
+            '냄비를 불 가운데에 두고 화력을 한 단계 높여보세요. 30초 뒤에도 변화가 없으면 화구가 켜졌는지 먼저 확인하세요.',
+      );
+    }
+    return const ExceptionAdvice(
+      message:
+          '불을 잠시 낮추고 현재 단계를 멈춰 확인하세요. 안전 여부가 확실하지 않으면 먹지 말고 새 재료로 다시 시작하세요.',
+    );
+  }
+}

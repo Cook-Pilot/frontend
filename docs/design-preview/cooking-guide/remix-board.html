@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CookPilot Shotgun 리믹스 비교</title>
+  <style>
+    :root { color-scheme: dark; font-family: "Segoe UI", "Malgun Gothic", sans-serif; background: #111310; color: #f4f3ec; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #111310; }
+    header { position: sticky; top: 0; z-index: 10; padding: 22px clamp(18px, 4vw, 56px); background: rgb(17 19 16 / 96%); border-bottom: 1px solid #353931; }
+    h1 { margin: 0 0 6px; font-size: clamp(22px, 3vw, 34px); }
+    header p { margin: 0; color: #b7bcae; }
+    main { padding: 24px clamp(18px, 4vw, 56px) 64px; }
+    .note { max-width: 980px; margin: 0 auto 22px; padding: 14px 16px; border-left: 3px solid #9fc9a8; background: #1a1e18; color: #d8dccf; line-height: 1.55; }
+    .variants { max-width: 980px; margin: auto; display: grid; grid-template-columns: repeat(2, minmax(300px, 1fr)); gap: 20px; align-items: start; }
+    .variant { border: 1px solid #353931; background: #181b16; border-radius: 14px; overflow: hidden; }
+    .variant-head { padding: 16px; border-bottom: 1px solid #353931; }
+    .variant h2 { margin: 0 0 5px; font-size: 19px; }
+    .variant-head p { min-height: 40px; margin: 0; color: #aeb4a5; font-size: 14px; line-height: 1.45; }
+    .preview { display: flex; justify-content: center; padding: 18px; background: #090a08; }
+    .preview img { display: block; width: min(100%, 390px); height: auto; border: 1px solid #454b3e; box-shadow: 0 16px 45px rgb(0 0 0 / 42%); }
+    .controls { display: grid; gap: 12px; padding: 16px; }
+    .preferred { display: flex; align-items: center; min-height: 44px; gap: 8px; font-weight: 700; }
+    label { display: grid; gap: 6px; color: #dfe3d8; font-size: 14px; }
+    select, textarea { width: 100%; border: 1px solid #4b5145; border-radius: 8px; background: #10120f; color: #f4f3ec; font: inherit; }
+    select { min-height: 44px; padding: 0 10px; }
+    textarea { min-height: 74px; padding: 10px; resize: vertical; }
+    a { display: inline-flex; align-items: center; min-height: 44px; color: #b9dfa8; text-underline-offset: 4px; }
+    .feedback { max-width: 680px; display: grid; gap: 14px; margin: 28px auto 0; padding: 22px; border: 1px solid #3b4036; border-radius: 14px; background: #181b16; }
+    .feedback h2 { margin: 0; }
+    button { min-height: 50px; border: 0; border-radius: 8px; background: #b9dfa8; color: #111310; font: inherit; font-weight: 800; cursor: pointer; }
+    :focus-visible { outline: 3px solid #ffb35f; outline-offset: 3px; }
+    #status { min-height: 24px; color: #b9dfa8; }
+    @media (max-width: 760px) { .variants { grid-template-columns: 1fr; } .variant { max-width: 520px; margin-inline: auto; } }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>CookPilot S-03 · Shotgun 리믹스</h1>
+    <p>기존 선호안 B와 A+B 피드백 리믹스 D를 비교합니다.</p>
+  </header>
+  <main>
+    <div class="note">D는 A의 강한 정보 위계와 큰 타이머, B의 부드러운 인상을 결합했습니다. 색상은 자연스러운 오트밀·포레스트·세이지로 줄였고, 중간 빈 공간과 하단 버튼 혼잡도를 함께 개선했습니다.</div>
+    <form id="board-form">
+      <section class="variants">
+        <article class="variant">
+          <div class="variant-head"><h2>B · Warm Voice Coach</h2><p>첫 라운드 선호안. 부드럽지만 색상과 중간 여백이 아쉬웠던 방향.</p></div>
+          <div class="preview"><img src="variant-B.png" alt="Warm Voice Coach 시안"></div>
+          <div class="controls">
+            <label class="preferred"><input type="radio" name="preferred" value="B" required> B를 최종 Shotgun안으로 선택</label>
+            <label>평점<select name="rating-B"><option value="5">5</option><option value="4" selected>4</option><option value="3">3</option><option value="2">2</option><option value="1">1</option></select></label>
+            <label>B 코멘트<textarea name="comment-B" placeholder="최종 비교 의견"></textarea></label>
+            <a href="variant-B.html" target="_blank" rel="noreferrer">인터랙티브 원본 크게 보기</a>
+          </div>
+        </article>
+        <article class="variant">
+          <div class="variant-head"><h2>D · Balanced Kitchen Coach</h2><p>A의 명료한 계기판 구조와 B의 친근함을 자연스러운 색상으로 리믹스.</p></div>
+          <div class="preview"><img src="variant-D.png" alt="Balanced Kitchen Coach 시안"></div>
+          <div class="controls">
+            <label class="preferred"><input type="radio" name="preferred" value="D" required> D를 최종 Shotgun안으로 선택</label>
+            <label>평점<select name="rating-D"><option value="5">5</option><option value="4" selected>4</option><option value="3">3</option><option value="2">2</option><option value="1">1</option></select></label>
+            <label>D 코멘트<textarea name="comment-D" placeholder="좋은 점과 보정할 점"></textarea></label>
+            <a href="variant-D.html" target="_blank" rel="noreferrer">인터랙티브 원본 크게 보기</a>
+          </div>
+        </article>
+      </section>
+      <section class="feedback">
+        <h2>Shotgun 최종 선택</h2>
+        <label>전체 코멘트<textarea name="overall" placeholder="Impeccable 보정 시 유지하거나 바꿀 점"></textarea></label>
+        <button type="submit">최종안 저장</button>
+        <div id="status" role="status" aria-live="polite"></div>
+      </section>
+    </form>
+  </main>
+  <script>
+    const form = document.querySelector('#board-form');
+    const status = document.querySelector('#status');
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const data = new FormData(form);
+      const payload = {
+        round: 'remix-final',
+        preferred: data.get('preferred'),
+        ratings: { B: Number(data.get('rating-B')), D: Number(data.get('rating-D')) },
+        comments: { B: data.get('comment-B'), D: data.get('comment-D') },
+        overall: data.get('overall'),
+        regenerated: false,
+        regenerateAction: 'none'
+      };
+      status.textContent = '저장 중…';
+      try {
+        const response = await fetch('/feedback', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+        if (!response.ok) throw new Error('저장 실패');
+        status.textContent = '최종 Shotgun 선택이 저장됐습니다. 코덱스로 돌아가 알려주세요.';
+      } catch (error) {
+        status.textContent = '자동 저장에 실패했습니다. 의견을 코덱스 채팅에 붙여넣어 주세요.';
+      }
+    });
+  </script>
+</body>
+</html>

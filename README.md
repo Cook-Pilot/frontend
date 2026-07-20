@@ -19,6 +19,7 @@ Cook-Pilot의 Frontend 레포입니다.
 ## 문서
 
 - [프론트 기능 명세서](docs/frontend-feature-spec.md)
+- [S-03 조리 가이드 디자인 비교 및 사용 도구](docs/design-preview/cooking-guide/README.md)
 
 ## 개발 환경
 

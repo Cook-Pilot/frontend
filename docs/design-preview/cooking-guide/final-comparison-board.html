@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CookPilot S-03 최종 디자인 실험</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: "Segoe UI", "Malgun Gothic", system-ui, sans-serif;
+      --bg: #111310;
+      --surface: #181b16;
+      --surface-2: #0a0b09;
+      --line: #353931;
+      --ink: #f4f3ec;
+      --muted: #b7bcae;
+      --accent: #b9dfa8;
+      --focus: #ffb35f;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--ink); }
+    header { position: sticky; top: 0; z-index: 10; padding: 20px clamp(18px, 4vw, 56px); background: rgb(17 19 16 / 96%); border-bottom: 1px solid var(--line); }
+    h1 { margin: 0 0 6px; font-size: clamp(22px, 3vw, 34px); }
+    header p { margin: 0; color: var(--muted); }
+    main { padding: 22px clamp(18px, 4vw, 56px) 64px; }
+    .experiment-note { max-width: 1120px; margin: 0 auto 18px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: #d8dccf; line-height: 1.55; }
+    .rubric { max-width: 1120px; margin: 0 auto 22px; display: flex; flex-wrap: wrap; gap: 8px; }
+    .rubric span { padding: 7px 10px; border: 1px solid #3b4036; border-radius: 999px; color: #cdd2c4; font-size: 13px; }
+    .variants { display: grid; grid-template-columns: repeat(3, minmax(300px, 1fr)); gap: 18px; align-items: start; }
+    .variant { border: 1px solid var(--line); border-radius: 14px; overflow: hidden; background: var(--surface); }
+    .variant-head { min-height: 132px; padding: 16px; border-bottom: 1px solid var(--line); }
+    .variant h2 { margin: 0 0 6px; font-size: 19px; }
+    .variant-head p { margin: 0; color: #aeb4a5; font-size: 14px; line-height: 1.45; }
+    .input-tag { display: inline-flex; margin-bottom: 9px; padding: 4px 8px; border-radius: 999px; background: #252a21; color: var(--accent); font-size: 11px; font-weight: 700; }
+    .preview { display: flex; justify-content: center; padding: 18px; background: var(--surface-2); }
+    .preview img { display: block; width: min(100%, 390px); height: auto; border: 1px solid #454b3e; }
+    .controls { display: grid; gap: 12px; padding: 16px; }
+    .preferred { display: flex; align-items: center; min-height: 44px; gap: 8px; font-weight: 750; }
+    label { display: grid; gap: 6px; color: #dfe3d8; font-size: 14px; }
+    select, textarea { width: 100%; border: 1px solid #4b5145; border-radius: 8px; background: #10120f; color: var(--ink); font: inherit; }
+    select { min-height: 44px; padding: 0 10px; }
+    textarea { min-height: 76px; padding: 10px; resize: vertical; }
+    a { display: inline-flex; align-items: center; min-height: 44px; color: var(--accent); text-underline-offset: 4px; }
+    .feedback { max-width: 760px; display: grid; gap: 14px; margin: 28px auto 0; padding: 22px; border: 1px solid #3b4036; border-radius: 14px; background: var(--surface); }
+    .feedback h2 { margin: 0; }
+    button { min-height: 50px; border: 0; border-radius: 8px; background: var(--accent); color: var(--bg); font: inherit; font-weight: 800; cursor: pointer; }
+    :focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; }
+    #status { min-height: 24px; color: var(--accent); }
+    @media (max-width: 1180px) { .variants { grid-template-columns: 1fr; } .variant { max-width: 540px; margin-inline: auto; } .variant-head { min-height: 0; } }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>CookPilot S-03 · 최종 디자인 실험</h1>
+    <p>같은 PRODUCT.md와 조리 콘텐츠에서 생성한 세 접근 방식을 비교합니다.</p>
+  </header>
+  <main>
+    <div class="experiment-note">
+      지금은 시각적 취향만 보지 말고 실제 조리 상황을 상상해 주세요. 한 발 떨어져서 현재 행동과 시간을 읽을 수 있는지,
+      앱이 듣는 중임을 신뢰할 수 있는지, 젖은 손으로 필요한 버튼을 바로 찾을 수 있는지가 핵심입니다.
+    </div>
+    <div class="rubric" aria-label="평가 기준">
+      <span>현재 행동 25%</span><span>타이머 20%</span><span>음성 상태 20%</span>
+      <span>Fallback 15%</span><span>안전·차분함 10%</span><span>CookPilot다움 10%</span>
+    </div>
+
+    <form id="comparison-form">
+      <section class="variants">
+        <article class="variant">
+          <div class="variant-head">
+            <span class="input-tag">Shotgun 단독</span>
+            <h2>S · Balanced Kitchen Coach</h2>
+            <p>여러 방향을 발산한 뒤 A+B 리믹스로 선택된 D. 밝고 부드러운 계기판 구조와 큰 숫자 타이머.</p>
+          </div>
+          <div class="preview"><img src="variant-D.png" alt="Shotgun 최종안 D"></div>
+          <div class="controls">
+            <label class="preferred"><input type="radio" name="preferred" value="S" required> S를 최종 방향으로 선택</label>
+            <label>평점<select name="rating-S" required><option value="">선택</option><option value="5">5</option><option value="4">4</option><option value="3">3</option><option value="2">2</option><option value="1">1</option></select></label>
+            <label>S 코멘트<textarea name="comment-S" placeholder="유지할 점과 아쉬운 점"></textarea></label>
+            <a href="variant-D.html" target="_blank" rel="noreferrer">인터랙티브 원본 크게 보기</a>
+          </div>
+        </article>
+
+        <article class="variant">
+          <div class="variant-head">
+            <span class="input-tag">PRODUCT.md → Impeccable</span>
+            <h2>I · Product-only Instrument</h2>
+            <p>Shotgun 결과를 보지 않고 제품 원칙에서 직접 생성. 고대비 타이머 패널과 표준 조작 위계에 집중.</p>
+          </div>
+          <div class="preview"><img src="impeccable-product-only/impeccable-product-only.png" alt="Impeccable 단독안"></div>
+          <div class="controls">
+            <label class="preferred"><input type="radio" name="preferred" value="I" required> I를 최종 방향으로 선택</label>
+            <label>평점<select name="rating-I" required><option value="">선택</option><option value="5">5</option><option value="4">4</option><option value="3">3</option><option value="2">2</option><option value="1">1</option></select></label>
+            <label>I 코멘트<textarea name="comment-I" placeholder="유지할 점과 아쉬운 점"></textarea></label>
+            <a href="impeccable-product-only/impeccable-product-only.html" target="_blank" rel="noreferrer">인터랙티브 원본 크게 보기</a>
+          </div>
+        </article>
+
+        <article class="variant">
+          <div class="variant-head">
+            <span class="input-tag">Shotgun D → Impeccable</span>
+            <h2>H · Media Kitchen Instrument</h2>
+            <p>D의 구조를 토큰·미디어·강한 음성 상태·원형 타이머·A형 4버튼으로 보정한 결합안.</p>
+          </div>
+          <div class="preview"><img src="combined-shotgun-D-impeccable/combined-D-impeccable.png" alt="Shotgun과 Impeccable 결합안"></div>
+          <div class="controls">
+            <label class="preferred"><input type="radio" name="preferred" value="H" required> H를 최종 방향으로 선택</label>
+            <label>평점<select name="rating-H" required><option value="">선택</option><option value="5">5</option><option value="4">4</option><option value="3">3</option><option value="2">2</option><option value="1">1</option></select></label>
+            <label>H 코멘트<textarea name="comment-H" placeholder="유지할 점과 아쉬운 점"></textarea></label>
+            <a href="combined-shotgun-D-impeccable/combined-D-impeccable.html" target="_blank" rel="noreferrer">인터랙티브 원본 크게 보기</a>
+          </div>
+        </article>
+      </section>
+
+      <section class="feedback">
+        <h2>최종 의견</h2>
+        <label>선택 이유와 추가 수정사항<textarea name="overall" placeholder="예: H의 정보 구조를 선택하되 사진 영역은 실제 단계별 짧은 영상으로 교체"></textarea></label>
+        <button type="submit">최종 디자인 선택 저장</button>
+        <div id="status" role="status" aria-live="polite"></div>
+      </section>
+    </form>
+  </main>
+  <script>
+    const form = document.querySelector('#comparison-form');
+    const status = document.querySelector('#status');
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const data = new FormData(form);
+      const payload = {
+        round: 'final-comparison',
+        preferred: data.get('preferred'),
+        ratings: { S: Number(data.get('rating-S')), I: Number(data.get('rating-I')), H: Number(data.get('rating-H')) },
+        comments: { S: data.get('comment-S'), I: data.get('comment-I'), H: data.get('comment-H') },
+        overall: data.get('overall')
+      };
+      status.textContent = '저장 중…';
+      try {
+        const response = await fetch('/final-feedback', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+        if (!response.ok) throw new Error('저장 실패');
+        status.textContent = '최종 선택이 저장됐습니다. 코덱스로 돌아가 알려주세요.';
+      } catch (error) {
+        status.textContent = '자동 저장에 실패했습니다. 의견을 코덱스 채팅에 붙여넣어 주세요.';
+      }
+    });
+  </script>
+</body>
+</html>
