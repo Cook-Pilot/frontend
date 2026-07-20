@@ -10,6 +10,18 @@
 
 기존 팀 앱의 `조리 설정 → 조리 중 → 조리 후 리뷰` 흐름을 유지하면서 조리 중 화면만 교체했습니다. 위 이미지는 Chrome에서 팀 Flutter 앱을 390×844로 직접 실행해 캡처한 결과입니다.
 
+## 레시피별 임시 이미지
+
+<p align="center">
+  <img src="flutter-home-recipes.png" width="390" alt="레시피별 이미지가 적용된 CookPilot 홈 화면" />
+</p>
+
+<p align="center">
+  <img src="recipe-images-contact-sheet.jpg" width="708" alt="CookPilot 레시피별 임시 미리보기 이미지 11개" />
+</p>
+
+홈·검색·상세에 노출되는 고유 메뉴 11개에 서로 다른 이미지를 연결했습니다. 생성 도구와 공통·음식별 프롬프트는 [`recipe-image-prompts.md`](recipe-image-prompts.md)에 기록했습니다.
+
 ## 최종 구현 기준안
 
 <p align="center">
@@ -32,7 +44,7 @@
   </tr>
 </table>
 
-- A–D 비교판: [`design-board.html`](design-board.html)
+- A–C 1차 비교판: [`design-board.html`](design-board.html)
 - B/D 리믹스 비교판: [`remix-board.html`](remix-board.html)
 - 평가 기준: [`evaluation-rubric.md`](evaluation-rubric.md)
 
@@ -52,14 +64,15 @@
 
 | 구분 | 실제 사용 | 역할 |
 | --- | --- | --- |
-| 모델 | Codex (GPT-5) | PRODUCT.md와 확정 MVP를 바탕으로 HTML 후보, Flutter 코드, 테스트, 문서를 작성 |
-| 디자인 탐색 | gstack `design-shotgun` | A–D 변형, 비교판, 피드백 수집 흐름 구성 |
-| 디자인 정제 | `Impeccable` | 제품 UI 원칙에 따른 독립안 생성과 선택된 D안의 위계·색상·조작 구조 정제 |
-| 렌더링 검증 | Chrome / Browser | 390×844 기준 HTML과 Flutter 웹 렌더링 확인 및 스크린샷 캡처 |
+| 텍스트·코드 모델 | OpenAI Codex (GPT-5) | PRODUCT.md와 확정 MVP를 바탕으로 HTML 후보, Flutter 코드, 테스트, 문서를 작성 |
+| 디자인 탐색 스킬 | gstack `design-shotgun` | Codex가 A–D 변형, 비교판, 피드백 수집 흐름을 만드는 데 사용한 workflow이며 별도 모델이 아님 |
+| 디자인 정제 스킬 | `Impeccable` | Codex가 제품 UI 원칙에 따라 독립안과 선택된 D안의 위계·색상·조작 구조를 정제하는 데 사용한 skill이며 별도 모델이 아님 |
+| 레시피 이미지 | OpenAI 내장 `image_gen.imagegen` + `imagegen` skill | 홈·검색·상세·조리 화면의 임시 메뉴 사진 11개 생성. 결과 메타데이터 식별자는 `gpt-imagegen` v2.0이며 public API 모델명은 노출되지 않음 |
+| 렌더링 검증 | Codex Browser / Chrome | 390×844 기준 HTML과 Flutter 웹 렌더링 확인 및 스크린샷 캡처 |
 | 구현 | Flutter 3.44.6 / Dart 3.12.2 | 팀 앱의 기존 조리 설정 → 리뷰 흐름 안에 S-03 화면 통합 |
-| Android 검증 | Android SDK 36 / JDK 17 | Android toolchain과 정적 분석·테스트 환경 검증 |
+| Android 도구 체인 | Android SDK 36 / JDK 17 | `flutter doctor -v`로 SDK/JDK 인식과 라이선스를 확인. APK 빌드는 이번 PR에서 미수행 |
 
-이번 실행에서는 Shotgun 이미지 생성 바이너리가 Windows 환경에 없어 **별도 이미지 생성 모델을 호출하지 않고 Codex가 HTML 목업을 생성하는 fallback 경로**를 사용했습니다. 조리 사진은 생성 이미지가 아니라 Pexels의 탐색용 사진입니다. `Taste Skill`은 이번 디자인 생성·정제 과정에 사용하지 않았습니다.
+초기 Shotgun 후보 생성 때는 Windows 환경에서 이미지 생성 바이너리를 사용할 수 없어 Codex가 HTML 목업을 만드는 fallback 경로를 썼습니다. 이후 실제 앱의 메뉴 구분을 위해 내장 이미지 생성 도구로 임시 레시피 사진 11개를 별도 생성했습니다. 초기 비교안의 냄비 사진은 Pexels 탐색용 자산이며 앱 구현에서는 생성한 두부 조림 이미지로 교체했습니다. `Taste Skill`은 이번 디자인 생성·정제 과정에 사용하지 않았습니다.
 
 ## 로컬에서 인터랙티브 비교판 보기
 
@@ -76,14 +89,16 @@ http://127.0.0.1:8765/final-comparison-board.html
 http://127.0.0.1:8765/combined-shotgun-D-impeccable/combined-D-impeccable.html
 ```
 
+단순 정적 서버에서는 비교판을 볼 수만 있고 선택 결과는 저장되지 않습니다. 의견과 선택은 PR 코멘트로 남겨주세요.
+
 ## 현재 한계
 
 - STT, TTS, 예외 질문 API는 실제 서비스 어댑터가 아닌 demo adapter입니다. 버튼 fallback과 상태 전이는 동작합니다.
 - 팀 앱의 두부 조림 데이터와 신규 조리 화면 사이에는 임시 변환 계층을 사용합니다. 서버 모델에 `completionCue`, 단계 미디어, 안정적인 recipe/version ID가 추가되면 교체해야 합니다.
-- 탐색용 냄비 사진은 최종 레시피 전용 이미지·영상·GIF로 교체해야 합니다.
+- 생성한 메뉴 사진 11개는 목업용 임시 자산입니다. 출시 전 팀이 승인한 레시피 전용 이미지·영상·GIF로 교체해야 합니다.
 
 ## 이미지 출처
 
-- 사진: Anna Shvets, “Close-up of boiling water in a stainless steel pot on a gas stove”
+- 초기 디자인 비교안 사진: Anna Shvets, “Close-up of boiling water in a stainless steel pot on a gas stove”
 - 출처: <https://www.pexels.com/photo/boiling-water-in-pot-on-burner-12673645/>
 - 원 출처에 표시된 상태: free to use

@@ -6,7 +6,7 @@ Generate an independent CookPilot S-03 direction using the product-design tool p
 
 ## Inputs used
 
-- `C:\Users\sosoj\Desktop\SM\PRODUCT.md`
+- 작업 폴더의 `PRODUCT.md`
 - `confirmed_mvp_2026-07-10/confirmed_mvp_2026-07-10/03_mvp_design.md`
 - `confirmed_mvp_2026-07-10/confirmed_mvp_2026-07-10/04_screen_structure.md`
 - Impeccable product-register rules

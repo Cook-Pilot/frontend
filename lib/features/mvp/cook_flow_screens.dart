@@ -37,7 +37,11 @@ class RecipeDetailScreen extends StatelessWidget {
         ),
       ],
       children: [
-        const FoodPreview(size: double.infinity),
+        FoodPreview(
+          size: double.infinity,
+          imageAsset: recipe.imageAsset,
+          semanticLabel: '${recipe.title} 미리보기',
+        ),
         const SizedBox(height: 18),
         Text(
           recipe.title,
@@ -353,14 +357,12 @@ class _CookSessionScreenState extends State<CookSessionScreen> {
             mediaType: hasCookingExample
                 ? StepMediaType.image
                 : StepMediaType.none,
-            mediaAsset: hasCookingExample
-                ? 'assets/recipes/ramen/steps/boiling-pot.jpg'
-                : null,
+            mediaAsset: hasCookingExample ? recipe.imageAsset : null,
             mediaLabel: hasCookingExample
-                ? '가스레인지 위 냄비에서 내용물이 끓는 조리 예시'
+                ? '${recipe.title} 완성 예시'
                 : '이 단계에는 조리 예시 이미지가 없습니다',
             mediaCaption: hasCookingExample
-                ? '양념이 고르게 끓는지 확인하세요'
+                ? '${recipe.title}의 색과 농도를 참고하세요'
                 : '완료 기준을 확인해주세요',
           );
         })

@@ -9,6 +9,7 @@ class Recipe {
     required this.ingredients,
     required this.steps,
     required this.memorySummary,
+    required this.imageAsset,
   });
 
   final String title;
@@ -20,7 +21,22 @@ class Recipe {
   final List<Ingredient> ingredients;
   final List<CookStep> steps;
   final String memorySummary;
+  final String imageAsset;
 }
+
+const recipeImageAssets = <String, String>{
+  '두부 조림': 'assets/recipes/previews/tofu-braised.png',
+  '김치볶음밥': 'assets/recipes/previews/kimchi-fried-rice.png',
+  '된장찌개': 'assets/recipes/previews/soybean-paste-stew.png',
+  '오일 파스타': 'assets/recipes/previews/oil-pasta.png',
+  '닭갈비': 'assets/recipes/previews/dakgalbi.png',
+  '크림 파스타': 'assets/recipes/previews/cream-pasta.png',
+  '매콤 제육': 'assets/recipes/previews/spicy-pork.png',
+  '치킨 샐러드': 'assets/recipes/previews/chicken-salad.png',
+  '마파두부': 'assets/recipes/previews/mapo-tofu.png',
+  '두부 덮밥': 'assets/recipes/previews/tofu-rice-bowl.png',
+  '두부 된장국': 'assets/recipes/previews/tofu-soybean-soup.png',
+};
 
 class Ingredient {
   const Ingredient({required this.name, required this.amount, this.note = ''});
@@ -95,10 +111,95 @@ const tofuRecipe = Recipe(
     ),
   ],
   memorySummary: '간장 15% ↓ · 설탕 생략 · 최근 만족도 ★5',
+  imageAsset: 'assets/recipes/previews/tofu-braised.png',
 );
 
 const recipes = [
   tofuRecipe,
+  Recipe(
+    title: '김치볶음밥',
+    subtitle: '잘 익은 김치와 달걀을 곁들인 한 그릇',
+    minutes: 15,
+    difficulty: '쉬움',
+    rating: 4.8,
+    tags: ['볶음밥', '빠른 요리'],
+    ingredients: [],
+    steps: [],
+    memorySummary: '김치를 먼저 2분 볶으면 감칠맛이 좋아짐',
+    imageAsset: 'assets/recipes/previews/kimchi-fried-rice.png',
+  ),
+  Recipe(
+    title: '된장찌개',
+    subtitle: '두부와 채소를 듬뿍 넣은 구수한 찌개',
+    minutes: 30,
+    difficulty: '보통',
+    rating: 4.7,
+    tags: ['국물', '한식'],
+    ingredients: [],
+    steps: [],
+    memorySummary: '된장은 마지막에 조금 더 풀어 간 맞추기',
+    imageAsset: 'assets/recipes/previews/soybean-paste-stew.png',
+  ),
+  Recipe(
+    title: '오일 파스타',
+    subtitle: '마늘 향을 살린 담백한 알리오 올리오',
+    minutes: 20,
+    difficulty: '쉬움',
+    rating: 4.6,
+    tags: ['파스타', '마늘'],
+    ingredients: [],
+    steps: [],
+    memorySummary: '면수는 한 국자 남겨 농도 조절하기',
+    imageAsset: 'assets/recipes/previews/oil-pasta.png',
+  ),
+  Recipe(
+    title: '닭갈비',
+    subtitle: '양배추와 고구마를 넣은 매콤한 철판 요리',
+    minutes: 35,
+    difficulty: '보통',
+    rating: 4.7,
+    tags: ['닭고기', '매콤'],
+    ingredients: [],
+    steps: [],
+    memorySummary: '고구마는 얇게 썰어 먼저 익히기',
+    imageAsset: 'assets/recipes/previews/dakgalbi.png',
+  ),
+  Recipe(
+    title: '크림 파스타',
+    subtitle: '버섯과 크림의 부드러운 풍미',
+    minutes: 25,
+    difficulty: '보통',
+    rating: 4.5,
+    tags: ['파스타', '크림'],
+    ingredients: [],
+    steps: [],
+    memorySummary: '크림은 약불에서 졸여 분리되지 않게 하기',
+    imageAsset: 'assets/recipes/previews/cream-pasta.png',
+  ),
+  Recipe(
+    title: '매콤 제육',
+    subtitle: '양파와 대파를 곁들인 매콤한 돼지불고기',
+    minutes: 25,
+    difficulty: '보통',
+    rating: 4.8,
+    tags: ['돼지고기', '매콤'],
+    ingredients: [],
+    steps: [],
+    memorySummary: '고기는 센 불에 짧게 볶아 식감 살리기',
+    imageAsset: 'assets/recipes/previews/spicy-pork.png',
+  ),
+  Recipe(
+    title: '치킨 샐러드',
+    subtitle: '구운 닭가슴살과 신선한 채소 한 접시',
+    minutes: 20,
+    difficulty: '쉬움',
+    rating: 4.6,
+    tags: ['샐러드', '가벼움'],
+    ingredients: [],
+    steps: [],
+    memorySummary: '드레싱은 먹기 직전에 가볍게 버무리기',
+    imageAsset: 'assets/recipes/previews/chicken-salad.png',
+  ),
   Recipe(
     title: '마파두부',
     subtitle: '매콤한 돼지고기 두부 볶음',
@@ -109,6 +210,7 @@ const recipes = [
     ingredients: [],
     steps: [],
     memorySummary: '다음엔 고추기름 1작은술 줄이기',
+    imageAsset: 'assets/recipes/previews/mapo-tofu.png',
   ),
   Recipe(
     title: '두부 덮밥',
@@ -120,6 +222,7 @@ const recipes = [
     ingredients: [],
     steps: [],
     memorySummary: '밥 양 20% 줄이면 간이 더 맞음',
+    imageAsset: 'assets/recipes/previews/tofu-rice-bowl.png',
   ),
   Recipe(
     title: '두부 된장국',
@@ -131,8 +234,16 @@ const recipes = [
     ingredients: [],
     steps: [],
     memorySummary: '다음엔 애호박을 먼저 넣기',
+    imageAsset: 'assets/recipes/previews/tofu-soybean-soup.png',
   ),
 ];
+
+Recipe recipeByTitle(String title) {
+  return recipes.firstWhere(
+    (recipe) => recipe.title == title,
+    orElse: () => tofuRecipe,
+  );
+}
 
 const memories = [
   RecipeMemory(
