@@ -6,6 +6,9 @@ This directory contains visual exploration artifacts referenced by the long-runn
 
 - `L001-Culinary-Editorial`: editorial home and vertical-step cooking layout
 - `L002-Midnight-Hands-Free`: cinematic home and voice-orb cooking layout
+- `L003-CookPilot-Clear`: PR #4-inspired home, recipe detail, and media-first cooking flow using the existing CookPilot palette
+- `L004-Clean-Green`: the same three-screen flow with a cleaner neutral-and-green visual direction
+- `L003-L004-Line-AB`: combined 3-by-2 comparison board for L003 and L004
 
 ## Skin experiments
 
