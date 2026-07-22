@@ -1,0 +1,1616 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#F6C744" />
+  <title>CookPilot · 노란 냄비 요정 홈</title>
+  <style>
+    :root {
+      --ink: #3c2b21;
+      --muted: #7d6a5d;
+      --line: #eee3c8;
+      --paper: #fffdf6;
+      --cream: #fff8de;
+      --butter: #ffefa3;
+      --sun: #f6c744;
+      --honey: #dea309;
+      --coral: #ff8967;
+      --mint: #c8ddbd;
+      --white: #ffffff;
+      --shadow: 0 14px 40px rgba(85, 61, 22, .12);
+      --soft-shadow: 0 7px 22px rgba(85, 61, 22, .08);
+    }
+
+    * { box-sizing: border-box; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 18% 12%, rgba(246, 199, 68, .22), transparent 29%),
+        radial-gradient(circle at 82% 84%, rgba(200, 221, 189, .32), transparent 28%),
+        #f2ecdf;
+      font-family: Pretendard, "Noto Sans KR", "Apple SD Gothic Neo", system-ui, sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    button, input { font: inherit; }
+    button { color: inherit; }
+
+    .app {
+      position: relative;
+      width: min(100%, 430px);
+      min-height: 100vh;
+      margin: 0 auto;
+      overflow: hidden;
+      background: var(--paper);
+      box-shadow: var(--shadow);
+    }
+
+    .content { padding: 0 20px 112px; }
+
+    .statusbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 34px;
+      padding: 8px 22px 0;
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .signal { letter-spacing: 1px; }
+
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 15px 20px 13px;
+    }
+
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 9px;
+      font-size: 19px;
+      font-weight: 900;
+      letter-spacing: -.6px;
+    }
+
+    .brand-pot {
+      position: relative;
+      width: 29px;
+      height: 22px;
+      border: 2px solid var(--ink);
+      border-radius: 6px 6px 11px 11px;
+      background: var(--sun);
+    }
+
+    .brand-pot::before,
+    .brand-pot::after {
+      position: absolute;
+      top: 3px;
+      width: 7px;
+      height: 5px;
+      content: "";
+      border: 2px solid var(--ink);
+    }
+
+    .brand-pot::before { left: -8px; border-radius: 4px 0 0 4px; border-right: 0; }
+    .brand-pot::after { right: -8px; border-radius: 0 4px 4px 0; border-left: 0; }
+
+    .brand-face {
+      position: absolute;
+      inset: 5px 6px auto;
+      height: 6px;
+      border-bottom: 2px solid var(--ink);
+      border-radius: 50%;
+    }
+
+    .profile {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .icon-button,
+    .avatar {
+      display: grid;
+      place-items: center;
+      width: 38px;
+      height: 38px;
+      border: 1px solid var(--line);
+      border-radius: 50%;
+      background: var(--white);
+    }
+
+    .icon-button { cursor: pointer; }
+
+    .icon-button:focus-visible,
+    button:focus-visible,
+    input:focus-visible {
+      outline: 3px solid rgba(222, 163, 9, .35);
+      outline-offset: 2px;
+    }
+
+    .avatar {
+      border-color: #f1d873;
+      background: var(--butter);
+      font-size: 17px;
+      font-weight: 900;
+    }
+
+    .hero {
+      position: relative;
+      min-height: 132px;
+      margin-top: 3px;
+      overflow: hidden;
+      border: 1px solid #f3da79;
+      border-radius: 24px;
+      background:
+        radial-gradient(circle at 88% 17%, rgba(255,255,255,.86) 0 3px, transparent 4px),
+        linear-gradient(145deg, #fffae8, #fff0b9);
+      box-shadow: 0 8px 20px rgba(197, 144, 15, .08);
+    }
+
+    .hero-copy {
+      position: relative;
+      z-index: 2;
+      width: calc(100% - 98px);
+      padding: 16px 0 14px 18px;
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 9px;
+      border: 1px solid rgba(105, 73, 16, .12);
+      border-radius: 999px;
+      background: rgba(255,255,255,.68);
+      font-size: 10px;
+      font-weight: 850;
+    }
+
+    .hero h1 {
+      margin: 8px 0 5px;
+      font-size: 19px;
+      line-height: 1.28;
+      letter-spacing: -.8px;
+    }
+
+    .hero p {
+      margin: 0;
+      color: #6d5839;
+      font-size: 10px;
+      font-weight: 600;
+      line-height: 1.55;
+    }
+
+    .hero-image {
+      position: absolute;
+      z-index: 1;
+      right: 8px;
+      bottom: 4px;
+      width: 94px;
+      height: 94px;
+      object-fit: cover;
+      border-radius: 30px;
+      mix-blend-mode: multiply;
+      filter: saturate(.92);
+    }
+
+    .search-card {
+      position: relative;
+      z-index: 4;
+      margin: 10px 0 0;
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      background: var(--white);
+      box-shadow: var(--soft-shadow);
+    }
+
+    .search-row {
+      display: flex;
+      gap: 8px;
+    }
+
+    .search-field {
+      display: flex;
+      flex: 1;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+      height: 46px;
+      padding: 0 13px;
+      border: 1px solid #e8dec6;
+      border-radius: 14px;
+      background: #fffdf7;
+    }
+
+    .search-field span { font-size: 17px; }
+
+    .search-field input {
+      width: 100%;
+      border: 0;
+      outline: 0;
+      color: var(--ink);
+      background: transparent;
+      font-size: 13px;
+      font-weight: 650;
+    }
+
+    .search-field input::placeholder { color: #a99b8c; }
+
+    .search-button {
+      width: 48px;
+      border: 0;
+      border-radius: 14px;
+      background: var(--sun);
+      box-shadow: inset 0 -2px 0 rgba(115, 75, 0, .12);
+      cursor: pointer;
+      font-size: 17px;
+      font-weight: 900;
+    }
+
+    .chips {
+      display: flex;
+      gap: 7px;
+      margin-top: 10px;
+      overflow-x: auto;
+      scrollbar-width: none;
+    }
+
+    .chips::-webkit-scrollbar { display: none; }
+
+    .chip {
+      flex: 0 0 auto;
+      padding: 8px 11px;
+      border: 1px solid #eee3ca;
+      border-radius: 999px;
+      background: #fffaf0;
+      cursor: pointer;
+      font-size: 11px;
+      font-weight: 800;
+    }
+
+    .chip.active {
+      border-color: #e2af16;
+      color: #67490a;
+      background: var(--butter);
+    }
+
+    .section { margin-top: 22px; }
+
+    .section-head {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+
+    .section-title h2 {
+      margin: 0;
+      font-size: 18px;
+      letter-spacing: -.65px;
+    }
+
+    .section-title p {
+      margin: 4px 0 0;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 600;
+    }
+
+    .text-button {
+      border: 0;
+      background: transparent;
+      color: #9b720b;
+      cursor: pointer;
+      font-size: 11px;
+      font-weight: 850;
+    }
+
+    .taste-card {
+      padding: 17px;
+      border: 1px solid #ecdfbd;
+      border-radius: 22px;
+      background: linear-gradient(145deg, #fffdf7, #fff7dc);
+      box-shadow: var(--soft-shadow);
+    }
+
+    .taste-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .taste-user {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .mini-pot {
+      display: grid;
+      place-items: center;
+      width: 42px;
+      height: 42px;
+      border-radius: 15px;
+      background: var(--sun);
+      box-shadow: inset 0 -4px 0 rgba(119,76,0,.1);
+      font-size: 20px;
+    }
+
+    .taste-user strong { display: block; font-size: 14px; }
+    .taste-user span { color: var(--muted); font-size: 10px; font-weight: 650; }
+
+    .level {
+      padding: 6px 9px;
+      border-radius: 999px;
+      color: #795611;
+      background: #fff0a5;
+      font-size: 10px;
+      font-weight: 900;
+    }
+
+    .taste-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin-top: 14px;
+    }
+
+    .taste-item {
+      padding: 11px 8px;
+      border: 1px solid rgba(225, 208, 165, .7);
+      border-radius: 15px;
+      text-align: center;
+      background: rgba(255,255,255,.7);
+    }
+
+    .taste-item b { display: block; font-size: 13px; }
+    .taste-item span { display: block; margin-top: 3px; color: var(--muted); font-size: 9px; font-weight: 700; }
+
+    .recipe-card {
+      position: relative;
+      display: grid;
+      grid-template-columns: 112px 1fr;
+      min-height: 145px;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 23px;
+      background: var(--white);
+      box-shadow: var(--soft-shadow);
+    }
+
+    .dish-art {
+      position: relative;
+      display: grid;
+      place-items: center;
+      background: linear-gradient(145deg, #d9e6c9, #aeca9e);
+    }
+
+    .dish-art::before {
+      position: absolute;
+      width: 76px;
+      height: 76px;
+      content: "";
+      border: 7px solid rgba(255,255,255,.72);
+      border-radius: 50%;
+      background: #f2d18b;
+      box-shadow: 0 8px 15px rgba(55,71,37,.16);
+    }
+
+    .dish-art::after {
+      position: relative;
+      content: "🍲";
+      font-size: 43px;
+      filter: saturate(.8);
+    }
+
+    .recipe-info { padding: 15px 14px; }
+
+    .recipe-meta {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      color: #a36d00;
+      font-size: 10px;
+      font-weight: 850;
+    }
+
+    .recipe-info h3 {
+      margin: 7px 0 4px;
+      font-size: 16px;
+      letter-spacing: -.45px;
+    }
+
+    .recipe-info p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 10px;
+      font-weight: 650;
+      line-height: 1.45;
+    }
+
+    .recipe-bottom {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-top: 11px;
+    }
+
+    .match {
+      padding: 5px 7px;
+      border-radius: 7px;
+      color: #496443;
+      background: #e3efdd;
+      font-size: 9px;
+      font-weight: 900;
+    }
+
+    .round-next {
+      display: grid;
+      place-items: center;
+      width: 28px;
+      height: 28px;
+      border: 0;
+      border-radius: 50%;
+      background: var(--sun);
+      cursor: pointer;
+      font-weight: 900;
+    }
+
+    .continue-card {
+      display: flex;
+      align-items: center;
+      gap: 13px;
+      padding: 14px;
+      border: 1px solid #efdba0;
+      border-radius: 20px;
+      background: #fff8d9;
+    }
+
+    .progress-ring {
+      display: grid;
+      flex: 0 0 auto;
+      place-items: center;
+      width: 56px;
+      height: 56px;
+      border-radius: 50%;
+      background: conic-gradient(var(--honey) 0 62%, rgba(255,255,255,.78) 62% 100%);
+    }
+
+    .progress-ring::after {
+      display: grid;
+      place-items: center;
+      width: 43px;
+      height: 43px;
+      content: "3/5";
+      border-radius: 50%;
+      background: #fffdf4;
+      font-size: 10px;
+      font-weight: 900;
+    }
+
+    .continue-copy { min-width: 0; flex: 1; }
+    .continue-copy b { display: block; font-size: 13px; }
+    .continue-copy span { display: block; margin-top: 4px; overflow: hidden; color: var(--muted); font-size: 10px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
+
+    .primary-small {
+      flex: 0 0 auto;
+      padding: 9px 11px;
+      border: 0;
+      border-radius: 12px;
+      background: var(--sun);
+      cursor: pointer;
+      font-size: 10px;
+      font-weight: 900;
+    }
+
+    .memory-list {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 10px;
+    }
+
+    .memory-card {
+      padding: 13px;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: var(--white);
+      box-shadow: 0 4px 15px rgba(85,61,22,.05);
+    }
+
+    .memory-emoji {
+      display: grid;
+      place-items: center;
+      width: 36px;
+      height: 36px;
+      border-radius: 12px;
+      background: #fff3b8;
+      font-size: 18px;
+    }
+
+    .memory-card:nth-child(2) .memory-emoji { background: #e1ead8; }
+    .memory-card b { display: block; margin-top: 9px; font-size: 12px; }
+    .memory-card p { margin: 4px 0 0; color: var(--muted); font-size: 9px; font-weight: 650; line-height: 1.45; }
+
+    .popular-list {
+      display: grid;
+      grid-auto-columns: 79%;
+      grid-auto-flow: column;
+      gap: 10px;
+      overflow-x: auto;
+      padding: 1px 1px 8px;
+      scroll-snap-type: x mandatory;
+      scrollbar-width: none;
+    }
+
+    .popular-list::-webkit-scrollbar { display: none; }
+
+    .popular-card {
+      display: grid;
+      grid-template-columns: 84px 1fr;
+      min-height: 104px;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 19px;
+      background: var(--white);
+      box-shadow: 0 5px 15px rgba(85,61,22,.06);
+      scroll-snap-align: start;
+    }
+
+    .popular-thumb {
+      display: grid;
+      place-items: center;
+      background: #f4dfb3;
+      font-size: 38px;
+    }
+
+    .popular-card:nth-child(2) .popular-thumb { background: #dbe7cf; }
+
+    .popular-info { padding: 12px 11px; }
+
+    .popular-kicker {
+      color: #a06c08;
+      font-size: 9px;
+      font-weight: 900;
+    }
+
+    .popular-info b {
+      display: block;
+      margin-top: 5px;
+      font-size: 13px;
+      letter-spacing: -.25px;
+    }
+
+    .popular-info p {
+      margin: 5px 0 0;
+      color: var(--muted);
+      font-size: 9px;
+      font-weight: 650;
+      line-height: 1.45;
+    }
+
+    .screen { display: none; }
+    .screen.active { display: block; }
+
+    .page-content { padding-top: 7px; }
+
+    .page-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      margin: 4px 0 20px;
+    }
+
+    .page-head-copy { min-width: 0; }
+
+    .page-head h1 {
+      margin: 0;
+      font-size: 26px;
+      line-height: 1.22;
+      letter-spacing: -1px;
+    }
+
+    .page-head p {
+      margin: 6px 0 0;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 650;
+      line-height: 1.5;
+    }
+
+    .back-button {
+      display: grid;
+      flex: 0 0 auto;
+      place-items: center;
+      width: 38px;
+      height: 38px;
+      border: 1px solid var(--line);
+      border-radius: 13px;
+      background: var(--white);
+      cursor: pointer;
+      font-size: 17px;
+      font-weight: 900;
+    }
+
+    .search-large {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      height: 52px;
+      padding: 0 15px;
+      border: 1px solid #eadfc6;
+      border-radius: 17px;
+      background: var(--white);
+      box-shadow: var(--soft-shadow);
+    }
+
+    .search-large input {
+      width: 100%;
+      border: 0;
+      outline: 0;
+      color: var(--ink);
+      background: transparent;
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .filter-row {
+      display: flex;
+      gap: 8px;
+      margin: 12px 0 22px;
+      overflow-x: auto;
+      scrollbar-width: none;
+    }
+
+    .filter-row::-webkit-scrollbar { display: none; }
+
+    .filter-pill {
+      flex: 0 0 auto;
+      padding: 8px 12px;
+      border: 1px solid #eadfc7;
+      border-radius: 999px;
+      background: #fffaf0;
+      cursor: pointer;
+      font-size: 10px;
+      font-weight: 850;
+    }
+
+    .filter-pill.active { border-color: #dfaa16; background: var(--butter); }
+
+    .result-count {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 11px;
+    }
+
+    .result-count strong { font-size: 15px; }
+    .result-count span { color: var(--muted); font-size: 10px; font-weight: 700; }
+
+    .recipe-list { display: grid; gap: 11px; }
+
+    .recipe-row {
+      display: grid;
+      grid-template-columns: 92px 1fr;
+      min-height: 112px;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      background: var(--white);
+      box-shadow: 0 5px 16px rgba(85,61,22,.055);
+      cursor: pointer;
+      text-align: left;
+    }
+
+    .recipe-row-thumb {
+      display: grid;
+      place-items: center;
+      background: #e3ead8;
+      font-size: 40px;
+    }
+
+    .recipe-row:nth-child(2) .recipe-row-thumb { background: #f5dfb7; }
+    .recipe-row:nth-child(3) .recipe-row-thumb { background: #f0d5bd; }
+
+    .recipe-row-body { padding: 13px 13px 11px; }
+
+    .recipe-row-body strong {
+      display: block;
+      font-size: 14px;
+      letter-spacing: -.3px;
+    }
+
+    .recipe-row-body p {
+      margin: 5px 0 0;
+      color: var(--muted);
+      font-size: 9px;
+      font-weight: 650;
+      line-height: 1.5;
+    }
+
+    .row-badges { display: flex; gap: 5px; margin-top: 9px; }
+
+    .row-badge {
+      padding: 4px 6px;
+      border-radius: 7px;
+      color: #6a531d;
+      background: #fff1b8;
+      font-size: 8px;
+      font-weight: 900;
+    }
+
+    .row-badge.green { color: #496443; background: #e3efdd; }
+
+    .detail-cover {
+      position: relative;
+      display: grid;
+      place-items: center;
+      height: 220px;
+      overflow: hidden;
+      border-radius: 28px;
+      background:
+        radial-gradient(circle at 30% 24%, rgba(255,255,255,.7), transparent 25%),
+        linear-gradient(145deg, #dbe8cc, #abc397);
+      box-shadow: var(--soft-shadow);
+    }
+
+    .detail-cover::before {
+      position: absolute;
+      width: 150px;
+      height: 150px;
+      content: "";
+      border: 11px solid rgba(255,255,255,.76);
+      border-radius: 50%;
+      background: #eecb82;
+      box-shadow: 0 16px 28px rgba(54,73,41,.18);
+    }
+
+    .detail-cover span { position: relative; font-size: 86px; }
+
+    .favorite-float {
+      position: absolute;
+      top: 14px;
+      right: 14px;
+      display: grid;
+      place-items: center;
+      width: 39px;
+      height: 39px;
+      border: 0;
+      border-radius: 50%;
+      background: rgba(255,255,255,.9);
+      cursor: pointer;
+      font-size: 17px;
+      box-shadow: var(--soft-shadow);
+    }
+
+    .detail-title { margin: 18px 0 0; }
+
+    .detail-title h1 {
+      margin: 0;
+      font-size: 25px;
+      letter-spacing: -.9px;
+    }
+
+    .detail-title p {
+      margin: 6px 0 0;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 650;
+    }
+
+    .detail-stats {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin: 16px 0;
+    }
+
+    .detail-stat {
+      padding: 11px 8px;
+      border: 1px solid var(--line);
+      border-radius: 15px;
+      background: var(--white);
+      text-align: center;
+    }
+
+    .detail-stat b { display: block; font-size: 12px; }
+    .detail-stat span { display: block; margin-top: 3px; color: var(--muted); font-size: 8px; font-weight: 700; }
+
+    .personal-note {
+      display: flex;
+      align-items: center;
+      gap: 11px;
+      padding: 13px;
+      border: 1px solid #edd793;
+      border-radius: 18px;
+      background: #fff7d4;
+    }
+
+    .personal-note img {
+      width: 47px;
+      height: 47px;
+      border-radius: 14px;
+      object-fit: cover;
+      mix-blend-mode: multiply;
+    }
+
+    .personal-note strong { display: block; font-size: 12px; }
+    .personal-note p { margin: 4px 0 0; color: var(--muted); font-size: 9px; font-weight: 650; line-height: 1.45; }
+
+    .subsection { margin-top: 21px; }
+
+    .subsection h2 {
+      margin: 0 0 11px;
+      font-size: 16px;
+      letter-spacing: -.45px;
+    }
+
+    .ingredient-list {
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: var(--white);
+    }
+
+    .ingredient-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      min-height: 45px;
+      padding: 0 14px;
+      border-bottom: 1px solid #f2ead8;
+      font-size: 11px;
+      font-weight: 750;
+    }
+
+    .ingredient-item:last-child { border-bottom: 0; }
+    .ingredient-item span { color: var(--muted); font-size: 10px; }
+    .ingredient-item .owned { color: #56734e; font-weight: 900; }
+
+    .primary-wide {
+      width: 100%;
+      min-height: 51px;
+      margin-top: 18px;
+      border: 0;
+      border-radius: 17px;
+      color: var(--ink);
+      background: var(--sun);
+      box-shadow: inset 0 -3px 0 rgba(115,75,0,.12), 0 8px 20px rgba(214,157,16,.18);
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 900;
+    }
+
+    .cook-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+
+    .cook-title b { display: block; font-size: 15px; }
+    .cook-title span { display: block; margin-top: 3px; color: var(--muted); font-size: 9px; font-weight: 700; }
+
+    .step-count {
+      padding: 7px 10px;
+      border-radius: 999px;
+      color: #73520e;
+      background: var(--butter);
+      font-size: 10px;
+      font-weight: 900;
+    }
+
+    .step-progress {
+      height: 7px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: #eee5cf;
+    }
+
+    .step-progress span { display: block; width: 60%; height: 100%; border-radius: inherit; background: var(--honey); }
+
+    .timer-card {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-top: 18px;
+      padding: 15px 17px;
+      border: 1px solid #ead99e;
+      border-radius: 21px;
+      background: #fff8d8;
+    }
+
+    .timer-copy span { display: block; color: var(--muted); font-size: 9px; font-weight: 750; }
+    .timer-copy strong { display: block; margin-top: 2px; font-size: 28px; letter-spacing: 1px; }
+
+    .timer-control {
+      display: grid;
+      place-items: center;
+      width: 43px;
+      height: 43px;
+      border: 0;
+      border-radius: 15px;
+      background: var(--sun);
+      cursor: pointer;
+      font-weight: 900;
+    }
+
+    .current-step {
+      margin-top: 15px;
+      padding: 21px;
+      border: 1px solid var(--line);
+      border-radius: 25px;
+      background: var(--white);
+      box-shadow: var(--soft-shadow);
+    }
+
+    .current-step .step-label { color: #a06f06; font-size: 9px; font-weight: 900; }
+
+    .current-step h1 {
+      margin: 9px 0 11px;
+      font-size: 24px;
+      line-height: 1.35;
+      letter-spacing: -.9px;
+    }
+
+    .current-step p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 650;
+      line-height: 1.7;
+    }
+
+    .step-visual {
+      display: grid;
+      place-items: center;
+      height: 140px;
+      margin-top: 16px;
+      border-radius: 19px;
+      background: linear-gradient(145deg, #e8d5aa, #cba877);
+      font-size: 70px;
+    }
+
+    .assistant-tip {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-top: 13px;
+      padding: 12px;
+      border-radius: 17px;
+      background: #fff5c5;
+    }
+
+    .assistant-tip img { width: 45px; height: 45px; border-radius: 13px; object-fit: cover; mix-blend-mode: multiply; }
+    .assistant-tip p { margin: 0; color: #66523b; font-size: 9px; font-weight: 700; line-height: 1.5; }
+
+    .cook-actions { display: grid; grid-template-columns: 1fr 1.7fr; gap: 9px; margin-top: 15px; }
+
+    .secondary-action,
+    .next-action {
+      min-height: 49px;
+      border-radius: 16px;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 900;
+    }
+
+    .secondary-action { border: 1px solid var(--line); background: var(--white); }
+    .next-action { border: 0; background: var(--sun); }
+
+    .summary-grid {
+      display: grid;
+      grid-template-columns: 1.4fr 1fr 1fr;
+      gap: 9px;
+      margin-bottom: 20px;
+    }
+
+    .summary-card {
+      min-height: 91px;
+      padding: 14px 11px;
+      border: 1px solid var(--line);
+      border-radius: 19px;
+      background: var(--white);
+    }
+
+    .summary-card:first-child { background: #fff4bf; border-color: #eed47d; }
+    .summary-card span { display: block; color: var(--muted); font-size: 9px; font-weight: 750; }
+    .summary-card strong { display: block; margin-top: 8px; font-size: 21px; }
+
+    .history-list { display: grid; gap: 10px; }
+
+    .history-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 19px;
+      background: var(--white);
+    }
+
+    .history-thumb {
+      display: grid;
+      flex: 0 0 auto;
+      place-items: center;
+      width: 61px;
+      height: 61px;
+      border-radius: 16px;
+      background: #e4ead8;
+      font-size: 29px;
+    }
+
+    .history-info { min-width: 0; flex: 1; }
+    .history-info strong { display: block; font-size: 12px; }
+    .history-info span { display: block; margin-top: 4px; color: var(--muted); font-size: 9px; font-weight: 650; }
+
+    .feedback-chip {
+      display: inline-block !important;
+      margin-top: 7px !important;
+      padding: 5px 7px;
+      border-radius: 8px;
+      color: #6c531c !important;
+      background: #fff0b0;
+      font-size: 8px !important;
+      font-weight: 850 !important;
+    }
+
+    .rating { flex: 0 0 auto; color: #a36c00; font-size: 10px; font-weight: 900; }
+
+    .profile-card {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 17px;
+      border: 1px solid #edd893;
+      border-radius: 23px;
+      background: linear-gradient(145deg, #fff9dd, #ffefac);
+    }
+
+    .profile-avatar {
+      display: grid;
+      flex: 0 0 auto;
+      place-items: center;
+      width: 58px;
+      height: 58px;
+      border: 2px solid rgba(255,255,255,.8);
+      border-radius: 20px;
+      background: var(--sun);
+      font-size: 22px;
+      font-weight: 900;
+    }
+
+    .profile-info { min-width: 0; flex: 1; }
+
+    .profile-info strong { display: block; font-size: 16px; }
+    .profile-info p { margin: 4px 0 0; color: var(--muted); font-size: 9px; font-weight: 700; }
+
+    .level-track {
+      height: 5px;
+      margin-top: 9px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: rgba(255,255,255,.7);
+    }
+
+    .level-track span { display: block; width: 68%; height: 100%; border-radius: inherit; background: var(--honey); }
+
+    .settings-group {
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      background: var(--white);
+    }
+
+    .setting-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      min-height: 54px;
+      padding: 0 15px;
+      border-bottom: 1px solid #f2ead9;
+    }
+
+    .setting-row:last-child { border-bottom: 0; }
+    .setting-label { display: flex; align-items: center; gap: 10px; font-size: 11px; font-weight: 800; }
+    .setting-value { color: var(--muted); font-size: 9px; font-weight: 700; }
+
+    .taste-sliders { display: grid; gap: 12px; }
+
+    .taste-slider {
+      padding: 13px 14px;
+      border: 1px solid var(--line);
+      border-radius: 17px;
+      background: var(--white);
+    }
+
+    .slider-head { display: flex; align-items: center; justify-content: space-between; font-size: 10px; font-weight: 850; }
+    .slider-head span { color: #946b0d; }
+    .slider-track { position: relative; height: 6px; margin-top: 11px; border-radius: 999px; background: #eee5d1; }
+    .slider-track::before { display: block; width: var(--value, 55%); height: 100%; content: ""; border-radius: inherit; background: var(--honey); }
+    .slider-track::after { position: absolute; top: 50%; left: var(--value, 55%); width: 14px; height: 14px; content: ""; border: 3px solid var(--white); border-radius: 50%; background: var(--honey); box-shadow: 0 2px 7px rgba(83,59,15,.24); transform: translate(-50%, -50%); }
+
+    .bottom-nav {
+      position: fixed;
+      z-index: 20;
+      bottom: 0;
+      left: 50%;
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      width: min(100%, 430px);
+      min-height: 83px;
+      padding: 11px 10px max(12px, env(safe-area-inset-bottom));
+      border-top: 1px solid rgba(229, 216, 185, .78);
+      background: rgba(255,253,246,.92);
+      box-shadow: 0 -9px 24px rgba(75,51,18,.06);
+      backdrop-filter: blur(15px);
+      transform: translateX(-50%);
+    }
+
+    .nav-item {
+      display: flex;
+      align-items: center;
+      flex-direction: column;
+      justify-content: center;
+      gap: 4px;
+      border: 0;
+      border-radius: 15px;
+      background: transparent;
+      cursor: pointer;
+      color: #9a8b7d;
+      font-size: 9px;
+      font-weight: 800;
+    }
+
+    .nav-icon {
+      display: grid;
+      place-items: center;
+      width: 31px;
+      height: 28px;
+      border-radius: 11px;
+      font-size: 17px;
+    }
+
+    .nav-item.active { color: var(--ink); }
+    .nav-item.active .nav-icon { background: var(--butter); }
+
+    .toast {
+      position: fixed;
+      z-index: 40;
+      bottom: 101px;
+      left: 50%;
+      width: min(calc(100% - 46px), 360px);
+      padding: 12px 15px;
+      border-radius: 14px;
+      color: var(--white);
+      background: rgba(60,43,33,.94);
+      box-shadow: var(--shadow);
+      font-size: 12px;
+      font-weight: 750;
+      text-align: center;
+      opacity: 0;
+      pointer-events: none;
+      transform: translate(-50%, 10px);
+      transition: .25s ease;
+    }
+
+    .toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+    @media (min-width: 560px) {
+      body { padding: 28px 0; }
+      .app { min-height: calc(100vh - 56px); border: 8px solid rgba(60,43,33,.92); border-radius: 39px; }
+      .bottom-nav { bottom: 28px; width: 414px; border-radius: 0 0 30px 30px; }
+    }
+
+    @media (max-width: 370px) {
+      .content { padding-right: 15px; padding-left: 15px; }
+      .hero-copy { width: calc(100% - 91px); padding-left: 16px; }
+      .hero-image { right: 5px; width: 86px; height: 86px; }
+      .taste-grid { gap: 5px; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+      *, *::before, *::after { transition: none !important; }
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <div class="statusbar" aria-hidden="true">
+      <span>9:41</span>
+      <span class="signal">●●●  5G  ▰</span>
+    </div>
+
+    <header>
+      <div class="brand" aria-label="CookPilot 홈">
+        <span class="brand-pot"><span class="brand-face"></span></span>
+        <span>CookPilot</span>
+      </div>
+      <div class="profile">
+        <button class="icon-button" type="button" aria-label="알림" data-toast="새로운 알림이 없어요.">♢</button>
+        <div class="avatar" aria-label="동훈님 프로필">동</div>
+      </div>
+    </header>
+
+    <section class="screen active" data-screen="home">
+    <div class="content">
+      <section class="hero" aria-labelledby="hero-title">
+        <div class="hero-copy">
+          <span class="eyebrow">오늘의 집밥</span>
+          <h1 id="hero-title">동훈님,<br />오늘 뭐 해먹을까요?</h1>
+          <p>재료와 입맛에 맞는 한 끼를 찾아드려요.</p>
+        </div>
+        <img class="hero-image" src="cookpilot-mascot-b-doodle.png" alt="손그림으로 표현한 노란 한국 양은냄비 캐릭터" />
+      </section>
+
+      <section class="search-card" aria-label="재료로 요리 찾기">
+        <div class="search-row">
+          <label class="search-field">
+            <span aria-hidden="true">⌕</span>
+            <input id="ingredient" type="search" placeholder="예: 두부, 대파, 달걀" aria-label="가지고 있는 재료" />
+          </label>
+          <button class="search-button" type="button" id="searchButton" aria-label="요리 찾기">→</button>
+        </div>
+        <div class="chips" aria-label="빠른 조건">
+          <button class="chip active" type="button">🧺 냉장고 털기</button>
+          <button class="chip" type="button">⏱ 10분 요리</button>
+          <button class="chip" type="button">🌱 설탕 없이</button>
+          <button class="chip" type="button">🌶 칼칼하게</button>
+        </div>
+      </section>
+
+      <section class="section" aria-labelledby="recommend-title">
+        <div class="section-head">
+          <div class="section-title">
+            <h2 id="recommend-title">오늘은 이거 어때요?</h2>
+            <p>보유 재료와 입맛을 함께 반영했어요</p>
+          </div>
+          <button class="text-button" type="button" data-toast="새로운 추천 메뉴를 준비했어요!">새로 추천</button>
+        </div>
+        <article class="recipe-card">
+          <div class="dish-art" role="img" aria-label="들기름 두부조림 이미지"></div>
+          <div class="recipe-info">
+            <div class="recipe-meta">★ 냄비 요정의 1순위</div>
+            <h3>들기름 두부조림</h3>
+            <p>두부 · 대파 · 간장<br />15분 · 난이도 쉬움</p>
+            <div class="recipe-bottom">
+              <span class="match">입맛 일치 94%</span>
+              <button class="round-next" type="button" aria-label="들기름 두부조림 보기" data-screen-target="detail">→</button>
+            </div>
+          </div>
+        </article>
+      </section>
+
+      <section class="section" aria-labelledby="taste-title">
+        <div class="section-head">
+          <div class="section-title">
+            <h2 id="taste-title">내 입맛을 기억하고 있어요</h2>
+            <p>최근 8번의 요리 기록에서 배웠어요</p>
+          </div>
+          <button class="text-button" type="button" data-toast="입맛 설정 화면은 다음 단계에서 연결할 수 있어요.">수정</button>
+        </div>
+        <div class="taste-card">
+          <div class="taste-top">
+            <div class="taste-user">
+              <div class="mini-pot" aria-hidden="true">🍯</div>
+              <div><strong>동훈님의 맛 프로필</strong><span>요리할수록 더 정확해져요</span></div>
+            </div>
+            <span class="level">Lv. 3 집밥러</span>
+          </div>
+          <div class="taste-grid">
+            <div class="taste-item"><b>싱겁게</b><span>간장 15% ↓</span></div>
+            <div class="taste-item"><b>살짝 매콤</b><span>맵기 2단계</span></div>
+            <div class="taste-item"><b>담백하게</b><span>설탕 최소화</span></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" aria-labelledby="popular-title">
+        <div class="section-head">
+          <div class="section-title">
+            <h2 id="popular-title">다른 집밥러에게 인기예요</h2>
+            <p>이번 주 CookPilot에서 자주 만든 메뉴예요</p>
+          </div>
+          <button class="text-button" type="button" data-toast="인기 레시피 전체 목록을 준비하고 있어요.">전체보기</button>
+        </div>
+        <div class="popular-list">
+          <article class="popular-card">
+            <div class="popular-thumb" aria-hidden="true">🍚</div>
+            <div class="popular-info"><span class="popular-kicker">이번 주 1위</span><b>김치 참치 덮밥</b><p>12분 · 1,284명이 만들었어요<br />★ 4.9</p></div>
+          </article>
+          <article class="popular-card">
+            <div class="popular-thumb" aria-hidden="true">🍜</div>
+            <div class="popular-info"><span class="popular-kicker">빠르게 상승 중</span><b>대파 달걀 라면</b><p>8분 · 926명이 만들었어요<br />★ 4.8</p></div>
+          </article>
+        </div>
+      </section>
+
+      <section class="section" aria-labelledby="memory-title">
+        <div class="section-head">
+          <div class="section-title">
+            <h2 id="memory-title">나의 요리 기억</h2>
+            <p>다음 추천에 반영되는 소중한 기록이에요</p>
+          </div>
+          <button class="text-button" type="button" data-toast="전체 요리 기록을 준비하고 있어요.">전체보기</button>
+        </div>
+        <div class="memory-list">
+          <article class="memory-card"><div class="memory-emoji">🥘</div><b>애호박 된장찌개</b><p>“된장은 조금만”<br />6일 전 · ★ 4.8</p></article>
+          <article class="memory-card"><div class="memory-emoji">🍳</div><b>반숙 간장계란</b><p>“단맛 없이 딱 좋아”<br />12일 전 · ★ 5.0</p></article>
+        </div>
+      </section>
+    </div>
+    </section>
+
+    <section class="screen" data-screen="recipes">
+      <div class="content page-content">
+        <div class="page-head">
+          <div class="page-head-copy">
+            <h1>레시피 찾기</h1>
+            <p>재료와 상황에 맞는 집밥을 골라보세요.</p>
+          </div>
+        </div>
+
+        <label class="search-large">
+          <span aria-hidden="true">⌕</span>
+          <input type="search" value="두부 대파" aria-label="레시피 검색" />
+          <span aria-hidden="true">⌘</span>
+        </label>
+
+        <div class="filter-row" aria-label="레시피 필터">
+          <button class="filter-pill active" type="button">전체</button>
+          <button class="filter-pill" type="button">15분 이내</button>
+          <button class="filter-pill" type="button">보유 재료만</button>
+          <button class="filter-pill" type="button">담백하게</button>
+        </div>
+
+        <div class="result-count"><strong>동훈님에게 맞는 12개</strong><span>추천순⌄</span></div>
+        <div class="recipe-list">
+          <button class="recipe-row" type="button" data-screen-target="detail">
+            <span class="recipe-row-thumb" aria-hidden="true">🍲</span>
+            <span class="recipe-row-body"><strong>들기름 두부조림</strong><p>두부 · 대파 · 간장<br />15분 · 난이도 쉬움</p><span class="row-badges"><span class="row-badge green">입맛 일치 94%</span><span class="row-badge">재료 보유</span></span></span>
+          </button>
+          <button class="recipe-row" type="button" data-screen-target="detail">
+            <span class="recipe-row-thumb" aria-hidden="true">🥘</span>
+            <span class="recipe-row-body"><strong>애호박 된장찌개</strong><p>애호박 · 두부 · 된장<br />22분 · 난이도 쉬움</p><span class="row-badges"><span class="row-badge green">입맛 일치 89%</span><span class="row-badge">인기</span></span></span>
+          </button>
+          <button class="recipe-row" type="button" data-screen-target="detail">
+            <span class="recipe-row-thumb" aria-hidden="true">🍳</span>
+            <span class="recipe-row-body"><strong>대파 달걀 볶음밥</strong><p>대파 · 달걀 · 밥<br />10분 · 난이도 쉬움</p><span class="row-badges"><span class="row-badge green">입맛 일치 86%</span><span class="row-badge">초간단</span></span></span>
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <section class="screen" data-screen="detail">
+      <div class="content page-content">
+        <div class="page-head">
+          <button class="back-button" type="button" aria-label="레시피 목록으로 돌아가기" data-screen-target="recipes">←</button>
+          <button class="text-button" type="button" data-toast="레시피 공유 링크를 복사했어요.">공유</button>
+        </div>
+
+        <div class="detail-cover">
+          <span aria-hidden="true">🍲</span>
+          <button class="favorite-float" type="button" aria-label="즐겨찾기" data-toast="즐겨찾기에 저장했어요.">♡</button>
+        </div>
+
+        <div class="detail-title">
+          <h1>들기름 두부조림</h1>
+          <p>짭조름함은 줄이고 고소함을 살린 집밥 한 그릇</p>
+        </div>
+
+        <div class="detail-stats">
+          <div class="detail-stat"><b>15분</b><span>조리 시간</span></div>
+          <div class="detail-stat"><b>쉬움</b><span>난이도</span></div>
+          <div class="detail-stat"><b>420 kcal</b><span>1인분</span></div>
+        </div>
+
+        <div class="personal-note">
+          <img src="cookpilot-mascot-b-doodle.png" alt="손그림 양은냄비 캐릭터" />
+          <div><strong>동훈님 입맛으로 조정했어요</strong><p>간장은 기본보다 15% 줄이고, 설탕 없이 들기름의 고소함을 살렸어요.</p></div>
+        </div>
+
+        <section class="subsection" aria-labelledby="ingredient-title">
+          <h2 id="ingredient-title">재료 · 1인분</h2>
+          <div class="ingredient-list">
+            <div class="ingredient-item">두부 <span class="owned">½모 · 보유</span></div>
+            <div class="ingredient-item">대파 <span class="owned">⅓대 · 보유</span></div>
+            <div class="ingredient-item">진간장 <span class="owned">1.5큰술 · 보유</span></div>
+            <div class="ingredient-item">들기름 <span>1큰술 · 확인 필요</span></div>
+          </div>
+        </section>
+
+        <button class="primary-wide" type="button" data-screen-target="cooking">이대로 조리 시작하기 →</button>
+      </div>
+    </section>
+
+    <section class="screen" data-screen="cooking">
+      <div class="content page-content">
+        <div class="cook-head">
+          <button class="back-button" type="button" aria-label="레시피 상세로 돌아가기" data-screen-target="detail">←</button>
+          <div class="cook-title"><b>들기름 두부조림</b><span>화면을 켜둔 채 따라 해보세요</span></div>
+          <span class="step-count">3 / 5</span>
+        </div>
+        <div class="step-progress" aria-label="5단계 중 3단계"><span></span></div>
+
+        <div class="timer-card">
+          <div class="timer-copy"><span>약불로 졸이는 중</span><strong>06:42</strong></div>
+          <button class="timer-control" type="button" aria-label="타이머 일시정지" data-toast="타이머를 잠시 멈췄어요.">Ⅱ</button>
+        </div>
+
+        <article class="current-step">
+          <span class="step-label">지금 할 일</span>
+          <h1>양념을 끼얹으며<br />약불로 졸여주세요</h1>
+          <p>두부가 부서지지 않도록 뒤집지 말고, 숟가락으로 양념을 위에 천천히 끼얹어 주세요.</p>
+          <div class="step-visual" aria-label="냄비에서 두부를 졸이는 모습">🥘</div>
+        </article>
+
+        <div class="assistant-tip">
+          <img src="cookpilot-mascot-b-doodle.png" alt="손그림 양은냄비 캐릭터" />
+          <p><b>냄비 팁</b><br />국물이 자작하게 남았을 때 불을 끄면 두부가 촉촉해요.</p>
+        </div>
+
+        <div class="cook-actions">
+          <button class="secondary-action" type="button" data-toast="이전 단계로 이동했어요.">← 이전</button>
+          <button class="next-action" type="button" data-toast="4단계로 이동했어요.">다 했어요 · 다음 →</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="screen" data-screen="memory">
+      <div class="content page-content">
+        <div class="page-head">
+          <div class="page-head-copy"><h1>요리 기록</h1><p>만들고 평가할수록 추천이 더 정확해져요.</p></div>
+          <button class="icon-button" type="button" aria-label="기록 필터" data-toast="기록 필터를 열었어요.">⌘</button>
+        </div>
+
+        <div class="summary-grid">
+          <div class="summary-card"><span>이번 달 요리</span><strong>8회</strong></div>
+          <div class="summary-card"><span>즐겨찾기</span><strong>12</strong></div>
+          <div class="summary-card"><span>평균 평점</span><strong>4.7</strong></div>
+        </div>
+
+        <section class="section" aria-labelledby="learned-title">
+          <div class="section-head"><div class="section-title"><h2 id="learned-title">최근에 배운 입맛</h2><p>피드백 3개가 반영됐어요</p></div></div>
+          <div class="taste-card">
+            <div class="taste-grid" style="margin-top:0">
+              <div class="taste-item"><b>간장 ↓</b><span>조금 싱겁게</span></div>
+              <div class="taste-item"><b>맵기 2</b><span>살짝 칼칼</span></div>
+              <div class="taste-item"><b>설탕 0</b><span>담백 선호</span></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="section" aria-labelledby="recent-history-title">
+          <div class="section-head"><div class="section-title"><h2 id="recent-history-title">최근 요리</h2></div><button class="text-button" type="button">전체보기</button></div>
+          <div class="history-list">
+            <article class="history-row"><div class="history-thumb">🥘</div><div class="history-info"><strong>애호박 된장찌개</strong><span>7월 16일 · 22분</span><span class="feedback-chip">된장은 조금만</span></div><span class="rating">★ 4.8</span></article>
+            <article class="history-row"><div class="history-thumb">🍳</div><div class="history-info"><strong>반숙 간장계란</strong><span>7월 10일 · 12분</span><span class="feedback-chip">단맛 없이 딱 좋아</span></div><span class="rating">★ 5.0</span></article>
+            <article class="history-row"><div class="history-thumb">🍚</div><div class="history-info"><strong>김치 참치 덮밥</strong><span>7월 3일 · 14분</span><span class="feedback-chip">다음엔 덜 맵게</span></div><span class="rating">★ 4.4</span></article>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <section class="screen" data-screen="my">
+      <div class="content page-content">
+        <div class="page-head">
+          <div class="page-head-copy"><h1>마이</h1><p>내 입맛과 CookPilot 사용 환경을 관리해요.</p></div>
+          <button class="icon-button" type="button" aria-label="설정" data-toast="전체 설정을 열었어요.">⚙</button>
+        </div>
+
+        <div class="profile-card">
+          <div class="profile-avatar">동</div>
+          <div class="profile-info"><strong>동훈님</strong><p>Lv. 3 집밥러 · 다음 레벨까지 4번</p><div class="level-track"><span></span></div></div>
+          <span aria-hidden="true">›</span>
+        </div>
+
+        <section class="subsection" aria-labelledby="my-taste-title">
+          <h2 id="my-taste-title">내 입맛</h2>
+          <div class="taste-sliders">
+            <div class="taste-slider"><div class="slider-head">간 세기 <span>싱겁게</span></div><div class="slider-track" style="--value:35%"></div></div>
+            <div class="taste-slider"><div class="slider-head">맵기 <span>2단계</span></div><div class="slider-track" style="--value:44%"></div></div>
+            <div class="taste-slider"><div class="slider-head">단맛 <span>최소</span></div><div class="slider-track" style="--value:18%"></div></div>
+          </div>
+        </section>
+
+        <section class="subsection" aria-labelledby="app-setting-title">
+          <h2 id="app-setting-title">앱 설정</h2>
+          <div class="settings-group">
+            <div class="setting-row"><span class="setting-label"><span>♢</span>알림 설정</span><span class="setting-value">켜짐 ›</span></div>
+            <div class="setting-row"><span class="setting-label"><span>▤</span>보유 재료 관리</span><span class="setting-value">12개 ›</span></div>
+            <div class="setting-row"><span class="setting-label"><span>☺</span>알레르기·제외 식재료</span><span class="setting-value">없음 ›</span></div>
+            <div class="setting-row"><span class="setting-label"><span>?</span>도움말 및 의견 보내기</span><span class="setting-value">›</span></div>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <nav class="bottom-nav" aria-label="하단 메뉴">
+      <button class="nav-item active" type="button" data-screen-target="home" data-nav-screen="home" aria-current="page"><span class="nav-icon">⌂</span><span>홈</span></button>
+      <button class="nav-item" type="button" data-screen-target="recipes" data-nav-screen="recipes"><span class="nav-icon">▤</span><span>레시피</span></button>
+      <button class="nav-item" type="button" data-screen-target="memory" data-nav-screen="memory"><span class="nav-icon">♡</span><span>요리 기록</span></button>
+      <button class="nav-item" type="button" data-screen-target="my" data-nav-screen="my"><span class="nav-icon">☺</span><span>마이</span></button>
+    </nav>
+  </main>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script>
+    const toast = document.getElementById('toast');
+    let toastTimer;
+
+    function showToast(message) {
+      window.clearTimeout(toastTimer);
+      toast.textContent = message;
+      toast.classList.add('show');
+      toastTimer = window.setTimeout(() => toast.classList.remove('show'), 2100);
+    }
+
+    document.querySelectorAll('[data-toast]').forEach((button) => {
+      button.addEventListener('click', () => showToast(button.dataset.toast));
+    });
+
+    document.querySelectorAll('.chip').forEach((chip) => {
+      chip.addEventListener('click', () => {
+        chip.classList.toggle('active');
+        showToast(`${chip.textContent.trim()} 조건을 ${chip.classList.contains('active') ? '추가했어요.' : '뺐어요.'}`);
+      });
+    });
+
+    document.getElementById('searchButton').addEventListener('click', () => {
+      const ingredient = document.getElementById('ingredient').value.trim();
+      showToast(ingredient ? `${ingredient}로 만들 수 있는 요리를 찾았어요!` : '재료를 하나 이상 알려주세요.');
+    });
+
+    document.getElementById('ingredient').addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') document.getElementById('searchButton').click();
+    });
+
+    const screenNavMap = { home: 'home', recipes: 'recipes', detail: 'recipes', cooking: 'recipes', memory: 'memory', my: 'my' };
+
+    function activateScreen(name, updateHash = true) {
+      const target = document.querySelector(`[data-screen="${name}"]`);
+      if (!target) return;
+
+      document.querySelectorAll('.screen').forEach((screen) => screen.classList.toggle('active', screen === target));
+      document.querySelectorAll('[data-nav-screen]').forEach((item) => {
+        const active = item.dataset.navScreen === screenNavMap[name];
+        item.classList.toggle('active', active);
+        if (active) item.setAttribute('aria-current', 'page');
+        else item.removeAttribute('aria-current');
+      });
+
+      if (updateHash) history.replaceState(null, '', `#${name}`);
+      window.scrollTo({ top: 0, behavior: 'instant' });
+    }
+
+    document.querySelectorAll('[data-screen-target]').forEach((item) => {
+      item.addEventListener('click', () => activateScreen(item.dataset.screenTarget));
+    });
+
+    document.querySelectorAll('.filter-pill').forEach((item) => {
+      item.addEventListener('click', () => {
+        document.querySelectorAll('.filter-pill').forEach((pill) => pill.classList.remove('active'));
+        item.classList.add('active');
+      });
+    });
+
+    const initialScreen = window.location.hash.replace('#', '') || 'home';
+    activateScreen(initialScreen, false);
+  </script>
+</body>
+</html>
