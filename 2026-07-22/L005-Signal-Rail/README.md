@@ -1,4 +1,4 @@
-# S004 · Signal Rail / 시그널 레일 — Emil v3
+# L005 · Signal Rail / 시그널 레일 — Emil v3
 
 ## Design bible
 
