@@ -213,7 +213,7 @@ class SectionTitle extends StatelessWidget {
   }
 }
 
-/// 음식 사진. asset이 없으면 웜 그라데이션 플레이스홀더로 대체된다.
+/// 음식 사진. URL이 비어 있거나 로드에 실패하면 플레이스홀더로 대체된다.
 class FoodImage extends StatelessWidget {
   const FoodImage({
     super.key,
@@ -228,32 +228,38 @@ class FoodImage extends StatelessWidget {
   final double? height;
   final double radius;
 
+  Widget _placeholder() {
+    return Container(
+      width: width,
+      height: height,
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFFFBEBD9), Color(0xFFF3D8BC)],
+        ),
+      ),
+      child: const Icon(
+        Icons.restaurant_rounded,
+        color: Color(0xFFC08A5A),
+        size: 32,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return ClipRRect(
       borderRadius: BorderRadius.circular(radius),
-      child: Image.asset(
-        image,
-        width: width,
-        height: height,
-        fit: BoxFit.cover,
-        errorBuilder: (context, error, stack) => Container(
-          width: width,
-          height: height,
-          decoration: const BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [Color(0xFFFBEBD9), Color(0xFFF3D8BC)],
+      child: image.isEmpty
+          ? _placeholder()
+          : Image.network(
+              image,
+              width: width,
+              height: height,
+              fit: BoxFit.cover,
+              errorBuilder: (context, error, stack) => _placeholder(),
             ),
-          ),
-          child: const Icon(
-            Icons.restaurant_rounded,
-            color: Color(0xFFC08A5A),
-            size: 32,
-          ),
-        ),
-      ),
     );
   }
 }
@@ -431,7 +437,7 @@ class RecipeHeroCard extends StatelessWidget {
                 children: [
                   Hero(
                     tag: 'recipe-image-${recipe.title}',
-                    child: Image.asset(recipe.image, fit: BoxFit.cover),
+                    child: FoodImage(image: recipe.image, radius: 0),
                   ),
                   // 하단 텍스트 가독성을 위한 딥브라운 그라데이션.
                   const DecoratedBox(

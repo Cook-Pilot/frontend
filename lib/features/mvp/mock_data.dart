@@ -21,7 +21,7 @@ class Recipe {
   final double rating;
   final int reviewCount;
 
-  /// assets/images/ 내 파일 경로.
+  /// 이미지 URL. 빈 문자열이면 기본 플레이스홀더를 표시한다.
   final String image;
 
   /// 카드 위에 얹는 짧은 라벨 (나 맞춤, 인기 등). 없으면 미표시.
@@ -78,7 +78,7 @@ const tofuRecipe = Recipe(
   difficulty: '쉬움',
   rating: 4.8,
   reviewCount: 1284,
-  image: 'assets/images/tofu_jorim.jpg',
+  image: '',
   badge: '나 맞춤',
   tags: ['간장', '대파', '한식', '나 맞춤'],
   ingredients: [
@@ -122,7 +122,7 @@ const recipes = [
     difficulty: '보통',
     rating: 4.6,
     reviewCount: 872,
-    image: 'assets/images/mapo_tofu.jpg',
+    image: '',
     tags: ['매콤', '돼지고기'],
     ingredients: [],
     steps: [],
@@ -135,7 +135,7 @@ const recipes = [
     difficulty: '쉬움',
     rating: 4.5,
     reviewCount: 655,
-    image: 'assets/images/tofu_bowl.jpg',
+    image: '',
     tags: ['1인분', '빠른 요리'],
     ingredients: [],
     steps: [],
@@ -148,7 +148,7 @@ const recipes = [
     difficulty: '쉬움',
     rating: 4.7,
     reviewCount: 934,
-    image: 'assets/images/doenjang_jjigae.jpg',
+    image: '',
     tags: ['국물', '담백'],
     ingredients: [],
     steps: [],
@@ -177,21 +177,21 @@ const recentCooked = [
   RecipeCardData(
     title: '김치볶음밥',
     label: '나 맞춤',
-    image: 'assets/images/kimchi_bokkeumbap.jpg',
+    image: '',
     minutes: 15,
     rating: 4.7,
   ),
   RecipeCardData(
     title: '된장찌개',
     label: '기본',
-    image: 'assets/images/doenjang_jjigae.jpg',
+    image: '',
     minutes: 25,
     rating: 4.8,
   ),
   RecipeCardData(
     title: '오일 파스타',
     label: '변형 1',
-    image: 'assets/images/oil_pasta.jpg',
+    image: '',
     minutes: 20,
     rating: 4.5,
   ),
@@ -201,21 +201,21 @@ const favorites = [
   RecipeCardData(
     title: '두부 조림',
     label: '나 맞춤',
-    image: 'assets/images/tofu_jorim.jpg',
+    image: '',
     minutes: 20,
     rating: 4.8,
   ),
   RecipeCardData(
     title: '닭갈비',
     label: '기본',
-    image: 'assets/images/dakgalbi.jpg',
+    image: '',
     minutes: 35,
     rating: 4.9,
   ),
   RecipeCardData(
     title: '크림 파스타',
     label: '변형 1',
-    image: 'assets/images/cream_pasta.jpg',
+    image: '',
     minutes: 25,
     rating: 4.6,
   ),
@@ -225,21 +225,21 @@ const todayPicks = [
   RecipeCardData(
     title: '매콤 제육',
     label: '인기',
-    image: 'assets/images/jeyuk_bokkeum.jpg',
+    image: '',
     minutes: 20,
     rating: 4.9,
   ),
   RecipeCardData(
     title: '두부 조림',
     label: '추천',
-    image: 'assets/images/tofu_jorim.jpg',
+    image: '',
     minutes: 20,
     rating: 4.8,
   ),
   RecipeCardData(
     title: '치킨 샐러드',
     label: '가벼움',
-    image: 'assets/images/chicken_salad.jpg',
+    image: '',
     minutes: 10,
     rating: 4.4,
   ),
@@ -254,7 +254,7 @@ const memories = [
     summary: '설탕 생략 · 간장 50% · 2분 추가',
     lastCooked: '오늘 2인분',
     rating: 5,
-    image: 'assets/images/tofu_jorim.jpg',
+    image: '',
   ),
   RecipeMemory(
     title: '두부 조림',
@@ -262,7 +262,7 @@ const memories = [
     summary: '고춧가루 2배 · 청양고추 추가',
     lastCooked: '7월 2일 2인분',
     rating: 4,
-    image: 'assets/images/tofu_jorim.jpg',
+    image: '',
   ),
   RecipeMemory(
     title: '김치볶음밥',
@@ -270,7 +270,7 @@ const memories = [
     summary: '김치 먼저 2분 볶기 · 설탕 반스푼',
     lastCooked: '어제 1인분',
     rating: 4.5,
-    image: 'assets/images/kimchi_bokkeumbap.jpg',
+    image: '',
   ),
 ];
 

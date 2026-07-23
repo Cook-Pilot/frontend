@@ -35,7 +35,7 @@ class RecipeDetailScreen extends StatelessWidget {
                 children: [
                   Hero(
                     tag: 'recipe-image-${recipe.title}',
-                    child: Image.asset(recipe.image, fit: BoxFit.cover),
+                    child: FoodImage(image: recipe.image, radius: 0),
                   ),
                   // 상단 시스템 아이콘, 하단 본문 경계 가독성용 그라데이션.
                   const DecoratedBox(
