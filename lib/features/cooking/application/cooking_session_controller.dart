@@ -32,6 +32,7 @@ final class CookingSessionController extends ChangeNotifier {
     required SpeechInputPort speechInput,
     required SpeechOutputPort speechOutput,
     required ExceptionAdvicePort exceptionAdvice,
+    TimerAlarmPort alarm = const SilentTimerAlarm(),
     LocalCommandRouter commandRouter = const LocalCommandRouter(),
     DateTime Function()? wallClock,
     Duration Function()? commandClock,
@@ -48,6 +49,7 @@ final class CookingSessionController extends ChangeNotifier {
        _speechInput = speechInput,
        _speechOutput = speechOutput,
        _exceptionAdvice = exceptionAdvice,
+       _alarm = alarm,
        _commandRouter = commandRouter,
        _voiceStopTimeout = voiceStopTimeout,
        _voicePlaybackTimeout = voicePlaybackTimeout,
@@ -79,6 +81,7 @@ final class CookingSessionController extends ChangeNotifier {
   final SpeechInputPort _speechInput;
   final SpeechOutputPort _speechOutput;
   final ExceptionAdvicePort _exceptionAdvice;
+  final TimerAlarmPort _alarm;
   final LocalCommandRouter _commandRouter;
   final Duration _voiceStopTimeout;
   final Duration _voicePlaybackTimeout;
@@ -1010,6 +1013,7 @@ final class CookingSessionController extends ChangeNotifier {
         _lastObservedTimerStatus != TimerStatus.elapsed) {
       _timerElapsedAnnouncementPending = true;
       shouldAnnounceElapsed = true;
+      _alarm.signalTimerElapsed();
       _state = _state.copyWith(lastCommandMessage: '시간이 끝났어요. 준비되면 다음을 눌러주세요.');
       _record(
         source: CommandSource.system,

@@ -82,6 +82,13 @@ final class FakeSpeechInput implements SpeechInputPort {
   }
 }
 
+final class FakeTimerAlarm implements TimerAlarmPort {
+  int signalCount = 0;
+
+  @override
+  void signalTimerElapsed() => signalCount += 1;
+}
+
 final class FakeMonotonicClock implements MonotonicClock {
   Duration _elapsed = Duration.zero;
   bool _isRunning = false;

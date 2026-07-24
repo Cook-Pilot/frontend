@@ -22,7 +22,7 @@ final class StepTimerSnapshot {
 
 final class LocalTimerController extends ChangeNotifier {
   LocalTimerController({MonotonicClock? clock, this.autoTick = true})
-    : _clock = clock ?? StopwatchMonotonicClock();
+    : _clock = clock ?? WallAnchoredMonotonicClock();
 
   final MonotonicClock _clock;
   final bool autoTick;

@@ -1119,6 +1119,31 @@ void main() {
       );
     });
 
+    test('타이머가 0에 도달하면 알림음을 한 번만 울린다', () async {
+      final alarm = FakeTimerAlarm();
+      final alarmClock = FakeMonotonicClock();
+      final alarmController = CookingSessionController(
+        recipeId: 'ramen',
+        recipeVersionId: 'base-v1',
+        steps: ramenDemoSteps,
+        timer: LocalTimerController(clock: alarmClock, autoTick: false),
+        speechInput: FakeSpeechInput(),
+        speechOutput: FakeSpeechOutput(),
+        exceptionAdvice: FakeExceptionAdvicePort(),
+        alarm: alarm,
+        wallClock: () => now,
+      );
+      addTearDown(alarmController.dispose);
+
+      alarmClock.elapse(const Duration(minutes: 3));
+      alarmController.timer.sync();
+      // 이미 elapsed 상태에서 다시 sync해도 중복 발화하지 않는다.
+      alarmController.timer.sync();
+
+      expect(alarmController.timer.status, TimerStatus.elapsed);
+      expect(alarm.signalCount, 1);
+    });
+
     test('foreground 타이머 종료는 자동 이동 없이 다음 단계 안내를 TTS로 재생한다', () async {
       await controller.enterForeground();
       speech.spoken.clear();

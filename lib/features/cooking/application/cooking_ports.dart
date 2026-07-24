@@ -80,6 +80,20 @@ abstract interface class ExceptionAdvicePort {
   Future<ExceptionAdvice> requestAdvice(ExceptionAdviceContext context);
 }
 
+/// 타이머가 0에 도달했을 때 즉시(포그라운드) 알림음·진동을 낸다.
+/// 백그라운드/화면 off 상태의 예약 알림은 이 포트의 책임이 아니다.
+abstract interface class TimerAlarmPort {
+  void signalTimerElapsed();
+}
+
+/// 알림음을 내지 않는 기본 구현. 테스트와 무음 환경에서 사용한다.
+final class SilentTimerAlarm implements TimerAlarmPort {
+  const SilentTimerAlarm();
+
+  @override
+  void signalTimerElapsed() {}
+}
+
 final class DemoSpeechInput implements SpeechInputPort {
   @override
   void start({
