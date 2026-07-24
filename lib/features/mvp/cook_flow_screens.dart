@@ -633,6 +633,12 @@ class _CookSessionScreenState extends State<CookSessionScreen>
     }
   }
 
+  void _addMinute() {
+    // add()는 정지/종료 상태여도 타이머를 다시 진행시킨다.
+    _timer.add(const Duration(minutes: 1));
+    _scheduleAlarm();
+  }
+
   String _timerLabel(int stepMinutes) {
     if (stepMinutes <= 0) {
       return '타이머 없음';
@@ -797,6 +803,42 @@ class _CookSessionScreenState extends State<CookSessionScreen>
                         child: Text(_timerLabel(current.minutes)),
                       ),
                     ),
+                  ),
+                  const SizedBox(height: 10),
+                  // 시계 보조 컨트롤: 1분 추가 / 리셋. 다크 카드에 맞춘 아웃라인 버튼.
+                  AnimatedBuilder(
+                    animation: _timer,
+                    builder: (context, _) {
+                      final style = OutlinedButton.styleFrom(
+                        foregroundColor: Colors.white,
+                        side: const BorderSide(color: Color(0x33FFFFFF)),
+                        minimumSize: const Size.fromHeight(44),
+                      );
+                      return Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              onPressed: hasTimer ? _addMinute : null,
+                              icon: const Icon(Icons.add_rounded, size: 18),
+                              label: const Text('1분 추가'),
+                              style: style,
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              onPressed:
+                                  hasTimer && _timer.status != TimerStatus.idle
+                                  ? _resetTimerForStep
+                                  : null,
+                              icon: const Icon(Icons.refresh_rounded, size: 18),
+                              label: const Text('리셋'),
+                              style: style,
+                            ),
+                          ),
+                        ],
+                      );
+                    },
                   ),
                 ],
               ),
