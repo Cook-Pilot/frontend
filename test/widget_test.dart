@@ -6,6 +6,6 @@ void main() {
     await tester.pumpWidget(const CookPilotApp());
 
     expect(find.text('CookPilot'), findsOneWidget);
-    expect(find.text('게스트로 둘러보기'), findsOneWidget);
+    expect(find.text('카카오로 시작하기'), findsOneWidget);
   });
 }

@@ -29,17 +29,8 @@ flutter analyze
 flutter run
 ```
 
-Android Studio에서 열 때는 이 레포 루트를 엽니다.
-
-```text
-/Users/jeondonghun/Documents/Codex/2026-07-10/https-github-com-cook-pilot-https/frontend
-```
-
-이 작업에서 사용한 로컬 Flutter SDK 경로는 다음과 같습니다.
-
-```text
-/Users/jeondonghun/Documents/Codex/2026-07-10/https-github-com-cook-pilot-https/work/flutter_sdk
-```
+Android Studio에서는 `pubspec.yaml`이 있는 이 저장소의 루트를 엽니다.
+Flutter SDK는 Android Studio 설정에서 지정하거나 `PATH`에 등록해 사용합니다.
 
 Apple Silicon Mac에서 `flutter test`가 `darwin-x64/impellerc` 아키텍처 오류로 실패하면 Rosetta 설치 후 다시 실행합니다.
 

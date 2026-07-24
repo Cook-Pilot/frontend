@@ -5,10 +5,13 @@ class Recipe {
     required this.minutes,
     required this.difficulty,
     required this.rating,
+    required this.reviewCount,
+    required this.image,
     required this.tags,
     required this.ingredients,
     required this.steps,
     required this.memorySummary,
+    this.badge,
   });
 
   final String title;
@@ -16,6 +19,14 @@ class Recipe {
   final int minutes;
   final String difficulty;
   final double rating;
+  final int reviewCount;
+
+  /// 이미지 URL. 빈 문자열이면 기본 플레이스홀더를 표시한다.
+  final String image;
+
+  /// 카드 위에 얹는 짧은 라벨 (나 맞춤, 인기 등). 없으면 미표시.
+  final String? badge;
+
   final List<String> tags;
   final List<Ingredient> ingredients;
   final List<CookStep> steps;
@@ -49,6 +60,7 @@ class RecipeMemory {
     required this.summary,
     required this.lastCooked,
     required this.rating,
+    required this.image,
   });
 
   final String title;
@@ -56,6 +68,7 @@ class RecipeMemory {
   final String summary;
   final String lastCooked;
   final double rating;
+  final String image;
 }
 
 const tofuRecipe = Recipe(
@@ -64,6 +77,9 @@ const tofuRecipe = Recipe(
   minutes: 20,
   difficulty: '쉬움',
   rating: 4.8,
+  reviewCount: 1284,
+  image: '',
+  badge: '나 맞춤',
   tags: ['간장', '대파', '한식', '나 맞춤'],
   ingredients: [
     Ingredient(name: '두부', amount: '1모'),
@@ -105,6 +121,8 @@ const recipes = [
     minutes: 25,
     difficulty: '보통',
     rating: 4.6,
+    reviewCount: 872,
+    image: '',
     tags: ['매콤', '돼지고기'],
     ingredients: [],
     steps: [],
@@ -116,6 +134,8 @@ const recipes = [
     minutes: 15,
     difficulty: '쉬움',
     rating: 4.5,
+    reviewCount: 655,
+    image: '',
     tags: ['1인분', '빠른 요리'],
     ingredients: [],
     steps: [],
@@ -127,12 +147,105 @@ const recipes = [
     minutes: 18,
     difficulty: '쉬움',
     rating: 4.7,
+    reviewCount: 934,
+    image: '',
     tags: ['국물', '담백'],
     ingredients: [],
     steps: [],
     memorySummary: '다음엔 애호박을 먼저 넣기',
   ),
 ];
+
+/// 홈 캐러셀용 요약 카드 데이터.
+class RecipeCardData {
+  const RecipeCardData({
+    required this.title,
+    required this.label,
+    required this.image,
+    required this.minutes,
+    required this.rating,
+  });
+
+  final String title;
+  final String label;
+  final String image;
+  final int minutes;
+  final double rating;
+}
+
+const recentCooked = [
+  RecipeCardData(
+    title: '김치볶음밥',
+    label: '나 맞춤',
+    image: '',
+    minutes: 15,
+    rating: 4.7,
+  ),
+  RecipeCardData(
+    title: '된장찌개',
+    label: '기본',
+    image: '',
+    minutes: 25,
+    rating: 4.8,
+  ),
+  RecipeCardData(
+    title: '오일 파스타',
+    label: '변형 1',
+    image: '',
+    minutes: 20,
+    rating: 4.5,
+  ),
+];
+
+const favorites = [
+  RecipeCardData(
+    title: '두부 조림',
+    label: '나 맞춤',
+    image: '',
+    minutes: 20,
+    rating: 4.8,
+  ),
+  RecipeCardData(
+    title: '닭갈비',
+    label: '기본',
+    image: '',
+    minutes: 35,
+    rating: 4.9,
+  ),
+  RecipeCardData(
+    title: '크림 파스타',
+    label: '변형 1',
+    image: '',
+    minutes: 25,
+    rating: 4.6,
+  ),
+];
+
+const todayPicks = [
+  RecipeCardData(
+    title: '매콤 제육',
+    label: '인기',
+    image: '',
+    minutes: 20,
+    rating: 4.9,
+  ),
+  RecipeCardData(
+    title: '두부 조림',
+    label: '추천',
+    image: '',
+    minutes: 20,
+    rating: 4.8,
+  ),
+  RecipeCardData(
+    title: '치킨 샐러드',
+    label: '가벼움',
+    image: '',
+    minutes: 10,
+    rating: 4.4,
+  ),
+];
+
+const categories = ['전체', '한식', '국물', '볶음', '파스타', '샐러드', '초스피드'];
 
 const memories = [
   RecipeMemory(
@@ -141,6 +254,7 @@ const memories = [
     summary: '설탕 생략 · 간장 50% · 2분 추가',
     lastCooked: '오늘 2인분',
     rating: 5,
+    image: '',
   ),
   RecipeMemory(
     title: '두부 조림',
@@ -148,6 +262,7 @@ const memories = [
     summary: '고춧가루 2배 · 청양고추 추가',
     lastCooked: '7월 2일 2인분',
     rating: 4,
+    image: '',
   ),
   RecipeMemory(
     title: '김치볶음밥',
@@ -155,6 +270,7 @@ const memories = [
     summary: '김치 먼저 2분 볶기 · 설탕 반스푼',
     lastCooked: '어제 1인분',
     rating: 4.5,
+    image: '',
   ),
 ];
 
