@@ -80,21 +80,9 @@ class _CookPilotPageTransitionsBuilder extends PageTransitionsBuilder {
     Animation<double> secondaryAnimation,
     Widget child,
   ) {
-    if (MediaQuery.maybeOf(context)?.disableAnimations ?? false) {
-      return child;
-    }
-
-    final curved = CurvedAnimation(parent: animation, curve: AppMotion.easeOut);
-    return FadeTransition(
-      opacity: curved,
-      child: SlideTransition(
-        position: Tween<Offset>(
-          begin: const Offset(0.06, 0),
-          end: Offset.zero,
-        ).animate(curved),
-        child: child,
-      ),
-    );
+    // 화면 전환 애니메이션 없이 즉시 전환한다. 저사양 기기에서 전환·진입
+    // 애니메이션이 겹치며 씹히는 문제로 장식용 모션은 전부 걷어냈다.
+    return child;
   }
 }
 
