@@ -63,7 +63,6 @@ flutter:
   uses-material-design: true
   assets:
     - assets/recipes/ramen/steps/boiling-pot.jpg
-    - assets/recipes/previews/
 
   # To add assets to your application, add an assets section, like this:
   # assets:
