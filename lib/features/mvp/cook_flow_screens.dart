@@ -1,6 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../app/app_theme.dart';
+import '../cooking/application/cooking_ports.dart';
+import '../cooking/application/timer_controller.dart';
+import '../cooking/domain/cooking_session_state.dart';
+import '../cooking/presentation/timer_alarm_provider.dart';
 import 'main_shell.dart';
 import 'mock_data.dart';
 import 'mvp_widgets.dart';
@@ -541,13 +547,123 @@ class CookSessionScreen extends StatefulWidget {
   State<CookSessionScreen> createState() => _CookSessionScreenState();
 }
 
-class _CookSessionScreenState extends State<CookSessionScreen> {
+class _CookSessionScreenState extends State<CookSessionScreen>
+    with WidgetsBindingObserver {
   int step = 1;
+
+  // 원래 디자인은 그대로 두고 시계(타이머)만 실제로 동작시킨다.
+  // 기본 클럭이 WallAnchoredMonotonicClock이라 화면이 꺼져도 시간이 이어진다.
+  final LocalTimerController _timer = LocalTimerController();
+  TimerAlarmPort? _alarm;
+  TimerStatus _lastStatus = TimerStatus.idle;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _timer.addListener(_onTimerChanged);
+    _resetTimerForStep();
+    unawaited(_initAlarm());
+  }
+
+  Future<void> _initAlarm() async {
+    // 백그라운드 알림용 로컬 알림을 한 번 초기화(권한 요청 포함)한다.
+    final alarm = await resolveTimerAlarm();
+    if (mounted) {
+      _alarm = alarm;
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // 화면을 다시 켜면 잠든 사이 흐른 시간을 반영해 남은 시간을 재계산한다.
+    if (state == AppLifecycleState.resumed) {
+      _timer.sync();
+    }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _timer.removeListener(_onTimerChanged);
+    unawaited(_alarm?.cancelScheduledAlarm() ?? Future<void>.value());
+    _timer.dispose();
+    super.dispose();
+  }
+
+  void _onTimerChanged() {
+    final status = _timer.status;
+    if (status == TimerStatus.elapsed && _lastStatus != TimerStatus.elapsed) {
+      _alarm?.signalTimerElapsed();
+      unawaited(_alarm?.cancelScheduledAlarm() ?? Future<void>.value());
+    }
+    _lastStatus = status;
+  }
+
+  void _resetTimerForStep() {
+    final minutes = widget.recipe.steps[step - 1].minutes;
+    _timer.reset(Duration(minutes: minutes), autoStart: false);
+    _lastStatus = _timer.status;
+    unawaited(_alarm?.cancelScheduledAlarm() ?? Future<void>.value());
+  }
+
+  void _scheduleAlarm() {
+    if (_timer.status == TimerStatus.running &&
+        _timer.remaining > Duration.zero) {
+      unawaited(
+        _alarm?.scheduleTimerElapsed(DateTime.now().add(_timer.remaining)) ??
+            Future<void>.value(),
+      );
+    }
+  }
+
+  void _toggleTimer() {
+    switch (_timer.status) {
+      case TimerStatus.idle:
+        _timer.start();
+        _scheduleAlarm();
+      case TimerStatus.paused:
+        _timer.resume();
+        _scheduleAlarm();
+      case TimerStatus.running:
+        _timer.pause();
+        unawaited(_alarm?.cancelScheduledAlarm() ?? Future<void>.value());
+      case TimerStatus.elapsed:
+        break;
+    }
+  }
+
+  void _addMinute() {
+    // add()는 정지/종료 상태여도 타이머를 다시 진행시킨다.
+    _timer.add(const Duration(minutes: 1));
+    _scheduleAlarm();
+  }
+
+  String _timerLabel(int stepMinutes) {
+    if (stepMinutes <= 0) {
+      return '타이머 없음';
+    }
+    return switch (_timer.status) {
+      TimerStatus.idle => '타이머 시작',
+      TimerStatus.running => '일시정지',
+      TimerStatus.paused => '계속',
+      TimerStatus.elapsed => '시간 종료',
+    };
+  }
+
+  static String _formatRemaining(Duration remaining) {
+    final totalSeconds = (remaining.inMilliseconds / 1000).ceil().clamp(0, 5999);
+    final minutes = totalSeconds ~/ 60;
+    final seconds = totalSeconds % 60;
+    return '${minutes.toString().padLeft(2, '0')}:'
+        '${seconds.toString().padLeft(2, '0')}';
+  }
 
   @override
   Widget build(BuildContext context) {
     final current = widget.recipe.steps[step - 1];
     final isLast = step == widget.recipe.steps.length;
+    final hasTimer = current.minutes > 0;
 
     return Scaffold(
       appBar: AppBar(
@@ -656,28 +772,73 @@ class _CookSessionScreenState extends State<CookSessionScreen> {
                     style: TextStyle(color: Color(0xB3FFFFFF)),
                   ),
                   const SizedBox(height: 8),
-                  Text(
-                    '0${current.minutes}:00',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 44,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: -1,
-                      fontFeatures: [FontFeature.tabularFigures()],
+                  // 시계만 실제로 동작하는 부분: 타이머 상태에 맞춰 매초 갱신된다.
+                  AnimatedBuilder(
+                    animation: _timer,
+                    builder: (context, _) => Text(
+                      _formatRemaining(_timer.remaining),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 44,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: -1,
+                        fontFeatures: [FontFeature.tabularFigures()],
+                      ),
                     ),
                   ),
                   const SizedBox(height: 10),
-                  PressableScale(
-                    child: FilledButton(
-                      onPressed: () {},
-                      style: FilledButton.styleFrom(
-                        backgroundColor: AppColors.accent,
-                        minimumSize: const Size.fromHeight(48),
+                  AnimatedBuilder(
+                    animation: _timer,
+                    builder: (context, _) => PressableScale(
+                      child: FilledButton(
+                        onPressed: hasTimer && _timer.status != TimerStatus.elapsed
+                            ? _toggleTimer
+                            : null,
+                        style: FilledButton.styleFrom(
+                          backgroundColor: AppColors.accent,
+                          minimumSize: const Size.fromHeight(48),
+                        ),
+                        child: Text(_timerLabel(current.minutes)),
                       ),
-                      child: const Text('타이머 시작'),
                     ),
+                  ),
+                  const SizedBox(height: 10),
+                  // 시계 보조 컨트롤: 1분 추가 / 리셋. 다크 카드에 맞춘 아웃라인 버튼.
+                  AnimatedBuilder(
+                    animation: _timer,
+                    builder: (context, _) {
+                      final style = OutlinedButton.styleFrom(
+                        foregroundColor: Colors.white,
+                        side: const BorderSide(color: Color(0x33FFFFFF)),
+                        minimumSize: const Size.fromHeight(44),
+                      );
+                      return Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              onPressed: hasTimer ? _addMinute : null,
+                              icon: const Icon(Icons.add_rounded, size: 18),
+                              label: const Text('1분 추가'),
+                              style: style,
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              onPressed:
+                                  hasTimer && _timer.status != TimerStatus.idle
+                                  ? _resetTimerForStep
+                                  : null,
+                              icon: const Icon(Icons.refresh_rounded, size: 18),
+                              label: const Text('리셋'),
+                              style: style,
+                            ),
+                          ),
+                        ],
+                      );
+                    },
                   ),
                 ],
               ),
@@ -710,6 +871,7 @@ class _CookSessionScreenState extends State<CookSessionScreen> {
                 );
               } else {
                 setState(() => step++);
+                _resetTimerForStep();
               }
             },
             child: Text(isLast ? '조리 완료' : '다음 단계'),
