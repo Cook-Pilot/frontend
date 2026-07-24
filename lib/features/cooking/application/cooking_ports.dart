@@ -80,18 +80,31 @@ abstract interface class ExceptionAdvicePort {
   Future<ExceptionAdvice> requestAdvice(ExceptionAdviceContext context);
 }
 
-/// 타이머가 0에 도달했을 때 즉시(포그라운드) 알림음·진동을 낸다.
-/// 백그라운드/화면 off 상태의 예약 알림은 이 포트의 책임이 아니다.
+/// 타이머 종료 알림을 담당한다.
+///
+/// - [signalTimerElapsed]: 앱이 포그라운드일 때 즉시 알림음·진동을 낸다.
+/// - [scheduleTimerElapsed]/[cancelScheduledAlarm]: 화면이 꺼지거나 앱이
+///   백그라운드/종료 상태여도 OS가 [at] 시각에 알리도록 예약/취소한다.
+///   (백그라운드에선 Dart isolate가 동결되어 앱이 직접 소리를 낼 수 없으므로
+///   OS 예약이 유일한 수단이다.)
 abstract interface class TimerAlarmPort {
   void signalTimerElapsed();
+  Future<void> scheduleTimerElapsed(DateTime at);
+  Future<void> cancelScheduledAlarm();
 }
 
-/// 알림음을 내지 않는 기본 구현. 테스트와 무음 환경에서 사용한다.
+/// 알림을 내지 않는 기본 구현. 테스트와 무음 환경에서 사용한다.
 final class SilentTimerAlarm implements TimerAlarmPort {
   const SilentTimerAlarm();
 
   @override
   void signalTimerElapsed() {}
+
+  @override
+  Future<void> scheduleTimerElapsed(DateTime at) async {}
+
+  @override
+  Future<void> cancelScheduledAlarm() async {}
 }
 
 final class DemoSpeechInput implements SpeechInputPort {

@@ -522,6 +522,7 @@ final class CookingSessionController extends ChangeNotifier {
         ? _activeTimerElapsedPlayback
         : null;
     _timer.add(const Duration(minutes: 1));
+    _syncTimerAlarmSchedule();
     const message = '타이머에 1분을 추가했어요.';
     _setMessage(message);
     _record(source: source, command: 'add_minute', result: 'success');
@@ -603,6 +604,7 @@ final class CookingSessionController extends ChangeNotifier {
       return const CommandResult(executed: false, message: message);
     }
     _timer.pause();
+    _syncTimerAlarmSchedule();
     _state = _state.copyWith(
       sessionStatus: CookingSessionStatus.paused,
       lastCommandMessage: '타이머를 일시정지했어요.',
@@ -624,6 +626,7 @@ final class CookingSessionController extends ChangeNotifier {
       return const CommandResult(executed: false, message: message);
     }
     _timer.resume();
+    _syncTimerAlarmSchedule();
     _state = _state.copyWith(
       sessionStatus: CookingSessionStatus.cooking,
       lastCommandMessage: '타이머를 다시 시작했어요.',
@@ -641,6 +644,7 @@ final class CookingSessionController extends ChangeNotifier {
     _speechLifecycleVersion += 1;
     _voiceOperationVersion += 1;
     _timer.pause();
+    unawaited(_alarm.cancelScheduledAlarm());
     _state = _state.copyWith(
       sessionStatus: CookingSessionStatus.review,
       voicePhase: VoicePhase.off,
@@ -667,6 +671,7 @@ final class CookingSessionController extends ChangeNotifier {
     _speechLifecycleVersion += 1;
     _voiceOperationVersion += 1;
     _timer.pause();
+    unawaited(_alarm.cancelScheduledAlarm());
     _state = _state.copyWith(
       sessionStatus: CookingSessionStatus.aborted,
       voicePhase: VoicePhase.off,
@@ -999,6 +1004,7 @@ final class CookingSessionController extends ChangeNotifier {
       _lastObservedTimerStatus = _timer.status;
       _isActivatingStep = false;
     }
+    _syncTimerAlarmSchedule();
   }
 
   void _handleTimerChanged() {
@@ -1014,6 +1020,8 @@ final class CookingSessionController extends ChangeNotifier {
       _timerElapsedAnnouncementPending = true;
       shouldAnnounceElapsed = true;
       _alarm.signalTimerElapsed();
+      // 포그라운드에서 이미 울렸으니 남아있는 백그라운드 예약은 취소한다.
+      _syncTimerAlarmSchedule();
       _state = _state.copyWith(lastCommandMessage: '시간이 끝났어요. 준비되면 다음을 눌러주세요.');
       _record(
         source: CommandSource.system,
@@ -1029,6 +1037,24 @@ final class CookingSessionController extends ChangeNotifier {
     }
     if (shouldAnnounceElapsed) {
       unawaited(_announceTimerElapsedIfPossible());
+    }
+  }
+
+  /// 현재 타이머 상태에 맞춰 백그라운드 알림 예약을 동기화한다.
+  /// 실행 중이고 남은 시간이 있으면 완료 시각에 예약하고, 그 외에는 취소한다.
+  /// 매 틱이 아니라 타이머 상태가 바뀌는 지점에서만 호출해야 한다.
+  void _syncTimerAlarmSchedule() {
+    if (_disposed || isTerminal) {
+      unawaited(_alarm.cancelScheduledAlarm());
+      return;
+    }
+    if (_timer.status == TimerStatus.running &&
+        _timer.remaining > Duration.zero) {
+      unawaited(
+        _alarm.scheduleTimerElapsed(_wallClock().add(_timer.remaining)),
+      );
+    } else {
+      unawaited(_alarm.cancelScheduledAlarm());
     }
   }
 
@@ -1663,6 +1689,7 @@ final class CookingSessionController extends ChangeNotifier {
     _speechLifecycleVersion += 1;
     _voiceOperationVersion += 1;
     _disposed = true;
+    unawaited(_alarm.cancelScheduledAlarm());
     _timer
       ..removeListener(_handleTimerChanged)
       ..dispose();

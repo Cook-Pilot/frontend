@@ -84,9 +84,20 @@ final class FakeSpeechInput implements SpeechInputPort {
 
 final class FakeTimerAlarm implements TimerAlarmPort {
   int signalCount = 0;
+  int cancelCount = 0;
+  final List<DateTime> scheduledAt = <DateTime>[];
+
+  DateTime? get lastScheduledAt =>
+      scheduledAt.isEmpty ? null : scheduledAt.last;
 
   @override
   void signalTimerElapsed() => signalCount += 1;
+
+  @override
+  Future<void> scheduleTimerElapsed(DateTime at) async => scheduledAt.add(at);
+
+  @override
+  Future<void> cancelScheduledAlarm() async => cancelCount += 1;
 }
 
 final class FakeMonotonicClock implements MonotonicClock {

@@ -1144,6 +1144,79 @@ void main() {
       expect(alarm.signalCount, 1);
     });
 
+    test('타이머 시작 시 완료 시각에 백그라운드 알림을 예약한다', () {
+      final alarm = FakeTimerAlarm();
+      final alarmController = CookingSessionController(
+        recipeId: 'ramen',
+        recipeVersionId: 'base-v1',
+        steps: ramenDemoSteps,
+        timer: LocalTimerController(clock: FakeMonotonicClock(), autoTick: false),
+        speechInput: FakeSpeechInput(),
+        speechOutput: FakeSpeechOutput(),
+        exceptionAdvice: FakeExceptionAdvicePort(),
+        alarm: alarm,
+        wallClock: () => now,
+      );
+      addTearDown(alarmController.dispose);
+
+      // 세션 시작 시 첫 단계 타이머가 곧바로 예약된다.
+      expect(
+        alarm.lastScheduledAt,
+        now.add(ramenDemoSteps.first.timerDuration),
+      );
+    });
+
+    test('일시정지하면 예약된 백그라운드 알림을 취소한다', () async {
+      final alarm = FakeTimerAlarm();
+      final alarmController = CookingSessionController(
+        recipeId: 'ramen',
+        recipeVersionId: 'base-v1',
+        steps: ramenDemoSteps,
+        timer: LocalTimerController(clock: FakeMonotonicClock(), autoTick: false),
+        speechInput: FakeSpeechInput(),
+        speechOutput: FakeSpeechOutput(),
+        exceptionAdvice: FakeExceptionAdvicePort(),
+        alarm: alarm,
+        wallClock: () => now,
+      );
+      addTearDown(alarmController.dispose);
+      final cancelsBefore = alarm.cancelCount;
+
+      await alarmController.execute(CookingCommand.pauseTimer);
+
+      expect(alarmController.timer.status, TimerStatus.paused);
+      expect(alarm.cancelCount, greaterThan(cancelsBefore));
+    });
+
+    test('1분 추가는 늦춰진 완료 시각으로 다시 예약한다', () async {
+      final alarm = FakeTimerAlarm();
+      final alarmClock = FakeMonotonicClock();
+      final alarmController = CookingSessionController(
+        recipeId: 'ramen',
+        recipeVersionId: 'base-v1',
+        steps: ramenDemoSteps,
+        timer: LocalTimerController(clock: alarmClock, autoTick: false),
+        speechInput: FakeSpeechInput(),
+        speechOutput: FakeSpeechOutput(),
+        exceptionAdvice: FakeExceptionAdvicePort(),
+        alarm: alarm,
+        wallClock: () => now,
+      );
+      addTearDown(alarmController.dispose);
+      final initialScheduledAt = alarm.lastScheduledAt;
+
+      await alarmController.execute(CookingCommand.addMinute);
+
+      expect(
+        alarm.lastScheduledAt,
+        isNot(equals(initialScheduledAt)),
+      );
+      expect(
+        alarm.lastScheduledAt!.isAfter(initialScheduledAt!),
+        isTrue,
+      );
+    });
+
     test('foreground 타이머 종료는 자동 이동 없이 다음 단계 안내를 TTS로 재생한다', () async {
       await controller.enterForeground();
       speech.spoken.clear();
