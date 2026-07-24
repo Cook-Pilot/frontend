@@ -42,72 +42,6 @@ class _PressableScaleState extends State<PressableScale> {
   }
 }
 
-/// Fades and slides a child in shortly after [delay], for staggering list
-/// entrances (~30-80ms apart) so a screen feels like it arrives, not just
-/// appears. Purely decorative: never gates interaction.
-class FadeSlideIn extends StatefulWidget {
-  const FadeSlideIn({
-    super.key,
-    required this.child,
-    this.delay = Duration.zero,
-  });
-
-  final Widget child;
-  final Duration delay;
-
-  @override
-  State<FadeSlideIn> createState() => _FadeSlideInState();
-}
-
-class _FadeSlideInState extends State<FadeSlideIn>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _controller;
-  late final Animation<double> _fade;
-  late final Animation<Offset> _slide;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(vsync: this, duration: AppMotion.medium);
-    final curved = CurvedAnimation(
-      parent: _controller,
-      curve: AppMotion.easeOut,
-    );
-    _fade = curved;
-    _slide = Tween<Offset>(
-      begin: const Offset(0, 0.08),
-      end: Offset.zero,
-    ).animate(curved);
-
-    final reduceMotion = WidgetsBinding
-        .instance
-        .platformDispatcher
-        .accessibilityFeatures
-        .disableAnimations;
-    if (reduceMotion) {
-      _controller.value = 1;
-    } else {
-      Future.delayed(widget.delay, () {
-        if (mounted) _controller.forward();
-      });
-    }
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return FadeTransition(
-      opacity: _fade,
-      child: SlideTransition(position: _slide, child: widget.child),
-    );
-  }
-}
-
 class PageShell extends StatelessWidget {
   const PageShell({
     super.key,
@@ -335,7 +269,6 @@ class FoodTile extends StatelessWidget {
     this.reviewCount,
     this.trailing,
     this.onTap,
-    this.heroTag,
   });
 
   final String title;
@@ -345,7 +278,6 @@ class FoodTile extends StatelessWidget {
   final int? reviewCount;
   final Widget? trailing;
   final VoidCallback? onTap;
-  final Object? heroTag;
 
   @override
   Widget build(BuildContext context) {
@@ -360,7 +292,7 @@ class FoodTile extends StatelessWidget {
             padding: const EdgeInsets.all(12),
             child: Row(
               children: [
-                heroTag == null ? thumb : Hero(tag: heroTag!, child: thumb),
+                thumb,
                 const SizedBox(width: 14),
                 Expanded(
                   child: Column(
@@ -435,10 +367,7 @@ class RecipeHeroCard extends StatelessWidget {
               child: Stack(
                 fit: StackFit.expand,
                 children: [
-                  Hero(
-                    tag: 'recipe-image-${recipe.title}',
-                    child: FoodImage(image: recipe.image, radius: 0),
-                  ),
+                  FoodImage(image: recipe.image, radius: 0),
                   // 하단 텍스트 가독성을 위한 딥브라운 그라데이션.
                   const DecoratedBox(
                     decoration: BoxDecoration(

@@ -166,22 +166,19 @@ class _TasteProfileScreenState extends State<TasteProfileScreen> {
           childAspectRatio: 1,
           physics: const NeverScrollableScrollPhysics(),
           children: [
-            for (final (i, option) in tasteOptions.indexed)
-              FadeSlideIn(
-                delay: Duration(milliseconds: 30 * i),
-                child: _TasteOption(
-                  label: option,
-                  selected: selected.contains(option),
-                  onTap: () {
-                    setState(() {
-                      if (selected.contains(option)) {
-                        selected.remove(option);
-                      } else {
-                        selected.add(option);
-                      }
-                    });
-                  },
-                ),
+            for (final option in tasteOptions)
+              _TasteOption(
+                label: option,
+                selected: selected.contains(option),
+                onTap: () {
+                  setState(() {
+                    if (selected.contains(option)) {
+                      selected.remove(option);
+                    } else {
+                      selected.add(option);
+                    }
+                  });
+                },
               ),
           ],
         ),

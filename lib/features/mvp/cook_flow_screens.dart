@@ -39,10 +39,7 @@ class RecipeDetailScreen extends StatelessWidget {
               background: Stack(
                 fit: StackFit.expand,
                 children: [
-                  Hero(
-                    tag: 'recipe-image-${recipe.title}',
-                    child: FoodImage(image: recipe.image, radius: 0),
-                  ),
+                  FoodImage(image: recipe.image, radius: 0),
                   // 상단 시스템 아이콘, 하단 본문 경계 가독성용 그라데이션.
                   const DecoratedBox(
                     decoration: BoxDecoration(
@@ -384,27 +381,11 @@ class _CookSetupScreenState extends State<CookSetupScreen> {
             ),
             Expanded(
               child: Center(
-                child: AnimatedSwitcher(
-                  duration: AppMotion.short,
-                  switchInCurve: AppMotion.easeOut,
-                  switchOutCurve: AppMotion.easeOut,
-                  transitionBuilder: (child, animation) => FadeTransition(
-                    opacity: animation,
-                    child: SlideTransition(
-                      position: Tween<Offset>(
-                        begin: const Offset(0, 0.3),
-                        end: Offset.zero,
-                      ).animate(animation),
-                      child: child,
-                    ),
-                  ),
-                  child: Text(
-                    '$servings인분',
-                    key: ValueKey(servings),
-                    textAlign: TextAlign.center,
-                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.w900,
-                    ),
+                child: Text(
+                  '$servings인분',
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.w900,
                   ),
                 ),
               ),
@@ -703,53 +684,31 @@ class _CookSessionScreenState extends State<CookSessionScreen>
               ],
             ),
             const SizedBox(height: 8),
-            TweenAnimationBuilder<double>(
-              tween: Tween(end: step / widget.recipe.steps.length),
-              duration: AppMotion.medium,
-              curve: AppMotion.easeInOut,
-              builder: (context, value, _) =>
-                  LinearProgressIndicator(value: value),
-            ),
+            LinearProgressIndicator(value: step / widget.recipe.steps.length),
             const SizedBox(height: 18),
-            AnimatedSwitcher(
-              duration: AppMotion.medium,
-              switchInCurve: AppMotion.easeOut,
-              switchOutCurve: AppMotion.easeOut,
-              transitionBuilder: (child, animation) => FadeTransition(
-                opacity: animation,
-                child: SlideTransition(
-                  position: Tween<Offset>(
-                    begin: const Offset(0.08, 0),
-                    end: Offset.zero,
-                  ).animate(animation),
-                  child: child,
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                FoodImage(
+                  image: widget.recipe.image,
+                  width: double.infinity,
+                  height: 210,
+                  radius: AppShape.container,
                 ),
-              ),
-              child: Column(
-                key: ValueKey(step),
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  FoodImage(
-                    image: widget.recipe.image,
-                    width: double.infinity,
-                    height: 210,
-                    radius: AppShape.container,
+                const SizedBox(height: 18),
+                Text(
+                  current.title,
+                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                    color: AppColors.ink,
+                    fontWeight: FontWeight.w900,
                   ),
-                  const SizedBox(height: 18),
-                  Text(
-                    current.title,
-                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                      color: AppColors.ink,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    current.description,
-                    style: const TextStyle(color: AppColors.slate),
-                  ),
-                ],
-              ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  current.description,
+                  style: const TextStyle(color: AppColors.slate),
+                ),
+              ],
             ),
             const SizedBox(height: 18),
             Container(

@@ -20,6 +20,7 @@ Cook-Pilot의 Frontend 레포입니다.
 
 - [프론트 기능 명세서](docs/frontend-feature-spec.md)
 - [조리 타이머 기능 명세서](docs/cooking-timer-spec.md)
+- [모션 정리 명세서](docs/feat-motion.md)
 
 ## 개발 환경
 
