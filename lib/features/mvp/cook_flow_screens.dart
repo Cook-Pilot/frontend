@@ -1,6 +1,15 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../app/app_theme.dart';
+import '../../design/cookpilot_theme.dart';
+import '../cooking/application/cooking_ports.dart';
+import '../cooking/application/cooking_session_controller.dart';
+import '../cooking/application/timer_controller.dart';
+import '../cooking/domain/cooking_step.dart';
+import '../cooking/presentation/cooking_screen.dart';
+import '../cooking/presentation/timer_alarm_provider.dart';
 import 'main_shell.dart';
 import 'mock_data.dart';
 import 'mvp_widgets.dart';
@@ -542,182 +551,98 @@ class CookSessionScreen extends StatefulWidget {
 }
 
 class _CookSessionScreenState extends State<CookSessionScreen> {
-  int step = 1;
+  CookingSessionController? _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_initController());
+  }
+
+  Future<void> _initController() async {
+    // 백그라운드 알림용 로컬 알림을 한 번 초기화(권한 요청 포함)한 뒤 컨트롤러를 만든다.
+    final alarm = await resolveTimerAlarm();
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _controller = CookingSessionController(
+        recipeId: widget.recipe.title,
+        recipeVersionId: '${widget.servings}-servings',
+        steps: _buildCookingSteps(widget.recipe),
+        timer: LocalTimerController(),
+        speechInput: DemoSpeechInput(),
+        speechOutput: DemoSpeechOutput(),
+        exceptionAdvice: DemoExceptionAdvicePort(),
+        alarm: alarm,
+      );
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller?.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    final current = widget.recipe.steps[step - 1];
-    final isLast = step == widget.recipe.steps.length;
-
-    return Scaffold(
-      appBar: AppBar(
-        leading: IconButton(
-          onPressed: () => Navigator.of(context).pop(),
-          icon: const Icon(Icons.close_rounded),
-        ),
-        title: Text(
-          '${widget.recipe.title} · ${widget.servings}인분',
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
-        actions: [
-          IconButton(onPressed: () {}, icon: const Icon(Icons.pause_rounded)),
-        ],
-      ),
-      body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
-          children: [
-            Row(
-              children: [
-                Text(
-                  '$step / ${widget.recipe.steps.length} 단계',
-                  style: const TextStyle(fontWeight: FontWeight.w900),
-                ),
-                const SizedBox(width: 12),
-                const Expanded(
-                  child: Text(
-                    '자동 저장됨',
-                    textAlign: TextAlign.right,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(color: AppColors.slate),
-                  ),
-                ),
-              ],
+    final controller = _controller;
+    if (controller == null) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+    // 조리 가이드 화면은 자체 디자인 시스템(CookPilotTheme)에 맞춰 설계됐다.
+    return Theme(
+      data: CookPilotTheme.light,
+      child: CookingScreen(
+        controller: controller,
+        recipeName: '${widget.recipe.title} · ${widget.servings}인분',
+        onComplete: () {
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute<void>(
+              builder: (_) => ReviewScreen(recipe: widget.recipe),
             ),
-            const SizedBox(height: 8),
-            TweenAnimationBuilder<double>(
-              tween: Tween(end: step / widget.recipe.steps.length),
-              duration: AppMotion.medium,
-              curve: AppMotion.easeInOut,
-              builder: (context, value, _) =>
-                  LinearProgressIndicator(value: value),
-            ),
-            const SizedBox(height: 18),
-            AnimatedSwitcher(
-              duration: AppMotion.medium,
-              switchInCurve: AppMotion.easeOut,
-              switchOutCurve: AppMotion.easeOut,
-              transitionBuilder: (child, animation) => FadeTransition(
-                opacity: animation,
-                child: SlideTransition(
-                  position: Tween<Offset>(
-                    begin: const Offset(0.08, 0),
-                    end: Offset.zero,
-                  ).animate(animation),
-                  child: child,
-                ),
-              ),
-              child: Column(
-                key: ValueKey(step),
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  FoodImage(
-                    image: widget.recipe.image,
-                    width: double.infinity,
-                    height: 210,
-                    radius: AppShape.container,
-                  ),
-                  const SizedBox(height: 18),
-                  Text(
-                    current.title,
-                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                      color: AppColors.ink,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    current.description,
-                    style: const TextStyle(color: AppColors.slate),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 18),
-            Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: AppColors.ink,
-                borderRadius: BorderRadius.circular(AppShape.container),
-                boxShadow: const [
-                  BoxShadow(
-                    color: AppColors.shadow,
-                    blurRadius: 22,
-                    offset: Offset(0, 8),
-                  ),
-                ],
-              ),
-              child: Column(
-                children: [
-                  const Text(
-                    '남은 시간',
-                    style: TextStyle(color: Color(0xB3FFFFFF)),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    '0${current.minutes}:00',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 44,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: -1,
-                      fontFeatures: [FontFeature.tabularFigures()],
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  PressableScale(
-                    child: FilledButton(
-                      onPressed: () {},
-                      style: FilledButton.styleFrom(
-                        backgroundColor: AppColors.accent,
-                        minimumSize: const Size.fromHeight(48),
-                      ),
-                      child: const Text('타이머 시작'),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 14),
-            const InfoStrip(
-              icon: Icons.mic_rounded,
-              title: '"얼마나 익었나요?"',
-              body: '말하면 익힘 상태를 확인하고 다음 행동을 안내해요.',
-            ),
-            const SizedBox(height: 12),
-            const Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [Pill('재료 문제'), Pill('반복'), Pill('타이머'), Pill('도움')],
-            ),
-          ],
-        ),
-      ),
-      bottomNavigationBar: SafeArea(
-        minimum: const EdgeInsets.fromLTRB(20, 8, 20, 20),
-        child: PressableScale(
-          child: FilledButton(
-            onPressed: () {
-              if (isLast) {
-                Navigator.of(context).pushReplacement(
-                  MaterialPageRoute<void>(
-                    builder: (_) => ReviewScreen(recipe: widget.recipe),
-                  ),
-                );
-              } else {
-                setState(() => step++);
-              }
-            },
-            child: Text(isLast ? '조리 완료' : '다음 단계'),
-          ),
-        ),
+          );
+        },
+        onAbort: () => Navigator.of(context).pop(),
       ),
     );
   }
+}
+
+/// 메인 앱의 [CookStep] 목록을 조리 세션이 쓰는 [CookingStep]으로 변환한다.
+/// 미디어는 원격 이미지라 조리 화면의 로컬 에셋 규약과 달라 생략한다.
+List<CookingStep> _buildCookingSteps(Recipe recipe) {
+  final steps = recipe.steps;
+  if (steps.isEmpty) {
+    return const <CookingStep>[
+      CookingStep(
+        id: 'step-1',
+        instruction: '레시피 단계 정보가 아직 없어요.',
+        completionCue: '준비되면 완료를 눌러주세요.',
+        timerDuration: Duration.zero,
+        mediaType: StepMediaType.none,
+        mediaAsset: null,
+        mediaLabel: '이 단계에는 조리 예시 이미지가 없습니다',
+        mediaCaption: '완료 기준을 확인해주세요',
+      ),
+    ];
+  }
+  return <CookingStep>[
+    for (var i = 0; i < steps.length; i++)
+      CookingStep(
+        id: 'step-${i + 1}',
+        instruction: steps[i].description.isNotEmpty
+            ? steps[i].description
+            : steps[i].title,
+        completionCue: '완료되면 다음 단계로 넘어가세요.',
+        timerDuration: Duration(minutes: steps[i].minutes),
+        mediaType: StepMediaType.none,
+        mediaAsset: null,
+        mediaLabel: '이 단계에는 조리 예시 이미지가 없습니다',
+        mediaCaption: '완료 기준을 확인해주세요',
+      ),
+  ];
 }
 
 class ReviewScreen extends StatefulWidget {
