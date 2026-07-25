@@ -9,14 +9,21 @@ import '../cooking/application/timer_controller.dart';
 import '../cooking/domain/cooking_session_state.dart';
 import '../cooking/presentation/timer_alarm_provider.dart';
 import '../cooking/presentation/widgets/help_question_sheet.dart';
+import '../recipe/domain/recipe.dart';
 import 'main_shell.dart';
-import 'mock_data.dart';
 import 'mvp_widgets.dart';
 
-class RecipeDetailScreen extends StatelessWidget {
+class RecipeDetailScreen extends StatefulWidget {
   const RecipeDetailScreen({super.key, required this.recipe});
 
   final Recipe recipe;
+
+  @override
+  State<RecipeDetailScreen> createState() => _RecipeDetailScreenState();
+}
+
+class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
+  Recipe get recipe => widget.recipe;
 
   @override
   Widget build(BuildContext context) {
@@ -29,19 +36,20 @@ class RecipeDetailScreen extends StatelessWidget {
             expandedHeight: 300,
             pinned: true,
             backgroundColor: AppColors.surface,
-            leading: const _CircleAction(icon: Icons.chevron_left_rounded),
-            actions: const [
-              _CircleAction(icon: Icons.bookmark_outline_rounded),
-              SizedBox(width: 6),
-              _CircleAction(icon: Icons.ios_share_rounded),
-              SizedBox(width: 12),
+            leading: _CircleAction(
+              icon: Icons.chevron_left_rounded,
+              onTap: () => Navigator.of(context).pop(),
+            ),
+            actions: [
+              const _CircleAction(icon: Icons.ios_share_rounded),
+              const SizedBox(width: 12),
             ],
             flexibleSpace: FlexibleSpaceBar(
               collapseMode: CollapseMode.parallax,
               background: Stack(
                 fit: StackFit.expand,
                 children: [
-                  FoodImage(image: recipe.image, radius: 0),
+                  FoodImage(image: recipe.imageUrl, radius: 0),
                   // 상단 시스템 아이콘, 하단 본문 경계 가독성용 그라데이션.
                   const DecoratedBox(
                     decoration: BoxDecoration(
@@ -82,31 +90,30 @@ class RecipeDetailScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    recipe.subtitle,
+                    recipe.description,
                     style: const TextStyle(color: AppColors.slate),
                   ),
-                  const SizedBox(height: 8),
-                  RatingBadge(recipe.rating, reviewCount: recipe.reviewCount),
                   const SizedBox(height: 18),
                   // 핵심 스탯 타일 3개
                   Row(
                     children: [
                       _StatTile(
                         icon: Icons.schedule_rounded,
-                        label: '조리 시간',
-                        value: '${recipe.minutes}분',
+                        label: '타이머 합계',
+                        value: '${recipe.timerMinutes}분',
                       ),
                       const SizedBox(width: 10),
                       _StatTile(
-                        icon: Icons.local_fire_department_rounded,
-                        label: '난이도',
-                        value: recipe.difficulty,
+                        icon: Icons.format_list_numbered_rounded,
+                        label: '조리 단계',
+                        value: '${recipe.steps.length}단계',
                       ),
                       const SizedBox(width: 10),
-                      const _StatTile(
+                      _StatTile(
                         icon: Icons.people_alt_rounded,
                         label: '기준',
-                        value: '2인분',
+                        value:
+                            '${recipe.baseServings.toStringAsFixed(recipe.baseServings % 1 == 0 ? 0 : 1)}인분',
                       ),
                     ],
                   ),
@@ -115,7 +122,7 @@ class RecipeDetailScreen extends StatelessWidget {
                     const InfoStrip(
                       icon: Icons.info_outline_rounded,
                       title: '상세 재료 준비 중',
-                      body: '현재 MVP에서는 두부 조림 레시피를 중심으로 조리 흐름을 확인할 수 있어요.',
+                      body: '이 레시피에는 아직 등록된 재료가 없어요.',
                     )
                   else
                     Container(
@@ -147,7 +154,9 @@ class RecipeDetailScreen extends StatelessWidget {
                   const SectionTitle('내 기록'),
                   InfoStrip(
                     icon: Icons.history_rounded,
-                    title: '나 맞춤 버전 있음',
+                    title: recipe.hasPersonalVersion
+                        ? '나 맞춤 버전 있음'
+                        : '나 맞춤 버전 없음',
                     body: recipe.memorySummary,
                   ),
                   const SectionTitle('조리 순서'),
@@ -155,7 +164,7 @@ class RecipeDetailScreen extends StatelessWidget {
                     const InfoStrip(
                       icon: Icons.construction_rounded,
                       title: '조리 단계 준비 중',
-                      body: '전체 조리 플로우는 두부 조림에서 먼저 검증합니다.',
+                      body: '이 레시피에는 아직 등록된 조리 단계가 없어요.',
                     )
                   else
                     for (var i = 0; i < recipe.steps.length; i++)
@@ -175,7 +184,11 @@ class RecipeDetailScreen extends StatelessWidget {
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(fontWeight: FontWeight.w600),
                         ),
-                        subtitle: Text('약 ${recipe.steps[i].minutes}분'),
+                        subtitle: Text(
+                          recipe.steps[i].timerSeconds == null
+                              ? '타이머 없음'
+                              : '약 ${recipe.steps[i].minutes}분',
+                        ),
                       ),
                 ],
               ),
@@ -206,18 +219,17 @@ class RecipeDetailScreen extends StatelessWidget {
 
 /// SliverAppBar 위에 얹는 반투명 원형 아이콘 버튼.
 class _CircleAction extends StatelessWidget {
-  const _CircleAction({required this.icon});
+  const _CircleAction({required this.icon, this.onTap});
 
   final IconData icon;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    final canPop = Navigator.of(context).canPop();
-    final isBack = icon == Icons.chevron_left_rounded;
     return Center(
       child: PressableScale(
         child: GestureDetector(
-          onTap: isBack && canPop ? () => Navigator.of(context).pop() : () {},
+          onTap: onTap,
           child: Container(
             width: 38,
             height: 38,
@@ -303,21 +315,19 @@ class _IngredientRow extends StatelessWidget {
                         fontSize: 15,
                       ),
                     ),
-                    if (item.note.isNotEmpty) ...[
-                      const SizedBox(height: 2),
-                      Text(
-                        item.note,
-                        style: const TextStyle(
-                          color: AppColors.accent,
-                          fontSize: 12.5,
-                        ),
+                    const SizedBox(height: 2),
+                    Text(
+                      item.requirementLabel,
+                      style: const TextStyle(
+                        color: AppColors.accent,
+                        fontSize: 12.5,
                       ),
-                    ],
+                    ),
                   ],
                 ),
               ),
               Text(
-                item.amount,
+                item.amountLabel,
                 style: const TextStyle(
                   color: AppColors.slate,
                   fontWeight: FontWeight.w600,
@@ -343,7 +353,13 @@ class CookSetupScreen extends StatefulWidget {
 }
 
 class _CookSetupScreenState extends State<CookSetupScreen> {
-  int servings = 2;
+  late int servings;
+
+  @override
+  void initState() {
+    super.initState();
+    servings = widget.recipe.baseServings.round().clamp(1, 99);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -360,14 +376,18 @@ class _CookSetupScreenState extends State<CookSetupScreen> {
         ),
       ],
       children: [
-        const Wrap(
+        Wrap(
           spacing: 8,
-          children: [Pill('기본'), Pill('나 맞춤', selected: true), Pill('남의 추천')],
+          children: [
+            Pill('기본', selected: !widget.recipe.hasPersonalVersion),
+            if (widget.recipe.hasPersonalVersion)
+              const Pill('나 맞춤', selected: true),
+          ],
         ),
         const SizedBox(height: 12),
         InfoStrip(
           icon: Icons.auto_awesome_rounded,
-          title: '나 맞춤 버전',
+          title: widget.recipe.hasPersonalVersion ? '나 맞춤 버전' : '기본 레시피',
           body: widget.recipe.memorySummary,
         ),
         const SectionTitle('몇 인분인가요?'),
@@ -386,9 +406,9 @@ class _CookSetupScreenState extends State<CookSetupScreen> {
                 child: Text(
                   '$servings인분',
                   textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.w900,
-                  ),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
                 ),
               ),
             ),
@@ -410,7 +430,7 @@ class _CookSetupScreenState extends State<CookSetupScreen> {
                 overflow: TextOverflow.ellipsis,
               ),
               subtitle: Text(
-                ingredient.amount,
+                ingredient.amountLabel,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
@@ -423,8 +443,10 @@ class _CookSetupScreenState extends State<CookSetupScreen> {
         const SectionTitle('이번 조리 요약'),
         InfoStrip(
           icon: Icons.check_circle_outline_rounded,
-          title: '$servings인분 · 나 맞춤',
-          body: '설탕 생략 · 간장 15% 감소 · 중불 유지',
+          title:
+              '$servings인분 · ${widget.recipe.hasPersonalVersion ? '나 맞춤' : '기본'}',
+          body:
+              '재료 ${widget.recipe.ingredients.length}개 · 조리 ${widget.recipe.steps.length}단계',
         ),
       ],
       bottom: PressableScale(
@@ -457,7 +479,7 @@ class _CookSetupScreenState extends State<CookSetupScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                '${ingredient.name} · ${ingredient.amount}',
+                '${ingredient.name} · ${ingredient.amountLabel}',
                 style: Theme.of(context).textTheme.titleLarge?.copyWith(
                   color: AppColors.ink,
                   fontWeight: FontWeight.w900,
@@ -481,7 +503,7 @@ class _CookSetupScreenState extends State<CookSetupScreen> {
                   ),
                   Expanded(
                     child: Text(
-                      ingredient.amount,
+                      ingredient.amountLabel,
                       textAlign: TextAlign.center,
                       style: const TextStyle(
                         fontWeight: FontWeight.w900,
@@ -765,7 +787,10 @@ class _CookSessionScreenState extends State<CookSessionScreen>
   }
 
   static String _formatRemaining(Duration remaining) {
-    final totalSeconds = (remaining.inMilliseconds / 1000).ceil().clamp(0, 5999);
+    final totalSeconds = (remaining.inMilliseconds / 1000).ceil().clamp(
+      0,
+      5999,
+    );
     final minutes = totalSeconds ~/ 60;
     final seconds = totalSeconds % 60;
     return '${minutes.toString().padLeft(2, '0')}:'
@@ -822,7 +847,9 @@ class _CookSessionScreenState extends State<CookSessionScreen>
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 FoodImage(
-                  image: widget.recipe.image,
+                  image: current.imageUrl.isNotEmpty
+                      ? current.imageUrl
+                      : widget.recipe.imageUrl,
                   width: double.infinity,
                   height: 210,
                   radius: AppShape.container,
@@ -884,7 +911,8 @@ class _CookSessionScreenState extends State<CookSessionScreen>
                     animation: _timer,
                     builder: (context, _) => PressableScale(
                       child: FilledButton(
-                        onPressed: hasTimer && _timer.status != TimerStatus.elapsed
+                        onPressed:
+                            hasTimer && _timer.status != TimerStatus.elapsed
                             ? _toggleTimer
                             : null,
                         style: FilledButton.styleFrom(
