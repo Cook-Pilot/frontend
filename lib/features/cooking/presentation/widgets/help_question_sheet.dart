@@ -40,52 +40,51 @@ final class _HelpQuestionSheetState extends State<HelpQuestionSheet> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    // 키보드가 올라온 상태에서 가용 높이를 넘으면 스크롤로 대응한다.
     return Padding(
-      padding: EdgeInsets.fromLTRB(
-        CookPilotSpacing.lg,
-        CookPilotSpacing.lg,
-        CookPilotSpacing.lg,
-        CookPilotSpacing.lg + MediaQuery.viewInsetsOf(context).bottom,
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: <Widget>[
-          Text('무엇이 문제인가요?', style: theme.textTheme.titleMedium),
-          const SizedBox(height: CookPilotSpacing.xs),
-          Text(
-            '현재 단계에 맞춰 대처 방법을 알려드려요.',
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
-          const SizedBox(height: CookPilotSpacing.md),
-          TextField(
-            key: const Key('help-question-field'),
-            controller: _question,
-            autofocus: true,
-            textInputAction: TextInputAction.send,
-            onSubmitted: (_) => _submit(),
-            decoration: const InputDecoration(
-              hintText: '예: 물이 안 끓어요',
-              border: OutlineInputBorder(),
-            ),
-          ),
-          const SizedBox(height: CookPilotSpacing.md),
-          ValueListenableBuilder<TextEditingValue>(
-            valueListenable: _question,
-            builder: (context, value, _) => FilledButton(
-              key: const Key('help-question-submit'),
-              onPressed: value.text.trim().isEmpty ? null : _submit,
-              style: FilledButton.styleFrom(
-                minimumSize: const Size.fromHeight(
-                  CookPilotSpacing.sessionActionHeight,
-                ),
+      padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(CookPilotSpacing.lg),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            Text('무엇이 문제인가요?', style: theme.textTheme.titleMedium),
+            const SizedBox(height: CookPilotSpacing.xs),
+            Text(
+              '현재 단계에 맞춰 대처 방법을 알려드려요.',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
               ),
-              child: const Text('질문하기'),
             ),
-          ),
-        ],
+            const SizedBox(height: CookPilotSpacing.md),
+            TextField(
+              key: const Key('help-question-field'),
+              controller: _question,
+              autofocus: true,
+              textInputAction: TextInputAction.send,
+              onSubmitted: (_) => _submit(),
+              decoration: const InputDecoration(
+                hintText: '예: 물이 안 끓어요',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: CookPilotSpacing.md),
+            ValueListenableBuilder<TextEditingValue>(
+              valueListenable: _question,
+              builder: (context, value, _) => FilledButton(
+                key: const Key('help-question-submit'),
+                onPressed: value.text.trim().isEmpty ? null : _submit,
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size.fromHeight(
+                    CookPilotSpacing.sessionActionHeight,
+                  ),
+                ),
+                child: const Text('질문하기'),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
