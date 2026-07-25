@@ -210,22 +210,22 @@ class _HomeScreenState extends State<HomeScreen> {
             SectionTitle('오늘의 메뉴', onMore: () {}),
             RecipeHeroCard(
               recipe: tofuRecipe,
-              onTap: () => _openDetail(context, tofuRecipe),
+              onTap: () => unawaited(_openDetail(context, tofuRecipe)),
             ),
             SectionTitle('최근 조리', onMore: () {}),
             _CardCarousel(
               items: recentCooked,
-              onTap: () => _openDetail(context, tofuRecipe),
+              onTap: () => unawaited(_openDetail(context, tofuRecipe)),
             ),
             SectionTitle('즐겨찾기', onMore: () {}),
             _CardCarousel(
               items: favorites,
-              onTap: () => _openDetail(context, tofuRecipe),
+              onTap: () => unawaited(_openDetail(context, tofuRecipe)),
             ),
             SectionTitle('오늘 뭐 먹지?', onMore: () {}),
             _CardCarousel(
               items: todayPicks,
-              onTap: () => _openDetail(context, tofuRecipe),
+              onTap: () => unawaited(_openDetail(context, tofuRecipe)),
             ),
           ],
         ),
@@ -233,12 +233,15 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  void _openDetail(BuildContext context, Recipe recipe) {
-    Navigator.of(context).push(
+  Future<void> _openDetail(BuildContext context, Recipe recipe) async {
+    await Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => RecipeDetailScreen(recipe: recipe),
       ),
     );
+    if (mounted) {
+      unawaited(_loadResumableSession());
+    }
   }
 }
 
