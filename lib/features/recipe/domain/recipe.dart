@@ -9,6 +9,7 @@ class Recipe {
     required this.steps,
     required this.hasPersonalVersion,
     this.latestPersonalVersionId,
+    this.favorite = false,
   });
 
   final String id;
@@ -20,6 +21,7 @@ class Recipe {
   final List<CookStep> steps;
   final bool hasPersonalVersion;
   final String? latestPersonalVersionId;
+  final bool favorite;
 
   int get timerMinutes {
     final seconds = steps.fold<int>(
