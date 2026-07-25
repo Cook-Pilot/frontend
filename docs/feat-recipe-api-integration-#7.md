@@ -42,6 +42,17 @@
 - 통신·파싱 실패: 서버 연결 안내와 다시 시도 버튼
 - 상세 데이터 없음: 상세 화면 안에서 안전한 빈 상태 표시
 
+## 조리 세션 복원과의 연결
+
+진행 중 조리 세션은 로컬에 레시피 제목과 단계·타이머 상태를 저장한다.
+앱 재시작 후 홈에서는 서버 레시피 목록에서 같은 제목을 찾고 상세 API를 호출해
+실제 재료와 조리 단계를 복원한 뒤 `이어서 요리하기`를 표시한다.
+
+서버에 더 이상 같은 레시피가 없으면 복원할 수 없는 저장본을 정리한다.
+네트워크 오류일 때는 일시적인 장애일 수 있으므로 로컬 저장본을 삭제하지 않는다.
+목데이터를 삭제한 뒤에도 조리 세션 테스트는 독립적인 테스트 레시피 fixture를 사용해
+저장·단계 이동·타이머 복원·완료 후 삭제 동작을 계속 검증한다.
+
 ## 주요 변경 파일
 
 - `lib/features/recipe/data/recipe_api.dart`
@@ -49,6 +60,8 @@
 - `lib/features/mvp/main_shell.dart`
 - `lib/features/mvp/cook_flow_screens.dart`
 - `lib/features/mvp/mock_data.dart` 삭제
+- `test/features/cooking/application/cooking_session_restore_test.dart`
+  - API 전환 후에도 독립 fixture로 로컬 조리 세션 회귀 테스트 유지
 
 ## 검증
 
