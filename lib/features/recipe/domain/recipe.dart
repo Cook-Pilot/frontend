@@ -1,0 +1,85 @@
+class Recipe {
+  const Recipe({
+    required this.id,
+    required this.title,
+    required this.description,
+    required this.baseServings,
+    required this.imageUrl,
+    required this.ingredients,
+    required this.steps,
+    required this.hasPersonalVersion,
+    this.latestPersonalVersionId,
+  });
+
+  final String id;
+  final String title;
+  final String description;
+  final double baseServings;
+  final String imageUrl;
+  final List<Ingredient> ingredients;
+  final List<CookStep> steps;
+  final bool hasPersonalVersion;
+  final String? latestPersonalVersionId;
+
+  int get timerMinutes {
+    final seconds = steps.fold<int>(
+      0,
+      (total, step) => total + (step.timerSeconds ?? 0),
+    );
+    return (seconds / 60).ceil();
+  }
+
+  String? get badge => hasPersonalVersion ? '나 맞춤' : null;
+
+  String get memorySummary =>
+      hasPersonalVersion ? '저장된 개인 레시피가 있어요.' : '아직 저장된 개인 레시피가 없어요.';
+}
+
+class Ingredient {
+  const Ingredient({
+    required this.name,
+    required this.amount,
+    required this.unit,
+    required this.isRequired,
+  });
+
+  final String name;
+  final double? amount;
+  final String unit;
+  final bool isRequired;
+
+  String get amountLabel {
+    if (amount == null) return unit;
+    final number = amount == amount!.roundToDouble()
+        ? amount!.toInt().toString()
+        : amount.toString();
+    return '$number$unit';
+  }
+
+  String get requirementLabel => isRequired ? '필수 재료' : '선택 재료';
+}
+
+class CookStep {
+  const CookStep({
+    required this.stepIndex,
+    required this.instruction,
+    required this.timerSeconds,
+    required this.cautionNote,
+    required this.imageUrl,
+  });
+
+  final int stepIndex;
+  final String instruction;
+  final int? timerSeconds;
+  final String? cautionNote;
+  final String imageUrl;
+
+  String get title => '${stepIndex + 1}단계';
+
+  String get description =>
+      cautionNote == null ? instruction : '$instruction\n주의: $cautionNote';
+
+  Duration get timerDuration => Duration(seconds: timerSeconds ?? 0);
+
+  int get minutes => ((timerSeconds ?? 0) / 60).ceil();
+}

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../app/app_theme.dart';
-import 'mock_data.dart';
+import '../recipe/domain/recipe.dart';
 
 /// Wraps a tappable child and scales it down slightly on press, so buttons
 /// and cards feel like they are listening the instant they're touched.
@@ -367,7 +367,7 @@ class RecipeHeroCard extends StatelessWidget {
               child: Stack(
                 fit: StackFit.expand,
                 children: [
-                  FoodImage(image: recipe.image, radius: 0),
+                  FoodImage(image: recipe.imageUrl, radius: 0),
                   // 하단 텍스트 가독성을 위한 딥브라운 그라데이션.
                   const DecoratedBox(
                     decoration: BoxDecoration(
@@ -413,7 +413,7 @@ class RecipeHeroCard extends StatelessWidget {
                             ),
                             const SizedBox(width: 4),
                             Text(
-                              '${recipe.minutes}분 · ${recipe.difficulty}',
+                              '${recipe.timerMinutes}분 타이머',
                               style: const TextStyle(
                                 color: Colors.white70,
                                 fontSize: 13,
@@ -422,13 +422,13 @@ class RecipeHeroCard extends StatelessWidget {
                             ),
                             const SizedBox(width: 10),
                             const Icon(
-                              Icons.star_rounded,
-                              color: Color(0xFFFFC24B),
-                              size: 16,
+                              Icons.people_alt_rounded,
+                              color: Colors.white70,
+                              size: 15,
                             ),
-                            const SizedBox(width: 3),
+                            const SizedBox(width: 4),
                             Text(
-                              '${recipe.rating} (${(recipe.reviewCount / 1000).toStringAsFixed(1)}k)',
+                              '${recipe.baseServings.toStringAsFixed(recipe.baseServings % 1 == 0 ? 0 : 1)}인분',
                               style: const TextStyle(
                                 color: Colors.white,
                                 fontSize: 13,
@@ -443,83 +443,6 @@ class RecipeHeroCard extends StatelessWidget {
                 ],
               ),
             ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// 가로 캐러셀용 세로형 레시피 카드 (이미지 4:3 + 제목 + 메타).
-class RecipeCardSmall extends StatelessWidget {
-  const RecipeCardSmall({super.key, required this.data, this.onTap});
-
-  final RecipeCardData data;
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: 150,
-      child: PressableScale(
-        child: GestureDetector(
-          onTap: onTap,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Stack(
-                children: [
-                  FoodImage(image: data.image, width: 150, height: 110),
-                  Positioned(
-                    left: 8,
-                    top: 8,
-                    child: ImageLabelChip(data.label),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Text(
-                data.title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: AppColors.ink,
-                  fontSize: 15,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: -0.2,
-                ),
-              ),
-              const SizedBox(height: 3),
-              Row(
-                children: [
-                  Text(
-                    '${data.minutes}분',
-                    style: const TextStyle(
-                      color: AppColors.slate,
-                      fontSize: 12.5,
-                    ),
-                  ),
-                  const Text(
-                    ' · ',
-                    style: TextStyle(color: AppColors.muted, fontSize: 12.5),
-                  ),
-                  const Icon(
-                    Icons.star_rounded,
-                    color: AppColors.accent,
-                    size: 14,
-                  ),
-                  const SizedBox(width: 2),
-                  Text(
-                    '${data.rating}',
-                    style: const TextStyle(
-                      color: AppColors.slate,
-                      fontSize: 12.5,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ),
-            ],
           ),
         ),
       ),

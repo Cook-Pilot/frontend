@@ -1,7 +1,7 @@
 import 'package:cookpilot/features/cooking/application/cooking_ports.dart';
 import 'package:cookpilot/features/cooking/application/cooking_session_store.dart';
 import 'package:cookpilot/features/mvp/cook_flow_screens.dart';
-import 'package:cookpilot/features/mvp/mock_data.dart';
+import 'package:cookpilot/features/recipe/domain/recipe.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -9,7 +9,38 @@ import 'package:shared_preferences/shared_preferences.dart';
 void main() {
   const store = CookingSessionStore();
 
-  final recipe = recipes.first;
+  const recipe = Recipe(
+    id: 'cooking-session-test-recipe',
+    title: '조리 세션 테스트 레시피',
+    description: '로컬 세션 저장과 복원을 검증한다.',
+    baseServings: 2,
+    imageUrl: '',
+    ingredients: <Ingredient>[],
+    steps: <CookStep>[
+      CookStep(
+        stepIndex: 0,
+        instruction: '첫 번째 단계를 진행하세요.',
+        timerSeconds: 180,
+        cautionNote: null,
+        imageUrl: '',
+      ),
+      CookStep(
+        stepIndex: 1,
+        instruction: '두 번째 단계를 진행하세요.',
+        timerSeconds: 180,
+        cautionNote: null,
+        imageUrl: '',
+      ),
+      CookStep(
+        stepIndex: 2,
+        instruction: '마지막 단계를 진행하세요.',
+        timerSeconds: 180,
+        cautionNote: null,
+        imageUrl: '',
+      ),
+    ],
+    hasPersonalVersion: false,
+  );
 
   PersistedCookingSession buildSession({
     int stepIndex = 2,
@@ -17,6 +48,7 @@ void main() {
     int timerRemainingMs = 90 * 1000,
   }) {
     return PersistedCookingSession(
+      recipeId: recipe.id,
       recipeTitle: recipe.title,
       servings: 2,
       stepIndex: stepIndex,
@@ -80,12 +112,47 @@ void main() {
   });
 
   group('CookSessionScreen 저장', () {
+    testWidgets('분으로 나누어지지 않는 단계 타이머도 정확한 초로 시작한다', (tester) async {
+      const exactSecondsRecipe = Recipe(
+        id: 'exact-seconds-recipe',
+        title: '90초 타이머 레시피',
+        description: '초 단위 타이머를 검증한다.',
+        baseServings: 1,
+        imageUrl: '',
+        ingredients: <Ingredient>[],
+        steps: <CookStep>[
+          CookStep(
+            stepIndex: 0,
+            instruction: '90초 동안 조리하세요.',
+            timerSeconds: 90,
+            cautionNote: null,
+            imageUrl: '',
+          ),
+        ],
+        hasPersonalVersion: false,
+      );
+
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: CookSessionScreen(
+            recipe: exactSecondsRecipe,
+            servings: 1,
+            alarm: SilentTimerAlarm(),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(find.text('01:30'), findsOneWidget);
+    });
+
     testWidgets('진입하면 현재 진행 상황을 저장한다', (tester) async {
       await pumpSession(tester);
 
       final saved = await store.load();
       expect(saved, isNotNull);
-      expect(saved!.recipeTitle, recipe.title);
+      expect(saved!.recipeId, recipe.id);
+      expect(saved.recipeTitle, recipe.title);
       expect(saved.stepIndex, 0);
       expect(saved.isResumable, isTrue);
     });

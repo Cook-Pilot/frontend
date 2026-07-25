@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:cookpilot/features/cooking/application/cooking_session_store.dart';
 import 'package:cookpilot/features/cooking/domain/cooking_session_state.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -7,12 +9,14 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   PersistedCookingSession buildSession({
+    String? recipeId = '10000000-0000-0000-0000-000000000001',
     String sessionStatus = 'cooking',
     String timerStatus = 'running',
     int timerRemainingMs = 3 * 60 * 1000,
     int savedAtEpochMs = 1000000,
   }) {
     return PersistedCookingSession(
+      recipeId: recipeId,
       recipeTitle: '두부 조림',
       servings: 2,
       stepIndex: 2,
@@ -38,12 +42,36 @@ void main() {
       final loaded = await store.load();
 
       expect(loaded, isNotNull);
-      expect(loaded!.recipeTitle, '두부 조림');
+      expect(loaded!.recipeId, '10000000-0000-0000-0000-000000000001');
+      expect(loaded.recipeTitle, '두부 조림');
       expect(loaded.servings, 2);
       expect(loaded.stepIndex, 2);
       expect(loaded.sessionStatus, 'cooking');
       expect(loaded.timerRemainingMs, 3 * 60 * 1000);
       expect(loaded.isResumable, isTrue);
+    });
+
+    test('기존 제목 전용 저장값도 하위 호환으로 읽는다', () async {
+      await store.save(buildSession(recipeId: null));
+
+      final loaded = await store.load();
+
+      expect(loaded, isNotNull);
+      expect(loaded!.recipeId, isNull);
+      expect(loaded.recipeTitle, '두부 조림');
+    });
+
+    test('recipeId 타입이 손상된 저장값은 정리한다', () async {
+      final json = buildSession().toJson();
+      json['recipeId'] = 1234;
+      SharedPreferences.setMockInitialValues(<String, Object>{
+        'cookpilot.active_cooking_session.v1': jsonEncode(json),
+      });
+
+      expect(await store.load(), isNull);
+
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getString('cookpilot.active_cooking_session.v1'), isNull);
     });
 
     test('저장된 세션이 없으면 null을 돌려준다', () async {
