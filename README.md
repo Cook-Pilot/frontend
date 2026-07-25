@@ -36,6 +36,14 @@ flutter run
 Android Studio에서는 `pubspec.yaml`이 있는 이 저장소의 루트를 엽니다.
 Flutter SDK는 Android Studio 설정에서 지정하거나 `PATH`에 등록해 사용합니다.
 
+로컬 백엔드는 Android 에뮬레이터에서 `10.0.2.2:8080`, iOS 시뮬레이터·웹·
+데스크톱에서 `localhost:8080`으로 연결됩니다. 실기기나 베타 서버는 다음처럼
+주소를 명시합니다.
+
+```bash
+flutter run --dart-define=COOKPILOT_API_BASE_URL=https://api.example.com
+```
+
 Apple Silicon Mac에서 `flutter test`가 `darwin-x64/impellerc` 아키텍처 오류로 실패하면 Rosetta 설치 후 다시 실행합니다.
 
 ```bash

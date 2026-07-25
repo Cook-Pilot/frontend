@@ -1,9 +1,24 @@
 import 'package:flutter/material.dart';
 
 import '../../app/app_theme.dart';
+import '../user/data/beta_user_repository.dart';
 import 'main_shell.dart';
-import 'mock_data.dart';
 import 'mvp_widgets.dart';
+
+const _tasteOptions = [
+  '마라탕',
+  '김치찌개',
+  '파스타',
+  '초밥',
+  '떡볶이',
+  '삼겹살',
+  '샐러드',
+  '카레',
+  '치킨',
+  '냉면',
+  '크림리조또',
+  '제육볶음',
+];
 
 class AuthScreen extends StatelessWidget {
   const AuthScreen({super.key});
@@ -117,10 +132,19 @@ class AuthScreen extends StatelessWidget {
     );
   }
 
-  void _openHome(BuildContext context) {
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute<void>(builder: (_) => const MainShell()),
-    );
+  Future<void> _openHome(BuildContext context) async {
+    try {
+      await BetaUserRepository().ensureUser();
+      if (!context.mounted) return;
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute<void>(builder: (_) => const MainShell()),
+      );
+    } on Object catch (error) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('사용자 준비에 실패했습니다: $error')));
+    }
   }
 }
 
@@ -166,7 +190,7 @@ class _TasteProfileScreenState extends State<TasteProfileScreen> {
           childAspectRatio: 1,
           physics: const NeverScrollableScrollPhysics(),
           children: [
-            for (final option in tasteOptions)
+            for (final option in _tasteOptions)
               _TasteOption(
                 label: option,
                 selected: selected.contains(option),
@@ -204,7 +228,17 @@ class _TasteProfileScreenState extends State<TasteProfileScreen> {
       bottom: PressableScale(
         child: FilledButton(
           onPressed: selected.length >= 3
-              ? () {
+              ? () async {
+                  try {
+                    await BetaUserRepository().ensureUser();
+                    if (!context.mounted) return;
+                  } on Object catch (error) {
+                    if (!context.mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('사용자 준비에 실패했습니다: $error')),
+                    );
+                    return;
+                  }
                   Navigator.of(context).pushAndRemoveUntil(
                     MaterialPageRoute<void>(builder: (_) => const MainShell()),
                     (route) => false,
