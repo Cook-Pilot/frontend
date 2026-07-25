@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
@@ -150,17 +151,19 @@ class RecipeRepository {
   }
 
   Future<http.Response> _get(String path) async {
-    final uri = Uri.parse('$_baseUrl$path');
-    final response = await _client
-        .get(uri, headers: BetaUserSession.requestHeaders)
-        .timeout(const Duration(seconds: 8));
-    if (response.statusCode != 200) {
-      throw RecipeApiException(
-        '서버 요청에 실패했습니다. (${response.statusCode})',
-        statusCode: response.statusCode,
-      );
-    }
-    return response;
+    return _translateTransportErrors(() async {
+      final uri = Uri.parse('$_baseUrl$path');
+      final response = await _client
+          .get(uri, headers: BetaUserSession.requestHeaders)
+          .timeout(const Duration(seconds: 8));
+      if (response.statusCode != 200) {
+        throw RecipeApiException(
+          '서버 요청에 실패했습니다. (${response.statusCode})',
+          statusCode: response.statusCode,
+        );
+      }
+      return response;
+    });
   }
 
   Future<http.Response> _request(
@@ -168,17 +171,31 @@ class RecipeRepository {
     String path,
     Set<int> successCodes,
   ) async {
-    final uri = Uri.parse('$_baseUrl$path');
-    final request = http.Request(method, uri);
-    request.headers.addAll(BetaUserSession.requestHeaders);
-    final streamed = await _client
-        .send(request)
-        .timeout(const Duration(seconds: 8));
-    final response = await http.Response.fromStream(streamed);
-    if (!successCodes.contains(response.statusCode)) {
-      throw RecipeApiException('서버 요청에 실패했습니다. (${response.statusCode})');
+    return _translateTransportErrors(() async {
+      final uri = Uri.parse('$_baseUrl$path');
+      final request = http.Request(method, uri);
+      request.headers.addAll(BetaUserSession.requestHeaders);
+      final streamed = await _client
+          .send(request)
+          .timeout(const Duration(seconds: 8));
+      final response = await http.Response.fromStream(
+        streamed,
+      ).timeout(const Duration(seconds: 8));
+      if (!successCodes.contains(response.statusCode)) {
+        throw RecipeApiException('서버 요청에 실패했습니다. (${response.statusCode})');
+      }
+      return response;
+    });
+  }
+
+  Future<T> _translateTransportErrors<T>(Future<T> Function() request) async {
+    try {
+      return await request();
+    } on TimeoutException {
+      throw const RecipeApiException('서버 응답 시간이 초과되었습니다.');
+    } on http.ClientException {
+      throw const RecipeApiException('서버에 연결하지 못했습니다.');
     }
-    return response;
   }
 }
 

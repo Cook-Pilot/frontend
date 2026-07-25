@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cookpilot/features/recipe/data/recipe_api.dart';
 import 'package:cookpilot/features/user/data/beta_user_repository.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -268,6 +270,46 @@ void main() {
     await repository.removeFavorite(recipeId);
 
     expect(methods, ['PUT', 'DELETE']);
+  });
+
+  test('즐겨찾기 요청의 연결 오류를 RecipeApiException으로 변환한다', () async {
+    final repository = RecipeRepository(
+      baseUrl: baseUrl,
+      client: MockClient(
+        (_) async => throw http.ClientException('connection failed'),
+      ),
+    );
+
+    await expectLater(
+      repository.addFavorite(recipeId),
+      throwsA(
+        isA<RecipeApiException>().having(
+          (exception) => exception.message,
+          'message',
+          contains('연결'),
+        ),
+      ),
+    );
+  });
+
+  test('즐겨찾기 요청의 시간 초과를 RecipeApiException으로 변환한다', () async {
+    final repository = RecipeRepository(
+      baseUrl: baseUrl,
+      client: MockClient(
+        (_) async => throw TimeoutException('request timed out'),
+      ),
+    );
+
+    await expectLater(
+      repository.removeFavorite(recipeId),
+      throwsA(
+        isA<RecipeApiException>().having(
+          (exception) => exception.message,
+          'message',
+          contains('초과'),
+        ),
+      ),
+    );
   });
 }
 

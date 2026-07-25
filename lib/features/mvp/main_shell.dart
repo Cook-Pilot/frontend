@@ -82,12 +82,14 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<_HomeCatalog> _loadCatalog() async {
-    final summariesRequest = _recipeRepository.findAll();
-    final recentRequest = _recipeRepository.findRecent();
-    final favoritesRequest = _recipeRepository.findFavorites();
-    final summaries = await summariesRequest;
-    final recent = await recentRequest;
-    final favorites = await favoritesRequest;
+    final results = await Future.wait<List<RecipeSummary>>([
+      _recipeRepository.findAll(),
+      _recipeRepository.findRecent(),
+      _recipeRepository.findFavorites(),
+    ]);
+    final summaries = results[0];
+    final recent = results[1];
+    final favorites = results[2];
     if (summaries.isEmpty) {
       return _HomeCatalog(
         summaries: summaries,
@@ -439,7 +441,10 @@ class _SearchScreenState extends State<SearchScreen> {
                 for (final recipe in items)
                   Padding(
                     padding: const EdgeInsets.only(bottom: 10),
-                    child: _RecipeSummaryTile(summary: recipe),
+                    child: _RecipeSummaryTile(
+                      summary: recipe,
+                      onChanged: _retry,
+                    ),
                   ),
               ],
             );
@@ -516,7 +521,10 @@ class _MemoryScreenState extends State<MemoryScreen> {
                 for (final recipe in items)
                   Padding(
                     padding: const EdgeInsets.only(bottom: 10),
-                    child: _RecipeSummaryTile(summary: recipe),
+                    child: _RecipeSummaryTile(
+                      summary: recipe,
+                      onChanged: _retry,
+                    ),
                   ),
               ],
             );
