@@ -34,6 +34,7 @@ dependencies:
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
+  http: ^1.6.0
 
   # 화면이 꺼지거나 앱이 백그라운드일 때도 타이머 종료 시각에 OS가 알림음을
   # 울리도록 로컬 알림을 예약한다. timezone은 zonedSchedule에 필요하다.
