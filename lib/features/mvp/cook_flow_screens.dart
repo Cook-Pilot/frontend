@@ -9,6 +9,7 @@ import '../cooking/application/timer_controller.dart';
 import '../cooking/domain/cooking_session_state.dart';
 import '../cooking/presentation/timer_alarm_provider.dart';
 import '../cooking/presentation/widgets/help_question_sheet.dart';
+import '../recipe/data/recipe_api.dart';
 import '../recipe/domain/recipe.dart';
 import 'main_shell.dart';
 import 'mvp_widgets.dart';
@@ -23,7 +24,40 @@ class RecipeDetailScreen extends StatefulWidget {
 }
 
 class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
+  final RecipeRepository _recipeRepository = RecipeRepository();
+  late bool _isFavorite;
+  bool _savingFavorite = false;
+
   Recipe get recipe => widget.recipe;
+
+  @override
+  void initState() {
+    super.initState();
+    _isFavorite = recipe.favorite;
+  }
+
+  Future<void> _toggleFavorite() async {
+    if (_savingFavorite) return;
+    setState(() => _savingFavorite = true);
+    try {
+      if (_isFavorite) {
+        await _recipeRepository.removeFavorite(recipe.id);
+      } else {
+        await _recipeRepository.addFavorite(recipe.id);
+      }
+      if (!mounted) return;
+      setState(() => _isFavorite = !_isFavorite);
+    } on RecipeApiException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.message)));
+    } finally {
+      if (mounted) {
+        setState(() => _savingFavorite = false);
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -41,6 +75,13 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
               onTap: () => Navigator.of(context).pop(),
             ),
             actions: [
+              _CircleAction(
+                icon: _isFavorite
+                    ? Icons.bookmark_rounded
+                    : Icons.bookmark_outline_rounded,
+                onTap: _savingFavorite ? null : _toggleFavorite,
+              ),
+              const SizedBox(width: 6),
               const _CircleAction(icon: Icons.ios_share_rounded),
               const SizedBox(width: 12),
             ],

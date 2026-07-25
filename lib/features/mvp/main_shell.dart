@@ -83,9 +83,18 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<_HomeCatalog> _loadCatalog() async {
     final summariesRequest = _recipeRepository.findAll();
+    final recentRequest = _recipeRepository.findRecent();
+    final favoritesRequest = _recipeRepository.findFavorites();
     final summaries = await summariesRequest;
+    final recent = await recentRequest;
+    final favorites = await favoritesRequest;
     if (summaries.isEmpty) {
-      return _HomeCatalog(summaries: summaries, featured: null);
+      return _HomeCatalog(
+        summaries: summaries,
+        featured: null,
+        recent: recent,
+        favorites: favorites,
+      );
     }
     Recipe? featured;
     try {
@@ -94,11 +103,21 @@ class _HomeScreenState extends State<HomeScreen> {
       // 추천 상세가 실패해도 조회 가능한 전체 목록은 유지한다.
       featured = null;
     }
-    return _HomeCatalog(summaries: summaries, featured: featured);
+    return _HomeCatalog(
+      summaries: summaries,
+      featured: featured,
+      recent: recent,
+      favorites: favorites,
+    );
   }
 
   void _retry() {
     setState(() => _catalog = _loadCatalog());
+    unawaited(_loadResumableSession());
+  }
+
+  void _refreshHome() {
+    _retry();
     unawaited(_loadResumableSession());
   }
 
@@ -300,16 +319,48 @@ class _HomeScreenState extends State<HomeScreen> {
                                   ),
                                 ),
                               )
-                              .then((_) => _loadResumableSession()),
+                              .then((_) => _refreshHome()),
                         ),
                       ],
+                      const SectionTitle('최근 조리'),
+                      if (catalog.recent.isEmpty)
+                        const _HomeDataEmpty(
+                          icon: Icons.history_rounded,
+                          title: '아직 최근 조리 데이터가 없어요',
+                          body: '첫 요리를 마치고 후기를 남기면 여기에 표시돼요.',
+                        )
+                      else
+                        for (final recipe in catalog.recent.take(3))
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 10),
+                            child: _RecipeSummaryTile(
+                              summary: recipe,
+                              onChanged: _refreshHome,
+                            ),
+                          ),
+                      const SectionTitle('즐겨찾기'),
+                      if (catalog.favorites.isEmpty)
+                        const _HomeDataEmpty(
+                          icon: Icons.bookmark_outline_rounded,
+                          title: '아직 즐겨찾기 데이터가 없어요',
+                          body: '마음에 드는 레시피를 저장하면 바로 모아볼 수 있어요.',
+                        )
+                      else
+                        for (final recipe in catalog.favorites.take(3))
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 10),
+                            child: _RecipeSummaryTile(
+                              summary: recipe,
+                              onChanged: _refreshHome,
+                            ),
+                          ),
                       SectionTitle('전체 레시피 ${catalog.summaries.length}'),
                       for (final recipe in catalog.summaries)
                         Padding(
                           padding: const EdgeInsets.only(bottom: 10),
                           child: _RecipeSummaryTile(
                             summary: recipe,
-                            onReturn: _loadResumableSession,
+                            onChanged: _refreshHome,
                           ),
                         ),
                     ],
@@ -558,10 +609,10 @@ class _ResumeCookingCard extends StatelessWidget {
 }
 
 class _RecipeSummaryTile extends StatelessWidget {
-  const _RecipeSummaryTile({required this.summary, this.onReturn});
+  const _RecipeSummaryTile({required this.summary, this.onChanged});
 
   final RecipeSummary summary;
-  final Future<void> Function()? onReturn;
+  final VoidCallback? onChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -569,14 +620,17 @@ class _RecipeSummaryTile extends StatelessWidget {
       title: summary.title,
       subtitle: summary.description,
       image: summary.imageUrl,
-      trailing: const Icon(Icons.chevron_right_rounded, color: AppColors.muted),
+      trailing: Icon(
+        summary.favorite ? Icons.bookmark_rounded : Icons.chevron_right_rounded,
+        color: summary.favorite ? AppColors.accent : AppColors.muted,
+      ),
       onTap: () async {
         await Navigator.of(context).push(
           MaterialPageRoute<void>(
             builder: (_) => _RecipeDetailLoader(summary: summary),
           ),
         );
-        await onReturn?.call();
+        onChanged?.call();
       },
     );
   }
@@ -691,9 +745,33 @@ class _RecipeEmpty extends StatelessWidget {
   }
 }
 
+class _HomeDataEmpty extends StatelessWidget {
+  const _HomeDataEmpty({
+    required this.icon,
+    required this.title,
+    required this.body,
+  });
+
+  final IconData icon;
+  final String title;
+  final String body;
+
+  @override
+  Widget build(BuildContext context) {
+    return InfoStrip(icon: icon, title: title, body: body);
+  }
+}
+
 class _HomeCatalog {
-  const _HomeCatalog({required this.summaries, required this.featured});
+  const _HomeCatalog({
+    required this.summaries,
+    required this.featured,
+    required this.recent,
+    required this.favorites,
+  });
 
   final List<RecipeSummary> summaries;
   final Recipe? featured;
+  final List<RecipeSummary> recent;
+  final List<RecipeSummary> favorites;
 }
