@@ -35,6 +35,14 @@ X-CookPilot-User-Id: <user UUID>
 정적 `_pendingUser`가 진행 중인 Future를 공유해 익명 사용자 POST 요청이 한 번만 발생하도록 한다.
 요청이 성공하거나 실패하면 Future를 정리해 이후 재시도가 가능하다.
 
+기기에는 사용자 UUID와 별도로 설치 UUID를 먼저 저장한다. 익명 사용자 생성 요청에는
+이 설치 UUID를 `Idempotency-Key` 헤더로 전달한다. 서버가 사용자를 생성한 뒤 응답이
+유실되거나 시간 초과가 발생해도 재시도는 같은 키를 사용하므로 같은 사용자를 돌려받는다.
+
+설치 UUID 또는 발급된 사용자 UUID를 `SharedPreferences`에 저장하지 못하면
+`BetaUserSession`에 사용자를 공개하지 않고 진입을 중단한다. 따라서 재시작 후 잃어버릴
+사용자 ID로 즐겨찾기나 조리 기록을 생성하지 않는다.
+
 ## 주요 변경 파일
 
 - `lib/features/user/data/beta_user_repository.dart`
@@ -60,6 +68,8 @@ X-CookPilot-User-Id: <user UUID>
 ## 검증
 
 - 최초 진입 시 사용자 발급과 UUID 저장
+- 로컬 사용자 UUID 저장 실패 시 세션 미설정
+- 응답 시간 초과 후 재시도 시 동일한 멱등성 키 사용
 - 앱 재진입 시 같은 사용자 복구
 - 동시 호출 시 POST 한 번만 수행
 - `flutter analyze`
