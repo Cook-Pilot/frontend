@@ -379,16 +379,19 @@ class _CookSetupScreenState extends State<CookSetupScreen> {
         Wrap(
           spacing: 8,
           children: [
-            Pill('기본', selected: !widget.recipe.hasPersonalVersion),
-            if (widget.recipe.hasPersonalVersion)
-              const Pill('나 맞춤', selected: true),
+            const Pill('기본', selected: true),
+            if (widget.recipe.hasPersonalVersion) const Pill('나 맞춤 버전 있음'),
           ],
         ),
         const SizedBox(height: 12),
         InfoStrip(
           icon: Icons.auto_awesome_rounded,
-          title: widget.recipe.hasPersonalVersion ? '나 맞춤 버전' : '기본 레시피',
-          body: widget.recipe.memorySummary,
+          title: widget.recipe.hasPersonalVersion
+              ? '이 레시피의 나 맞춤 버전이 있어요'
+              : '기본 레시피',
+          body: widget.recipe.hasPersonalVersion
+              ? '이번 조리는 원본 레시피로 진행해요.'
+              : widget.recipe.memorySummary,
         ),
         const SectionTitle('몇 인분인가요?'),
         Row(
@@ -443,8 +446,7 @@ class _CookSetupScreenState extends State<CookSetupScreen> {
         const SectionTitle('이번 조리 요약'),
         InfoStrip(
           icon: Icons.check_circle_outline_rounded,
-          title:
-              '$servings인분 · ${widget.recipe.hasPersonalVersion ? '나 맞춤' : '기본'}',
+          title: '$servings인분 · 기본',
           body:
               '재료 ${widget.recipe.ingredients.length}개 · 조리 ${widget.recipe.steps.length}단계',
         ),
@@ -671,6 +673,7 @@ class _CookSessionScreenState extends State<CookSessionScreen>
     unawaited(
       _store.save(
         PersistedCookingSession(
+          recipeId: widget.recipe.id,
           recipeTitle: widget.recipe.title,
           servings: widget.servings,
           stepIndex: step - 1,

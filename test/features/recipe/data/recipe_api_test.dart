@@ -167,6 +167,23 @@ void main() {
     );
   });
 
+  test('세션 복원은 저장된 레시피 ID로 상세를 직접 조회한다', () async {
+    final requestedPaths = <String>[];
+    final repository = RecipeRepository(
+      baseUrl: baseUrl,
+      client: MockClient((request) async {
+        requestedPaths.add(request.url.path);
+        return _jsonResponse(_baseRecipeJson);
+      }),
+    );
+
+    final recipe = await repository.findByRecipeId(recipeId);
+
+    expect(requestedPaths, ['/api/v1/recipes/$recipeId']);
+    expect(recipe.id, recipeId);
+    expect(recipe.title, '라면');
+  });
+
   test('서버 오류 상태는 RecipeApiException으로 전달한다', () async {
     final repository = RecipeRepository(
       baseUrl: baseUrl,
@@ -174,6 +191,24 @@ void main() {
     );
 
     expect(repository.findAll(), throwsA(isA<RecipeApiException>()));
+  });
+
+  test('없는 레시피의 404 상태를 복원 정책이 구분할 수 있게 전달한다', () async {
+    final repository = RecipeRepository(
+      baseUrl: baseUrl,
+      client: MockClient((_) async => http.Response('not found', 404)),
+    );
+
+    await expectLater(
+      repository.findByRecipeId(recipeId),
+      throwsA(
+        isA<RecipeApiException>().having(
+          (exception) => exception.statusCode,
+          'statusCode',
+          404,
+        ),
+      ),
+    );
   });
 }
 
@@ -184,3 +219,25 @@ http.Response _jsonResponse(String body) {
     headers: const {'content-type': 'application/json; charset=utf-8'},
   );
 }
+
+const _baseRecipeJson = '''
+  {
+    "id": "10000000-0000-0000-0000-000000000001",
+    "title": "라면",
+    "description": "기본 라면",
+    "baseServings": 1,
+    "imageUrl": null,
+    "ingredients": [
+      {"name": "물", "amount": 500, "unit": "ml", "required": true}
+    ],
+    "steps": [
+      {
+        "stepIndex": 0,
+        "instruction": "물을 끓이세요.",
+        "timerSeconds": 90,
+        "cautionNote": null,
+        "imageUrl": null
+      }
+    ]
+  }
+''';

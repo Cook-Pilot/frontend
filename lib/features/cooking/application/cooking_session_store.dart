@@ -14,6 +14,7 @@ import 'timer_controller.dart';
 @immutable
 final class PersistedCookingSession {
   const PersistedCookingSession({
+    this.recipeId,
     required this.recipeTitle,
     required this.servings,
     required this.stepIndex,
@@ -25,6 +26,7 @@ final class PersistedCookingSession {
     required this.savedAtEpochMs,
   });
 
+  final String? recipeId;
   final String recipeTitle;
   final int servings;
   final int stepIndex;
@@ -62,19 +64,44 @@ final class PersistedCookingSession {
     );
   }
 
-  Map<String, Object> toJson() => <String, Object>{
-    'recipeTitle': recipeTitle,
-    'servings': servings,
-    'stepIndex': stepIndex,
-    'sessionStatus': sessionStatus,
-    'timerOriginalMs': timerOriginalMs,
-    'timerEffectiveMs': timerEffectiveMs,
-    'timerRemainingMs': timerRemainingMs,
-    'timerStatus': timerStatus,
-    'savedAtEpochMs': savedAtEpochMs,
-  };
+  PersistedCookingSession copyWith({String? recipeId, String? recipeTitle}) {
+    return PersistedCookingSession(
+      recipeId: recipeId ?? this.recipeId,
+      recipeTitle: recipeTitle ?? this.recipeTitle,
+      servings: servings,
+      stepIndex: stepIndex,
+      sessionStatus: sessionStatus,
+      timerOriginalMs: timerOriginalMs,
+      timerEffectiveMs: timerEffectiveMs,
+      timerRemainingMs: timerRemainingMs,
+      timerStatus: timerStatus,
+      savedAtEpochMs: savedAtEpochMs,
+    );
+  }
+
+  Map<String, Object> toJson() {
+    final json = <String, Object>{
+      'recipeTitle': recipeTitle,
+      'servings': servings,
+      'stepIndex': stepIndex,
+      'sessionStatus': sessionStatus,
+      'timerOriginalMs': timerOriginalMs,
+      'timerEffectiveMs': timerEffectiveMs,
+      'timerRemainingMs': timerRemainingMs,
+      'timerStatus': timerStatus,
+      'savedAtEpochMs': savedAtEpochMs,
+    };
+    if (recipeId != null) {
+      json['recipeId'] = recipeId!;
+    }
+    return json;
+  }
 
   static PersistedCookingSession? fromJson(Map<String, Object?> json) {
+    final recipeId = json['recipeId'];
+    if (recipeId != null && recipeId is! String) {
+      return null;
+    }
     if (json case {
       'recipeTitle': final String recipeTitle,
       'servings': final int servings,
@@ -87,6 +114,7 @@ final class PersistedCookingSession {
       'savedAtEpochMs': final int savedAtEpochMs,
     }) {
       return PersistedCookingSession(
+        recipeId: recipeId as String?,
         recipeTitle: recipeTitle,
         servings: servings,
         stepIndex: stepIndex,

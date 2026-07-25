@@ -48,6 +48,7 @@ void main() {
     int timerRemainingMs = 90 * 1000,
   }) {
     return PersistedCookingSession(
+      recipeId: recipe.id,
       recipeTitle: recipe.title,
       servings: 2,
       stepIndex: stepIndex,
@@ -150,7 +151,8 @@ void main() {
 
       final saved = await store.load();
       expect(saved, isNotNull);
-      expect(saved!.recipeTitle, recipe.title);
+      expect(saved!.recipeId, recipe.id);
+      expect(saved.recipeTitle, recipe.title);
       expect(saved.stepIndex, 0);
       expect(saved.isResumable, isTrue);
     });

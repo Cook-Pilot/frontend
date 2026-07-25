@@ -115,27 +115,32 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
 
+    final storedRecipeId = session.recipeId;
     try {
-      final summaries = await _recipeRepository.findAll();
-      RecipeSummary? matchingSummary;
-      for (final summary in summaries) {
-        if (summary.title == session.recipeTitle) {
-          matchingSummary = summary;
-          break;
+      var restoredSession = session;
+      final Recipe recipe;
+      final recipeId = storedRecipeId;
+      if (recipeId != null && recipeId.isNotEmpty) {
+        recipe = await _recipeRepository.findByRecipeId(recipeId);
+      } else {
+        final summaries = await _recipeRepository.findAll();
+        final matches = summaries
+            .where((summary) => summary.title == session.recipeTitle)
+            .toList(growable: false);
+        if (matches.length != 1) {
+          if (matches.isEmpty) {
+            await _sessionStore.clear();
+          }
+          if (mounted) {
+            setState(() {
+              _resumableSession = null;
+              _resumableRecipe = null;
+            });
+          }
+          return;
         }
+        recipe = await _recipeRepository.findById(matches.single);
       }
-      if (matchingSummary == null) {
-        await _sessionStore.clear();
-        if (mounted) {
-          setState(() {
-            _resumableSession = null;
-            _resumableRecipe = null;
-          });
-        }
-        return;
-      }
-
-      final recipe = await _recipeRepository.findById(matchingSummary);
       if (recipe.steps.isEmpty) {
         await _sessionStore.clear();
         if (mounted) {
@@ -146,13 +151,34 @@ class _HomeScreenState extends State<HomeScreen> {
         }
         return;
       }
+      if (session.recipeId != recipe.id ||
+          session.recipeTitle != recipe.title) {
+        restoredSession = session.copyWith(
+          recipeId: recipe.id,
+          recipeTitle: recipe.title,
+        );
+        await _sessionStore.save(restoredSession);
+      }
       if (!mounted) {
         return;
       }
       setState(() {
-        _resumableSession = session;
+        _resumableSession = restoredSession;
         _resumableRecipe = recipe;
       });
+    } on RecipeApiException catch (error) {
+      if (storedRecipeId == null ||
+          storedRecipeId.isEmpty ||
+          error.statusCode != 404) {
+        return;
+      }
+      await _sessionStore.clear();
+      if (mounted) {
+        setState(() {
+          _resumableSession = null;
+          _resumableRecipe = null;
+        });
+      }
     } on Object {
       // 서버가 잠시 불안정할 때는 복원 가능한 로컬 세션을 삭제하지 않는다.
     }

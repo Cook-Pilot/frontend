@@ -36,9 +36,10 @@ class RecipeSummary {
 }
 
 class RecipeApiException implements Exception {
-  const RecipeApiException(this.message);
+  const RecipeApiException(this.message, {this.statusCode});
 
   final String message;
+  final int? statusCode;
 
   @override
   String toString() => message;
@@ -66,6 +67,19 @@ class RecipeRepository {
     return decoded
         .map((item) => RecipeSummary.fromJson(item as Map<String, dynamic>))
         .toList(growable: false);
+  }
+
+  Future<Recipe> findByRecipeId(String recipeId) {
+    return findById(
+      RecipeSummary(
+        id: recipeId,
+        title: '',
+        description: '',
+        imageUrl: '',
+        hasPersonalVersion: false,
+        latestPersonalVersionId: null,
+      ),
+    );
   }
 
   Future<Recipe> findById(RecipeSummary summary) async {
@@ -112,7 +126,10 @@ class RecipeRepository {
         .get(uri, headers: BetaUserSession.requestHeaders)
         .timeout(const Duration(seconds: 8));
     if (response.statusCode != 200) {
-      throw RecipeApiException('서버 요청에 실패했습니다. (${response.statusCode})');
+      throw RecipeApiException(
+        '서버 요청에 실패했습니다. (${response.statusCode})',
+        statusCode: response.statusCode,
+      );
     }
     return response;
   }
