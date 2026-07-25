@@ -15,6 +15,19 @@ void main() {
     BetaUserSession.clear();
   });
 
+  test('사용자 세션이 없으면 개인화 요청 헤더 생성을 거부한다', () {
+    expect(
+      () => BetaUserSession.requestHeaders,
+      throwsA(
+        isA<BetaUserException>().having(
+          (exception) => exception.message,
+          'message',
+          contains('세션이 준비되지 않았습니다'),
+        ),
+      ),
+    );
+  });
+
   test('처음 진입하면 익명 사용자를 발급하고 ID를 저장한다', () async {
     final repository = BetaUserRepository(
       baseUrl: baseUrl,
@@ -95,6 +108,146 @@ void main() {
     expect(storage.userId, isNull);
   });
 
+  test('정확한 USER_NOT_FOUND 응답일 때만 기존 사용자를 복구한다', () async {
+    const installationId = '91000000-0000-4000-8000-000000000001';
+    final storage = _MemoryBetaUserStorage(
+      userId: '90000000-0000-0000-0000-000000000099',
+      installationId: installationId,
+    );
+    var requestCount = 0;
+    final repository = BetaUserRepository(
+      baseUrl: baseUrl,
+      storage: storage,
+      client: MockClient((request) async {
+        requestCount++;
+        if (request.method == 'GET') {
+          return _problemResponse(404, 'USER_NOT_FOUND');
+        }
+        expect(storage.userId, '90000000-0000-0000-0000-000000000099');
+        expect(request.headers[anonymousUserIdempotencyHeader], installationId);
+        return _userResponse(201);
+      }),
+    );
+
+    final user = await repository.ensureUser();
+
+    expect(requestCount, 2);
+    expect(user.id, userId);
+    expect(storage.userId, userId);
+    expect(storage.installationId, installationId);
+  });
+
+  test('경로 오류 형태의 일반 404는 기존 사용자 ID를 유지한다', () async {
+    const savedId = '90000000-0000-0000-0000-000000000099';
+    final storage = _MemoryBetaUserStorage(userId: savedId);
+    var requestCount = 0;
+    final repository = BetaUserRepository(
+      baseUrl: baseUrl,
+      storage: storage,
+      client: MockClient((_) async {
+        requestCount++;
+        return http.Response('route not found', 404);
+      }),
+    );
+
+    await expectLater(
+      repository.ensureUser(),
+      throwsA(isA<BetaUserException>()),
+    );
+
+    expect(requestCount, 1);
+    expect(storage.userId, savedId);
+    expect(BetaUserSession.currentUser, isNull);
+  });
+
+  test('사용자 복구 POST가 실패해도 기존 사용자와 설치 ID를 유지한다', () async {
+    const savedId = '90000000-0000-0000-0000-000000000099';
+    const installationId = '91000000-0000-4000-8000-000000000001';
+    final storage = _MemoryBetaUserStorage(
+      userId: savedId,
+      installationId: installationId,
+    );
+    final repository = BetaUserRepository(
+      baseUrl: baseUrl,
+      storage: storage,
+      client: MockClient((request) async {
+        if (request.method == 'GET') {
+          return _problemResponse(404, 'USER_NOT_FOUND');
+        }
+        return http.Response('temporary failure', 503);
+      }),
+    );
+
+    await expectLater(
+      repository.ensureUser(),
+      throwsA(isA<BetaUserException>()),
+    );
+
+    expect(storage.userId, savedId);
+    expect(storage.installationId, installationId);
+    expect(BetaUserSession.currentUser, isNull);
+  });
+
+  for (final damagedId in ['', 'broken-id', '90000000-0000-0000']) {
+    test('손상된 사용자 ID "$damagedId"는 GET 없이 복구한다', () async {
+      const installationId = '91000000-0000-4000-8000-000000000001';
+      final storage = _MemoryBetaUserStorage(
+        userId: damagedId,
+        installationId: installationId,
+      );
+      var getCount = 0;
+      var postCount = 0;
+      final repository = BetaUserRepository(
+        baseUrl: baseUrl,
+        storage: storage,
+        client: MockClient((request) async {
+          if (request.method == 'GET') {
+            getCount++;
+          } else {
+            postCount++;
+          }
+          return _userResponse(201);
+        }),
+      );
+
+      await repository.ensureUser();
+
+      expect(getCount, 0);
+      expect(postCount, 1);
+      expect(storage.userId, userId);
+      expect(storage.installationId, installationId);
+    });
+  }
+
+  test('복구된 사용자 ID 저장 실패 시 기존 ID와 설치 ID를 유지한다', () async {
+    const savedId = '90000000-0000-0000-0000-000000000099';
+    const installationId = '91000000-0000-4000-8000-000000000001';
+    final storage = _MemoryBetaUserStorage(
+      userId: savedId,
+      installationId: installationId,
+      userIdWriteSucceeds: false,
+    );
+    final repository = BetaUserRepository(
+      baseUrl: baseUrl,
+      storage: storage,
+      client: MockClient((request) async {
+        if (request.method == 'GET') {
+          return _problemResponse(404, 'USER_NOT_FOUND');
+        }
+        return _userResponse(201);
+      }),
+    );
+
+    await expectLater(
+      repository.ensureUser(),
+      throwsA(isA<BetaUserException>()),
+    );
+
+    expect(storage.userId, savedId);
+    expect(storage.installationId, installationId);
+    expect(BetaUserSession.currentUser, isNull);
+  });
+
   test('응답 시간 초과 후 재시도해도 같은 멱등성 키를 전송한다', () async {
     var postCount = 0;
     final idempotencyKeys = <String>[];
@@ -127,7 +280,11 @@ void main() {
 }
 
 class _MemoryBetaUserStorage implements BetaUserStorage {
-  _MemoryBetaUserStorage({this.userIdWriteSucceeds = true});
+  _MemoryBetaUserStorage({
+    this.userIdWriteSucceeds = true,
+    this.userId,
+    this.installationId,
+  });
 
   final bool userIdWriteSucceeds;
   String? userId;
@@ -141,13 +298,6 @@ class _MemoryBetaUserStorage implements BetaUserStorage {
     if (!userIdWriteSucceeds) return false;
     this.userId = userId;
     return true;
-  }
-
-  @override
-  Future<bool> removeUserId() async {
-    final existed = userId != null;
-    userId = null;
-    return existed;
   }
 
   @override
@@ -173,5 +323,13 @@ http.Response _userResponse(int statusCode) {
     ''',
     statusCode,
     headers: const {'content-type': 'application/json; charset=utf-8'},
+  );
+}
+
+http.Response _problemResponse(int statusCode, String code) {
+  return http.Response(
+    '{"status": $statusCode, "code": "$code"}',
+    statusCode,
+    headers: const {'content-type': 'application/problem+json'},
   );
 }

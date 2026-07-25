@@ -24,7 +24,7 @@ class BetaUser {
     final displayName = json['displayName'];
     final betaNumber = json['betaNumber'];
     if (id is! String ||
-        id.isEmpty ||
+        !_isUuid(id) ||
         displayName is! String ||
         betaNumber is! num) {
       throw const BetaUserException('사용자 발급 응답 형식이 올바르지 않습니다.');
@@ -58,7 +58,10 @@ class BetaUserSession {
 
   static Map<String, String> get requestHeaders {
     final id = userId;
-    return id == null ? const {} : {cookPilotUserIdHeader: id};
+    if (id == null) {
+      throw const BetaUserException('베타 사용자 세션이 준비되지 않았습니다.');
+    }
+    return {cookPilotUserIdHeader: id};
   }
 
   static void setCurrentUser(BetaUser user) {
@@ -74,8 +77,6 @@ abstract interface class BetaUserStorage {
   Future<String?> readUserId();
 
   Future<bool> writeUserId(String userId);
-
-  Future<bool> removeUserId();
 
   Future<String?> readInstallationId();
 
@@ -95,11 +96,6 @@ class SharedPreferencesBetaUserStorage implements BetaUserStorage {
   @override
   Future<bool> writeUserId(String userId) async {
     return (await _preferences()).setString(_userIdStorageKey, userId);
-  }
-
-  @override
-  Future<bool> removeUserId() async {
-    return (await _preferences()).remove(_userIdStorageKey);
   }
 
   @override
@@ -152,13 +148,12 @@ class BetaUserRepository {
 
   Future<BetaUser> _ensureUser() async {
     final savedId = await _storage.readUserId();
-    if (savedId != null && savedId.isNotEmpty) {
+    if (savedId != null && _isUuid(savedId)) {
       final savedUser = await _findSavedUser(savedId);
       if (savedUser != null) {
         BetaUserSession.setCurrentUser(savedUser);
         return savedUser;
       }
-      await _storage.removeUserId();
     }
 
     final installationId = await _ensureInstallationId();
@@ -193,7 +188,7 @@ class BetaUserRepository {
         )
         .timeout(requestTimeout);
 
-    if (response.statusCode == 404) return null;
+    if (_isUserNotFoundResponse(response)) return null;
     if (response.statusCode != 200) {
       throw BetaUserException(
         '저장된 사용자 정보를 확인하지 못했습니다. (${response.statusCode})',
@@ -224,11 +219,17 @@ class BetaUserRepository {
     return BetaUser.fromJson(decoded);
   }
 
-  bool _isUuid(String value) {
-    return RegExp(
-      r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-'
-      r'[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$',
-    ).hasMatch(value);
+  bool _isUserNotFoundResponse(http.Response response) {
+    if (response.statusCode != 404) {
+      return false;
+    }
+    try {
+      final decoded = jsonDecode(response.body);
+      return decoded is Map<String, dynamic> &&
+          decoded['code'] == 'USER_NOT_FOUND';
+    } on FormatException {
+      return false;
+    }
   }
 
   String _generateUuidV4() {
@@ -243,4 +244,11 @@ class BetaUserRepository {
         '${hex.substring(12, 16)}-${hex.substring(16, 20)}-'
         '${hex.substring(20)}';
   }
+}
+
+bool _isUuid(String value) {
+  return RegExp(
+    r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-'
+    r'[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$',
+  ).hasMatch(value);
 }
