@@ -935,27 +935,16 @@ class _CookSessionScreenState extends State<CookSessionScreen>
               ),
             ),
             const SizedBox(height: 14),
-            const InfoStrip(
-              icon: Icons.mic_rounded,
-              title: '"얼마나 익었나요?"',
-              body: '말하면 익힘 상태를 확인하고 다음 행동을 안내해요.',
-            ),
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                const Pill('재료 문제'),
-                const Pill('반복'),
-                const Pill('타이머'),
-                PressableScale(
-                  child: GestureDetector(
-                    key: const Key('help-request'),
-                    onTap: _openHelpSheet,
-                    child: const Pill('도움', selected: true),
-                  ),
+            PressableScale(
+              child: GestureDetector(
+                key: const Key('help-request'),
+                onTap: _openHelpSheet,
+                child: const InfoStrip(
+                  icon: Icons.mic_rounded,
+                  title: '"얼마나 익었나요?"',
+                  body: '말하면 익힘 상태를 확인하고 다음 행동을 안내해요. 눌러서 질문을 입력할 수도 있어요.',
                 ),
-              ],
+              ),
             ),
             if (_helpLoading) ...[
               const SizedBox(height: 12),
