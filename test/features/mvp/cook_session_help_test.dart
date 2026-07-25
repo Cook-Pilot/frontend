@@ -1,6 +1,6 @@
 import 'package:cookpilot/features/cooking/application/cooking_ports.dart';
 import 'package:cookpilot/features/mvp/cook_flow_screens.dart';
-import 'package:cookpilot/features/mvp/mock_data.dart';
+import 'package:cookpilot/features/recipe/domain/recipe.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -8,6 +8,25 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../helpers/cooking_fakes.dart';
 
 void main() {
+  const recipe = Recipe(
+    id: '10000000-0000-0000-0000-000000000001',
+    title: '도움 질문 테스트 레시피',
+    description: '도움 질문 흐름을 검증한다.',
+    baseServings: 2,
+    imageUrl: '',
+    ingredients: <Ingredient>[],
+    steps: <CookStep>[
+      CookStep(
+        stepIndex: 0,
+        instruction: '물을 끓이세요.',
+        timerSeconds: 180,
+        cautionNote: null,
+        imageUrl: '',
+      ),
+    ],
+    hasPersonalVersion: false,
+  );
+
   setUp(() {
     SharedPreferences.setMockInitialValues(<String, Object>{});
   });
@@ -19,7 +38,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: CookSessionScreen(
-          recipe: recipes.first,
+          recipe: recipe,
           servings: 2,
           alarm: const SilentTimerAlarm(),
           advicePort: advicePort,
@@ -49,7 +68,7 @@ void main() {
     final context = advice.requests.single;
     expect(context.utterance, '물이 안 끓어요');
     expect(context.stepIndex, 0);
-    expect(context.instruction, recipes.first.steps.first.description);
+    expect(context.instruction, recipe.steps.first.description);
     expect(find.textContaining('30초'), findsOneWidget);
   });
 
