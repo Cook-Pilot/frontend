@@ -39,6 +39,8 @@ final class CookingSessionController extends ChangeNotifier {
     Duration voiceStopTimeout = const Duration(seconds: 2),
     Duration voicePlaybackTimeout = const Duration(seconds: 45),
     String? sessionId,
+    int initialStepIndex = 0,
+    StepTimerSnapshot? initialTimerSnapshot,
   }) : assert(steps.isNotEmpty),
        assert(voiceStopTimeout > Duration.zero),
        assert(voicePlaybackTimeout > Duration.zero),
@@ -55,23 +57,36 @@ final class CookingSessionController extends ChangeNotifier {
        _voicePlaybackTimeout = voicePlaybackTimeout,
        _wallClock = wallClock ?? DateTime.now,
        _commandClock = commandClock ?? _readProcessMonotonicTime {
+    // 저장된 세션 복원 진입점. 손상된 저장값이 들어와도 범위 안으로 보정한다.
+    final startIndex = initialStepIndex < 0
+        ? 0
+        : initialStepIndex >= _steps.length
+        ? _steps.length - 1
+        : initialStepIndex;
+    final isRestored = startIndex != 0 || initialTimerSnapshot != null;
+    if (initialTimerSnapshot != null) {
+      _timerSnapshots[startIndex] = initialTimerSnapshot;
+    }
     _state = CookingUiState(
       sessionId:
           sessionId ??
           'local-${_wallClock().microsecondsSinceEpoch.toString()}',
-      stepIndex: 0,
+      stepIndex: startIndex,
       sessionStatus: CookingSessionStatus.cooking,
       voicePhase: VoicePhase.listening,
       requestContextVersion: 0,
-      lastCommandMessage: '조리를 시작했어요.',
+      lastCommandMessage: isRestored ? '이어서 조리를 시작해요.' : '조리를 시작했어요.',
     );
     _timer.addListener(_handleTimerChanged);
     _record(
       source: CommandSource.system,
-      command: 'session_started',
+      command: isRestored ? 'session_restored' : 'session_started',
       result: 'success',
     );
-    _activateStep(0);
+    _activateStep(startIndex);
+    if (_timer.status == TimerStatus.paused) {
+      _state = _state.copyWith(sessionStatus: CookingSessionStatus.paused);
+    }
   }
 
   final String _recipeId;
