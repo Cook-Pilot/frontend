@@ -120,7 +120,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _refreshHome() {
     _retry();
-    unawaited(_loadResumableSession());
   }
 
   Future<void> _loadResumableSession() async {
@@ -617,10 +616,10 @@ class _ResumeCookingCard extends StatelessWidget {
 }
 
 class _RecipeSummaryTile extends StatelessWidget {
-  const _RecipeSummaryTile({required this.summary, this.onChanged});
+  const _RecipeSummaryTile({required this.summary, required this.onChanged});
 
   final RecipeSummary summary;
-  final VoidCallback? onChanged;
+  final VoidCallback onChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -638,7 +637,7 @@ class _RecipeSummaryTile extends StatelessWidget {
             builder: (_) => _RecipeDetailLoader(summary: summary),
           ),
         );
-        onChanged?.call();
+        onChanged();
       },
     );
   }
