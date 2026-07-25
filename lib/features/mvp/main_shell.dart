@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../app/app_theme.dart';
+import '../cooking/application/cooking_session_store.dart';
 import 'cook_flow_screens.dart';
 import 'mock_data.dart';
 import 'mvp_widgets.dart';
@@ -51,14 +54,74 @@ class _MainShellState extends State<MainShell> {
   }
 }
 
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
+
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  final CookingSessionStore _sessionStore = const CookingSessionStore();
+
+  PersistedCookingSession? _resumableSession;
 
   String get _greeting {
     final hour = DateTime.now().hour;
     if (hour < 11) return '좋은 아침이에요';
     if (hour < 17) return '점심은 챙기셨나요?';
     return '오늘 저녁, 뭐 해먹을까요?';
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_loadResumableSession());
+  }
+
+  /// 저장된 조리 세션이 있으면 복귀 배너를 띄운다.
+  /// 레시피를 찾을 수 없는 저장본은 복원할 수 없으므로 정리한다.
+  Future<void> _loadResumableSession() async {
+    final session = await _sessionStore.load();
+    if (!mounted) {
+      return;
+    }
+    if (session == null || !session.isResumable || _findRecipe(session) == null) {
+      if (session != null) {
+        unawaited(_sessionStore.clear());
+      }
+      setState(() => _resumableSession = null);
+      return;
+    }
+    setState(() => _resumableSession = session);
+  }
+
+  Recipe? _findRecipe(PersistedCookingSession session) {
+    for (final recipe in recipes) {
+      if (recipe.title == session.recipeTitle && recipe.steps.isNotEmpty) {
+        return recipe;
+      }
+    }
+    return null;
+  }
+
+  Future<void> _resumeCooking(PersistedCookingSession session) async {
+    final recipe = _findRecipe(session);
+    if (recipe == null) {
+      return;
+    }
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => CookSessionScreen(
+          recipe: recipe,
+          servings: session.servings,
+          restoredSession: session,
+        ),
+      ),
+    );
+    if (mounted) {
+      unawaited(_loadResumableSession());
+    }
   }
 
   @override
@@ -113,6 +176,16 @@ class HomeScreen extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 18),
+            // 진행 중이던 조리 세션 복귀 배너
+            if (_resumableSession case final PersistedCookingSession session) ...[
+              _ResumeCookingCard(
+                session: session,
+                stepCount:
+                    _findRecipe(session)?.steps.length ?? session.stepIndex + 1,
+                onTap: () => unawaited(_resumeCooking(session)),
+              ),
+              const SizedBox(height: 16),
+            ],
             // 검색 필드
             TextField(
               readOnly: true,
@@ -137,22 +210,22 @@ class HomeScreen extends StatelessWidget {
             SectionTitle('오늘의 메뉴', onMore: () {}),
             RecipeHeroCard(
               recipe: tofuRecipe,
-              onTap: () => _openDetail(context, tofuRecipe),
+              onTap: () => unawaited(_openDetail(context, tofuRecipe)),
             ),
             SectionTitle('최근 조리', onMore: () {}),
             _CardCarousel(
               items: recentCooked,
-              onTap: () => _openDetail(context, tofuRecipe),
+              onTap: () => unawaited(_openDetail(context, tofuRecipe)),
             ),
             SectionTitle('즐겨찾기', onMore: () {}),
             _CardCarousel(
               items: favorites,
-              onTap: () => _openDetail(context, tofuRecipe),
+              onTap: () => unawaited(_openDetail(context, tofuRecipe)),
             ),
             SectionTitle('오늘 뭐 먹지?', onMore: () {}),
             _CardCarousel(
               items: todayPicks,
-              onTap: () => _openDetail(context, tofuRecipe),
+              onTap: () => unawaited(_openDetail(context, tofuRecipe)),
             ),
           ],
         ),
@@ -160,12 +233,15 @@ class HomeScreen extends StatelessWidget {
     );
   }
 
-  void _openDetail(BuildContext context, Recipe recipe) {
-    Navigator.of(context).push(
+  Future<void> _openDetail(BuildContext context, Recipe recipe) async {
+    await Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => RecipeDetailScreen(recipe: recipe),
       ),
     );
+    if (mounted) {
+      unawaited(_loadResumableSession());
+    }
   }
 }
 
@@ -262,6 +338,77 @@ class MemoryScreen extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// 진행 중이던 조리 세션으로 되돌아가는 홈 상단 배너.
+class _ResumeCookingCard extends StatelessWidget {
+  const _ResumeCookingCard({
+    required this.session,
+    required this.stepCount,
+    required this.onTap,
+  });
+
+  final PersistedCookingSession session;
+  final int stepCount;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return PressableScale(
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: AppColors.accentSoft,
+            borderRadius: BorderRadius.circular(AppShape.container),
+            border: Border.all(color: AppColors.accent),
+          ),
+          child: Row(
+            children: [
+              const Icon(
+                Icons.play_circle_fill_rounded,
+                color: AppColors.accent,
+                size: 34,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      '이어서 조리하기',
+                      style: TextStyle(
+                        color: AppColors.ink,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 15,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '${session.recipeTitle} · '
+                      '${session.stepIndex + 1}/$stepCount단계 · '
+                      '${session.servings}인분',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: AppColors.slate,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(
+                Icons.chevron_right_rounded,
+                color: AppColors.muted,
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

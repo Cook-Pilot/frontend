@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../app/app_theme.dart';
 import '../cooking/application/cooking_ports.dart';
+import '../cooking/application/cooking_session_store.dart';
 import '../cooking/application/timer_controller.dart';
 import '../cooking/domain/cooking_session_state.dart';
 import '../cooking/presentation/timer_alarm_provider.dart';
@@ -519,10 +520,18 @@ class CookSessionScreen extends StatefulWidget {
     super.key,
     required this.recipe,
     required this.servings,
+    this.restoredSession,
+    this.alarm,
   });
 
   final Recipe recipe;
   final int servings;
+
+  /// 홈의 "이어서 조리하기"로 진입할 때 전달되는 저장 세션.
+  final PersistedCookingSession? restoredSession;
+
+  /// 테스트에서 플랫폼 알림 초기화를 대체하기 위한 주입 지점.
+  final TimerAlarmPort? alarm;
 
   @override
   State<CookSessionScreen> createState() => _CookSessionScreenState();
@@ -530,6 +539,8 @@ class CookSessionScreen extends StatefulWidget {
 
 class _CookSessionScreenState extends State<CookSessionScreen>
     with WidgetsBindingObserver {
+  final CookingSessionStore _store = const CookingSessionStore();
+
   int step = 1;
 
   // 원래 디자인은 그대로 두고 시계(타이머)만 실제로 동작시킨다.
@@ -538,20 +549,48 @@ class _CookSessionScreenState extends State<CookSessionScreen>
   TimerAlarmPort? _alarm;
   TimerStatus _lastStatus = TimerStatus.idle;
 
+  // 마지막으로 저장한 상태. 타이머가 틱마다 알림을 보내므로 의미 있는
+  // 변화(단계·타이머 상태·연장)가 있을 때만 저장한다. 남은 시간은 저장
+  // 시각과 함께 기록해 복원 시 재계산하므로 매 틱 저장이 필요 없다.
+  int? _persistedStep;
+  TimerStatus? _persistedTimerStatus;
+  Duration? _persistedTimerEffective;
+
+  // 조리 완료 후 화면 전환 중에도 타이머 콜백이 살아 있으므로,
+  // 정리한 저장본을 다시 쓰지 않도록 완료 이후에는 저장을 막는다.
+  bool _completed = false;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _timer.addListener(_onTimerChanged);
-    _resetTimerForStep();
+    final restored = widget.restoredSession;
+    if (restored == null) {
+      _resetTimerForStep();
+    } else {
+      // 손상된 저장값이 들어와도 단계 범위 안으로 보정한다.
+      final restoredStep = restored.stepIndex + 1;
+      step = restoredStep < 1
+          ? 1
+          : restoredStep > widget.recipe.steps.length
+          ? widget.recipe.steps.length
+          : restoredStep;
+      // 저장 이후 흐른 시간이 차감된 스냅샷으로 타이머를 되살린다.
+      _timer.restore(restored.timerSnapshotAt(DateTime.now()));
+      _lastStatus = _timer.status;
+    }
     unawaited(_initAlarm());
+    _persist();
   }
 
   Future<void> _initAlarm() async {
     // 백그라운드 알림용 로컬 알림을 한 번 초기화(권한 요청 포함)한다.
-    final alarm = await resolveTimerAlarm();
+    final alarm = widget.alarm ?? await resolveTimerAlarm();
     if (mounted) {
       _alarm = alarm;
+      // 복원된 타이머가 이미 실행 중이면 종료 알림을 다시 예약한다.
+      _scheduleAlarm();
     }
   }
 
@@ -579,6 +618,37 @@ class _CookSessionScreenState extends State<CookSessionScreen>
       unawaited(_alarm?.cancelScheduledAlarm() ?? Future<void>.value());
     }
     _lastStatus = status;
+    _persist();
+  }
+
+  void _persist() {
+    if (_completed) {
+      return;
+    }
+    if (step == _persistedStep &&
+        _timer.status == _persistedTimerStatus &&
+        _timer.effectiveDuration == _persistedTimerEffective) {
+      return;
+    }
+    _persistedStep = step;
+    _persistedTimerStatus = _timer.status;
+    _persistedTimerEffective = _timer.effectiveDuration;
+    final snapshot = _timer.snapshot();
+    unawaited(
+      _store.save(
+        PersistedCookingSession(
+          recipeTitle: widget.recipe.title,
+          servings: widget.servings,
+          stepIndex: step - 1,
+          sessionStatus: CookingSessionStatus.cooking.name,
+          timerOriginalMs: snapshot.originalDuration.inMilliseconds,
+          timerEffectiveMs: snapshot.effectiveDuration.inMilliseconds,
+          timerRemainingMs: snapshot.remaining.inMilliseconds,
+          timerStatus: snapshot.status.name,
+          savedAtEpochMs: DateTime.now().millisecondsSinceEpoch,
+        ),
+      ),
+    );
   }
 
   void _resetTimerForStep() {
@@ -823,6 +893,9 @@ class _CookSessionScreenState extends State<CookSessionScreen>
           child: FilledButton(
             onPressed: () {
               if (isLast) {
+                // 완료된 세션은 복원 대상이 아니므로 저장본을 정리한다.
+                _completed = true;
+                unawaited(_store.clear());
                 Navigator.of(context).pushReplacement(
                   MaterialPageRoute<void>(
                     builder: (_) => ReviewScreen(recipe: widget.recipe),
@@ -831,6 +904,7 @@ class _CookSessionScreenState extends State<CookSessionScreen>
               } else {
                 setState(() => step++);
                 _resetTimerForStep();
+                _persist();
               }
             },
             child: Text(isLast ? '조리 완료' : '다음 단계'),
