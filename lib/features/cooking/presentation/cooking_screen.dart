@@ -10,6 +10,7 @@ import '../domain/cooking_session_state.dart';
 import 'widgets/cooking_top_bar.dart';
 import 'widgets/current_action_section.dart';
 import 'widgets/exception_feedback_banner.dart';
+import 'widgets/help_question_sheet.dart';
 import 'widgets/quick_command_deck.dart';
 import 'widgets/session_action_bar.dart';
 import 'widgets/step_media.dart';
@@ -200,12 +201,7 @@ final class _CookingScreenState extends State<CookingScreen>
   }
 
   Future<void> _openHelpSheet() async {
-    final question = await showModalBottomSheet<String>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      builder: (context) => const _HelpQuestionSheet(),
-    );
+    final question = await HelpQuestionSheet.show(context);
     if (question == null || !mounted) {
       return;
     }
@@ -303,83 +299,5 @@ final class _CookingScreenState extends State<CookingScreen>
       ),
     );
     return result ?? false;
-  }
-}
-
-final class _HelpQuestionSheet extends StatefulWidget {
-  const _HelpQuestionSheet();
-
-  @override
-  State<_HelpQuestionSheet> createState() => _HelpQuestionSheetState();
-}
-
-final class _HelpQuestionSheetState extends State<_HelpQuestionSheet> {
-  final TextEditingController _question = TextEditingController();
-
-  @override
-  void dispose() {
-    _question.dispose();
-    super.dispose();
-  }
-
-  void _submit() {
-    final question = _question.text.trim();
-    if (question.isEmpty) {
-      return;
-    }
-    Navigator.of(context).pop(question);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final textTheme = Theme.of(context).textTheme;
-    return Padding(
-      padding: EdgeInsets.fromLTRB(
-        CookPilotSpacing.lg,
-        CookPilotSpacing.lg,
-        CookPilotSpacing.lg,
-        CookPilotSpacing.lg + MediaQuery.viewInsetsOf(context).bottom,
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: <Widget>[
-          Text('무엇이 문제인가요?', style: textTheme.titleMedium),
-          const SizedBox(height: CookPilotSpacing.xs),
-          Text(
-            '현재 단계에 맞춰 대처 방법을 알려드려요.',
-            style: textTheme.bodyMedium?.copyWith(
-              color: CookPilotColors.neutralMuted,
-            ),
-          ),
-          const SizedBox(height: CookPilotSpacing.md),
-          TextField(
-            key: const Key('help-question-field'),
-            controller: _question,
-            autofocus: true,
-            textInputAction: TextInputAction.send,
-            onSubmitted: (_) => _submit(),
-            decoration: const InputDecoration(
-              hintText: '예: 물이 안 끓어요',
-              border: OutlineInputBorder(),
-            ),
-          ),
-          const SizedBox(height: CookPilotSpacing.md),
-          ValueListenableBuilder<TextEditingValue>(
-            valueListenable: _question,
-            builder: (context, value, _) => FilledButton(
-              key: const Key('help-question-submit'),
-              onPressed: value.text.trim().isEmpty ? null : _submit,
-              style: FilledButton.styleFrom(
-                minimumSize: const Size.fromHeight(
-                  CookPilotSpacing.sessionActionHeight,
-                ),
-              ),
-              child: const Text('질문하기'),
-            ),
-          ),
-        ],
-      ),
-    );
   }
 }

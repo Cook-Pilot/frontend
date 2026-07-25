@@ -8,6 +8,7 @@ import '../cooking/application/cooking_session_store.dart';
 import '../cooking/application/timer_controller.dart';
 import '../cooking/domain/cooking_session_state.dart';
 import '../cooking/presentation/timer_alarm_provider.dart';
+import '../cooking/presentation/widgets/help_question_sheet.dart';
 import 'main_shell.dart';
 import 'mock_data.dart';
 import 'mvp_widgets.dart';
@@ -522,6 +523,7 @@ class CookSessionScreen extends StatefulWidget {
     required this.servings,
     this.restoredSession,
     this.alarm,
+    this.advicePort,
   });
 
   final Recipe recipe;
@@ -533,6 +535,9 @@ class CookSessionScreen extends StatefulWidget {
   /// 테스트에서 플랫폼 알림 초기화를 대체하기 위한 주입 지점.
   final TimerAlarmPort? alarm;
 
+  /// 도움 질문에 답하는 포트. AI 파트가 완성되면 실제 구현으로 교체한다.
+  final ExceptionAdvicePort? advicePort;
+
   @override
   State<CookSessionScreen> createState() => _CookSessionScreenState();
 }
@@ -542,6 +547,13 @@ class _CookSessionScreenState extends State<CookSessionScreen>
   final CookingSessionStore _store = const CookingSessionStore();
 
   int step = 1;
+
+  // 도움 질문(음성 폴백) 상태. 답변은 현재 단계에 묶이므로 단계가 바뀌면 버린다.
+  late final ExceptionAdvicePort _advice =
+      widget.advicePort ?? DemoExceptionAdvicePort();
+  String? _helpAnswer;
+  bool _helpLoading = false;
+  int _helpRequestVersion = 0;
 
   // 원래 디자인은 그대로 두고 시계(타이머)만 실제로 동작시킨다.
   // 기본 클럭이 WallAnchoredMonotonicClock이라 화면이 꺼져도 시간이 이어진다.
@@ -688,6 +700,56 @@ class _CookSessionScreenState extends State<CookSessionScreen>
     // add()는 정지/종료 상태여도 타이머를 다시 진행시킨다.
     _timer.add(const Duration(minutes: 1));
     _scheduleAlarm();
+  }
+
+  Future<void> _openHelpSheet() async {
+    final question = await HelpQuestionSheet.show(context);
+    if (question == null || !mounted) {
+      return;
+    }
+    final requestVersion = ++_helpRequestVersion;
+    final requestedStep = step;
+    setState(() {
+      _helpLoading = true;
+      _helpAnswer = null;
+    });
+    ExceptionAdvice advice;
+    try {
+      advice = await _advice.requestAdvice(
+        ExceptionAdviceContext(
+          sessionId: 'mvp-local',
+          recipeId: widget.recipe.title,
+          recipeVersionId: 'mvp',
+          stepIndex: requestedStep - 1,
+          requestContextVersion: requestVersion,
+          instruction: widget.recipe.steps[requestedStep - 1].description,
+          remaining: _timer.remaining,
+          utterance: question,
+          recentEvents: const [],
+        ),
+      );
+    } catch (_) {
+      if (!mounted ||
+          requestVersion != _helpRequestVersion ||
+          step != requestedStep) {
+        return;
+      }
+      setState(() {
+        _helpLoading = false;
+        _helpAnswer = '답변을 불러오지 못했어요. 버튼과 타이머는 계속 사용할 수 있어요.';
+      });
+      return;
+    }
+    // 기다리는 사이 단계가 바뀌었으면 낡은 답변을 표시하지 않는다.
+    if (!mounted ||
+        requestVersion != _helpRequestVersion ||
+        step != requestedStep) {
+      return;
+    }
+    setState(() {
+      _helpLoading = false;
+      _helpAnswer = advice.message;
+    });
   }
 
   String _timerLabel(int stepMinutes) {
@@ -879,11 +941,37 @@ class _CookSessionScreenState extends State<CookSessionScreen>
               body: '말하면 익힘 상태를 확인하고 다음 행동을 안내해요.',
             ),
             const SizedBox(height: 12),
-            const Wrap(
+            Wrap(
               spacing: 8,
               runSpacing: 8,
-              children: [Pill('재료 문제'), Pill('반복'), Pill('타이머'), Pill('도움')],
+              children: [
+                const Pill('재료 문제'),
+                const Pill('반복'),
+                const Pill('타이머'),
+                PressableScale(
+                  child: GestureDetector(
+                    key: const Key('help-request'),
+                    onTap: _openHelpSheet,
+                    child: const Pill('도움', selected: true),
+                  ),
+                ),
+              ],
             ),
+            if (_helpLoading) ...[
+              const SizedBox(height: 12),
+              const InfoStrip(
+                icon: Icons.hourglass_top_rounded,
+                title: '답변 준비 중',
+                body: '현재 단계에 맞는 답을 확인하고 있어요.',
+              ),
+            ] else if (_helpAnswer case final String answer) ...[
+              const SizedBox(height: 12),
+              InfoStrip(
+                icon: Icons.support_agent_rounded,
+                title: '도움 답변',
+                body: answer,
+              ),
+            ],
           ],
         ),
       ),
@@ -902,7 +990,12 @@ class _CookSessionScreenState extends State<CookSessionScreen>
                   ),
                 );
               } else {
-                setState(() => step++);
+                _helpRequestVersion++;
+                setState(() {
+                  step++;
+                  _helpAnswer = null;
+                  _helpLoading = false;
+                });
                 _resetTimerForStep();
                 _persist();
               }
