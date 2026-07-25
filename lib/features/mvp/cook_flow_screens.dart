@@ -556,6 +556,10 @@ class _CookSessionScreenState extends State<CookSessionScreen>
   TimerStatus? _persistedTimerStatus;
   Duration? _persistedTimerEffective;
 
+  // 조리 완료 후 화면 전환 중에도 타이머 콜백이 살아 있으므로,
+  // 정리한 저장본을 다시 쓰지 않도록 완료 이후에는 저장을 막는다.
+  bool _completed = false;
+
   @override
   void initState() {
     super.initState();
@@ -618,6 +622,9 @@ class _CookSessionScreenState extends State<CookSessionScreen>
   }
 
   void _persist() {
+    if (_completed) {
+      return;
+    }
     if (step == _persistedStep &&
         _timer.status == _persistedTimerStatus &&
         _timer.effectiveDuration == _persistedTimerEffective) {
@@ -887,6 +894,7 @@ class _CookSessionScreenState extends State<CookSessionScreen>
             onPressed: () {
               if (isLast) {
                 // 완료된 세션은 복원 대상이 아니므로 저장본을 정리한다.
+                _completed = true;
                 unawaited(_store.clear());
                 Navigator.of(context).pushReplacement(
                   MaterialPageRoute<void>(

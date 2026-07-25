@@ -111,5 +111,28 @@ void main() {
 
       expect(await store.load(), isNull);
     });
+
+    testWidgets('완료 후 전환 중 타이머가 만료돼도 저장본을 되살리지 않는다', (tester) async {
+      await pumpSession(
+        tester,
+        restoredSession: buildSession(
+          stepIndex: recipe.steps.length - 1,
+          timerStatus: 'running',
+          timerRemainingMs: 400,
+        ),
+      );
+
+      await tester.tap(find.text('조리 완료'));
+      // 전환 애니메이션 중에는 이전 화면 State와 타이머 콜백이 살아 있다.
+      await tester.pump(const Duration(milliseconds: 50));
+      // 타이머는 벽시계 기준이므로 실제 시간을 흘려 만료시킨다.
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 600)),
+      );
+      await tester.pump(const Duration(milliseconds: 250));
+      await tester.pumpAndSettle();
+
+      expect(await store.load(), isNull);
+    });
   });
 }
