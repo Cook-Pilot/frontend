@@ -46,7 +46,8 @@ void main() {
               "description": "기본 라면",
               "imageUrl": null,
               "hasPersonalVersion": true,
-              "latestPersonalVersionId": "20000000-0000-0000-0000-000000000001"
+              "latestPersonalVersionId": "20000000-0000-0000-0000-000000000001",
+              "favorite": true
             }
           ]
         ''');
@@ -59,6 +60,7 @@ void main() {
     expect(recipes.single.title, '라면');
     expect(recipes.single.imageUrl, isEmpty);
     expect(recipes.single.hasPersonalVersion, isTrue);
+    expect(recipes.single.favorite, isTrue);
   });
 
   test('상세 응답에서 재료와 조리 단계를 화면 모델로 변환한다', () async {
@@ -209,6 +211,63 @@ void main() {
         ),
       ),
     );
+  });
+
+  test('최근 조리와 즐겨찾기 목록의 메타데이터를 읽는다', () async {
+    final repository = RecipeRepository(
+      baseUrl: baseUrl,
+      client: MockClient((request) async {
+        if (request.url.path.endsWith('/recent-recipes')) {
+          return _jsonResponse('''
+            [{
+              "id": "$recipeId",
+              "title": "라면",
+              "description": "기본 라면",
+              "imageUrl": null,
+              "lastCookedAt": "2026-07-25T01:00:00Z",
+              "lastRating": 5,
+              "hasPersonalVersion": true,
+              "latestPersonalVersionId": null
+            }]
+          ''');
+        }
+        return _jsonResponse('''
+          [{
+            "id": "$recipeId",
+            "title": "라면",
+            "description": "기본 라면",
+            "imageUrl": null,
+            "favoritedAt": "2026-07-25T02:00:00Z",
+            "hasPersonalVersion": false,
+            "latestPersonalVersionId": null
+          }]
+        ''');
+      }),
+    );
+
+    final recent = await repository.findRecent();
+    final favorites = await repository.findFavorites();
+
+    expect(recent.single.lastRating, 5);
+    expect(recent.single.lastCookedAt, isNotNull);
+    expect(favorites.single.favorite, isTrue);
+    expect(favorites.single.favoritedAt, isNotNull);
+  });
+
+  test('즐겨찾기 추가와 삭제는 각 HTTP 메서드를 사용한다', () async {
+    final methods = <String>[];
+    final repository = RecipeRepository(
+      baseUrl: baseUrl,
+      client: MockClient((request) async {
+        methods.add(request.method);
+        return http.Response('', request.method == 'PUT' ? 200 : 204);
+      }),
+    );
+
+    await repository.addFavorite(recipeId);
+    await repository.removeFavorite(recipeId);
+
+    expect(methods, ['PUT', 'DELETE']);
   });
 }
 

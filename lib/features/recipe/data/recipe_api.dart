@@ -14,6 +14,10 @@ class RecipeSummary {
     required this.imageUrl,
     required this.hasPersonalVersion,
     required this.latestPersonalVersionId,
+    this.favorite = false,
+    this.lastCookedAt,
+    this.lastRating,
+    this.favoritedAt,
   });
 
   factory RecipeSummary.fromJson(Map<String, dynamic> json) {
@@ -24,6 +28,10 @@ class RecipeSummary {
       imageUrl: json['imageUrl'] as String? ?? '',
       hasPersonalVersion: json['hasPersonalVersion'] as bool? ?? false,
       latestPersonalVersionId: json['latestPersonalVersionId'] as String?,
+      favorite: json['favorite'] as bool? ?? json['favoritedAt'] != null,
+      lastCookedAt: _optionalDateTime(json['lastCookedAt']),
+      lastRating: (json['lastRating'] as num?)?.toInt(),
+      favoritedAt: _optionalDateTime(json['favoritedAt']),
     );
   }
 
@@ -33,6 +41,10 @@ class RecipeSummary {
   final String imageUrl;
   final bool hasPersonalVersion;
   final String? latestPersonalVersionId;
+  final bool favorite;
+  final DateTime? lastCookedAt;
+  final int? lastRating;
+  final DateTime? favoritedAt;
 }
 
 class RecipeApiException implements Exception {
@@ -55,6 +67,22 @@ class RecipeRepository {
 
   Future<List<RecipeSummary>> findAll() async {
     return _findSummaries('/api/v1/recipes');
+  }
+
+  Future<List<RecipeSummary>> findRecent() async {
+    return _findSummaries('/api/v1/home/recent-recipes');
+  }
+
+  Future<List<RecipeSummary>> findFavorites() async {
+    return _findSummaries('/api/v1/favorites');
+  }
+
+  Future<void> addFavorite(String recipeId) async {
+    await _request('PUT', '/api/v1/recipes/$recipeId/favorite', {200});
+  }
+
+  Future<void> removeFavorite(String recipeId) async {
+    await _request('DELETE', '/api/v1/recipes/$recipeId/favorite', {204});
   }
 
   Future<List<RecipeSummary>> _findSummaries(String path) async {
@@ -117,6 +145,7 @@ class RecipeRepository {
       steps: steps,
       hasPersonalVersion: summary.hasPersonalVersion,
       latestPersonalVersionId: summary.latestPersonalVersionId,
+      favorite: summary.favorite,
     );
   }
 
@@ -130,6 +159,24 @@ class RecipeRepository {
         '서버 요청에 실패했습니다. (${response.statusCode})',
         statusCode: response.statusCode,
       );
+    }
+    return response;
+  }
+
+  Future<http.Response> _request(
+    String method,
+    String path,
+    Set<int> successCodes,
+  ) async {
+    final uri = Uri.parse('$_baseUrl$path');
+    final request = http.Request(method, uri);
+    request.headers.addAll(BetaUserSession.requestHeaders);
+    final streamed = await _client
+        .send(request)
+        .timeout(const Duration(seconds: 8));
+    final response = await http.Response.fromStream(streamed);
+    if (!successCodes.contains(response.statusCode)) {
+      throw RecipeApiException('서버 요청에 실패했습니다. (${response.statusCode})');
     }
     return response;
   }
@@ -166,4 +213,9 @@ String _requiredString(Map<String, dynamic> json, String key) {
     throw RecipeApiException('$key 값이 없습니다.');
   }
   return value;
+}
+
+DateTime? _optionalDateTime(Object? value) {
+  if (value is! String) return null;
+  return DateTime.tryParse(value);
 }
