@@ -87,7 +87,13 @@ class _HomeScreenState extends State<HomeScreen> {
     if (summaries.isEmpty) {
       return _HomeCatalog(summaries: summaries, featured: null);
     }
-    final featured = await _recipeRepository.findById(summaries.first);
+    Recipe? featured;
+    try {
+      featured = await _recipeRepository.findById(summaries.first);
+    } on Object {
+      // 추천 상세가 실패해도 조회 가능한 전체 목록은 유지한다.
+      featured = null;
+    }
     return _HomeCatalog(summaries: summaries, featured: featured);
   }
 
@@ -275,7 +281,10 @@ class _HomeScreenState extends State<HomeScreen> {
                       for (final recipe in catalog.summaries)
                         Padding(
                           padding: const EdgeInsets.only(bottom: 10),
-                          child: _RecipeSummaryTile(summary: recipe),
+                          child: _RecipeSummaryTile(
+                            summary: recipe,
+                            onReturn: _loadResumableSession,
+                          ),
                         ),
                     ],
                   );
@@ -523,9 +532,10 @@ class _ResumeCookingCard extends StatelessWidget {
 }
 
 class _RecipeSummaryTile extends StatelessWidget {
-  const _RecipeSummaryTile({required this.summary});
+  const _RecipeSummaryTile({required this.summary, this.onReturn});
 
   final RecipeSummary summary;
+  final Future<void> Function()? onReturn;
 
   @override
   Widget build(BuildContext context) {
@@ -540,6 +550,7 @@ class _RecipeSummaryTile extends StatelessWidget {
             builder: (_) => _RecipeDetailLoader(summary: summary),
           ),
         );
+        await onReturn?.call();
       },
     );
   }

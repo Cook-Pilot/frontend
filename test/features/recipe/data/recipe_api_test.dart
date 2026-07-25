@@ -17,6 +17,21 @@ void main() {
 
   tearDown(BetaUserSession.clear);
 
+  test('사용자 세션이 없으면 HTTP 요청을 보내지 않는다', () async {
+    BetaUserSession.clear();
+    var requestCount = 0;
+    final repository = RecipeRepository(
+      baseUrl: baseUrl,
+      client: MockClient((_) async {
+        requestCount++;
+        return _jsonResponse('[]');
+      }),
+    );
+
+    await expectLater(repository.findAll(), throwsA(isA<BetaUserException>()));
+    expect(requestCount, 0);
+  });
+
   test('목록 응답에서 레시피 요약과 개인 버전 여부를 읽는다', () async {
     final repository = RecipeRepository(
       baseUrl: baseUrl,
