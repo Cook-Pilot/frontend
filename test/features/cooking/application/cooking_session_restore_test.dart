@@ -1,7 +1,7 @@
 import 'package:cookpilot/features/cooking/application/cooking_ports.dart';
 import 'package:cookpilot/features/cooking/application/cooking_session_store.dart';
 import 'package:cookpilot/features/mvp/cook_flow_screens.dart';
-import 'package:cookpilot/features/mvp/mock_data.dart';
+import 'package:cookpilot/features/recipe/domain/recipe.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -9,7 +9,38 @@ import 'package:shared_preferences/shared_preferences.dart';
 void main() {
   const store = CookingSessionStore();
 
-  final recipe = recipes.first;
+  const recipe = Recipe(
+    id: 'cooking-session-test-recipe',
+    title: '조리 세션 테스트 레시피',
+    description: '로컬 세션 저장과 복원을 검증한다.',
+    baseServings: 2,
+    imageUrl: '',
+    ingredients: <Ingredient>[],
+    steps: <CookStep>[
+      CookStep(
+        stepIndex: 0,
+        instruction: '첫 번째 단계를 진행하세요.',
+        timerSeconds: 180,
+        cautionNote: null,
+        imageUrl: '',
+      ),
+      CookStep(
+        stepIndex: 1,
+        instruction: '두 번째 단계를 진행하세요.',
+        timerSeconds: 180,
+        cautionNote: null,
+        imageUrl: '',
+      ),
+      CookStep(
+        stepIndex: 2,
+        instruction: '마지막 단계를 진행하세요.',
+        timerSeconds: 180,
+        cautionNote: null,
+        imageUrl: '',
+      ),
+    ],
+    hasPersonalVersion: false,
+  );
 
   PersistedCookingSession buildSession({
     int stepIndex = 2,
