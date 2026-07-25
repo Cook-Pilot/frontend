@@ -22,6 +22,7 @@ Cook-Pilot의 Frontend 레포입니다.
 - [조리 타이머 기능 명세서](docs/cooking-timer-spec.md)
 - [모션 정리 명세서](docs/feat-motion.md)
 - [조리 세션 저장·복원 명세서](docs/feat-session-restore.md)
+- [음성 폴백 도움 입력 명세서](docs/feat-bottom-fallback.md)
 
 ## 개발 환경
 

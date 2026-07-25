@@ -8,6 +8,7 @@ final class QuickCommandDeck extends StatelessWidget {
     required this.onPrevious,
     required this.onRepeat,
     required this.onAddMinute,
+    required this.onHelp,
     required this.onNext,
     super.key,
   });
@@ -15,6 +16,7 @@ final class QuickCommandDeck extends StatelessWidget {
   final VoidCallback? onPrevious;
   final VoidCallback onRepeat;
   final VoidCallback onAddMinute;
+  final VoidCallback onHelp;
   final VoidCallback? onNext;
 
   @override
@@ -22,7 +24,8 @@ final class QuickCommandDeck extends StatelessWidget {
     final textScale = MediaQuery.textScalerOf(context).scale(1);
     return LayoutBuilder(
       builder: (context, constraints) {
-        final useGrid = textScale > 1.3;
+        // 5개 버튼이 한 줄에 최소 폭(64px)씩 못 가지면 2열 그리드로 전환한다.
+        final useGrid = textScale > 1.3 || constraints.maxWidth < 352;
         final actionHeight = textScale > 1.6
             ? 88.0
             : textScale > 1.3
@@ -49,6 +52,13 @@ final class QuickCommandDeck extends StatelessWidget {
             semanticLabel: '타이머에 1분 추가',
             icon: Icons.add_circle_outline_rounded,
             onPressed: onAddMinute,
+          ),
+          _QuickAction(
+            key: const Key('help-request'),
+            label: '도움',
+            semanticLabel: '질문 입력으로 도움 요청',
+            icon: Icons.help_outline_rounded,
+            onPressed: onHelp,
           ),
           _QuickAction(
             key: const Key('next-step'),
