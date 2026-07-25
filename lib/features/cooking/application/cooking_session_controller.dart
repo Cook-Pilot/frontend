@@ -245,7 +245,31 @@ final class CookingSessionController extends ChangeNotifier {
       }
       return result;
     }
-    return _requestExceptionAdvice(utterance);
+    return _requestExceptionAdvice(utterance, source: CommandSource.voice);
+  }
+
+  /// 음성 폴백 진입점. 버튼으로 입력한 텍스트 질문을 음성 발화와 동일한
+  /// 예외 조언 흐름(동일 이벤트 타입, source만 button)으로 보낸다.
+  Future<CommandResult> requestHelp(String question) async {
+    if (_disposed) {
+      return const CommandResult(executed: false, message: '이미 닫힌 조리 세션이에요.');
+    }
+    if (isTerminal) {
+      _record(
+        source: CommandSource.button,
+        command: 'command_ignored',
+        result: 'terminal:exception_advice_requested',
+      );
+      return const CommandResult(executed: false, message: '이미 종료된 조리 세션이에요.');
+    }
+    final trimmed = question.trim();
+    if (trimmed.isEmpty) {
+      return const CommandResult(executed: false, message: '질문을 입력해주세요.');
+    }
+    if (_state.lastRecognizedUtterance != null) {
+      _state = _state.copyWith(lastRecognizedUtterance: null);
+    }
+    return _requestExceptionAdvice(trimmed, source: CommandSource.button);
   }
 
   Future<void> enterForeground() {
@@ -687,16 +711,24 @@ final class CookingSessionController extends ChangeNotifier {
     return const CommandResult(executed: true, message: '조리를 중단했어요.');
   }
 
-  Future<CommandResult> _requestExceptionAdvice(String utterance) async {
+  Future<CommandResult> _requestExceptionAdvice(
+    String utterance, {
+    required CommandSource source,
+  }) async {
     final exceptionRequestVersion = ++_exceptionRequestVersion;
     final requestedStep = _state.stepIndex;
     final requestedVersion = _state.requestContextVersion;
+    // 버튼 질문은 permissionDenied 같은 진입 시점 음성 상태를 잃으면 안 되므로
+    // 요청이 끝난 뒤 되돌릴 기준 phase를 미리 잡아둔다.
+    final entryPhase = _state.voicePhase == VoicePhase.speaking
+        ? _speechRecoveryPhase ?? VoicePhase.listening
+        : _state.voicePhase;
     _state = _state.copyWith(
       voicePhase: VoicePhase.processing,
       lastCommandMessage: '현재 단계에 맞는 답을 확인하고 있어요.',
     );
     _record(
-      source: CommandSource.voice,
+      source: source,
       command: 'exception_advice_requested',
       result: 'pending',
     );
@@ -729,11 +761,15 @@ final class CookingSessionController extends ChangeNotifier {
         );
       }
       _state = _state.copyWith(
-        voicePhase: VoicePhase.failed,
+        voicePhase: source == CommandSource.voice
+            ? VoicePhase.failed
+            : _state.voicePhase == VoicePhase.processing
+            ? _restingPhaseFor(entryPhase)
+            : _state.voicePhase,
         lastCommandMessage: '답변을 불러오지 못했어요. 버튼과 타이머는 계속 사용할 수 있어요.',
       );
       _record(
-        source: CommandSource.voice,
+        source: source,
         command: 'exception_advice_failed',
         result: 'error',
       );
@@ -764,6 +800,8 @@ final class CookingSessionController extends ChangeNotifier {
 
     final phaseBeforeAdviceSpeech = _state.voicePhase == VoicePhase.speaking
         ? _speechRecoveryPhase ?? VoicePhase.listening
+        : _state.voicePhase == VoicePhase.processing
+        ? _restingPhaseFor(entryPhase)
         : _state.voicePhase;
     _speechRecoveryPhase = phaseBeforeAdviceSpeech;
     _state = _state.copyWith(
@@ -772,7 +810,7 @@ final class CookingSessionController extends ChangeNotifier {
       lastCommandMessage: '현재 단계에 맞는 안내를 찾았어요.',
     );
     _record(
-      source: CommandSource.voice,
+      source: source,
       command: 'exception_advice_received',
       result: 'success',
     );
@@ -1269,6 +1307,15 @@ final class CookingSessionController extends ChangeNotifier {
     );
     notifyListeners();
   }
+
+  /// 조언 요청이 끝난 뒤 되돌아갈 안정 상태. 과도 상태(recognizing/processing/
+  /// speaking)로는 되돌아갈 수 없으므로 listening으로 수렴시킨다.
+  VoicePhase _restingPhaseFor(VoicePhase phase) => switch (phase) {
+    VoicePhase.recognizing ||
+    VoicePhase.processing ||
+    VoicePhase.speaking => VoicePhase.listening,
+    _ => phase,
+  };
 
   VoicePhase _phaseAfterSpeech(VoicePhase phaseBeforeSpeech) {
     if (phaseBeforeSpeech == VoicePhase.processing) {

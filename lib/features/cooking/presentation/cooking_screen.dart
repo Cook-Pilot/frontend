@@ -10,6 +10,7 @@ import '../domain/cooking_session_state.dart';
 import 'widgets/cooking_top_bar.dart';
 import 'widgets/current_action_section.dart';
 import 'widgets/exception_feedback_banner.dart';
+import 'widgets/help_question_sheet.dart';
 import 'widgets/quick_command_deck.dart';
 import 'widgets/session_action_bar.dart';
 import 'widgets/step_media.dart';
@@ -170,6 +171,7 @@ final class _CookingScreenState extends State<CookingScreen>
                                 _execute(CookingCommand.repeatInstruction),
                             onAddMinute: () =>
                                 _execute(CookingCommand.addMinute),
+                            onHelp: _openHelpSheet,
                             onNext: widget.controller.canGoNext
                                 ? () => _execute(CookingCommand.nextStep)
                                 : null,
@@ -196,6 +198,14 @@ final class _CookingScreenState extends State<CookingScreen>
 
   Future<void> _execute(CookingCommand command) async {
     await widget.controller.execute(command);
+  }
+
+  Future<void> _openHelpSheet() async {
+    final question = await HelpQuestionSheet.show(context);
+    if (question == null || !mounted) {
+      return;
+    }
+    await widget.controller.requestHelp(question);
   }
 
   Future<void> _confirmComplete() async {

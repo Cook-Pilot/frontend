@@ -25,6 +25,7 @@ void main() {
     expect(find.byKey(const Key('previous-step')), findsOneWidget);
     expect(find.byKey(const Key('repeat-instruction')), findsOneWidget);
     expect(find.byKey(const Key('add-minute')), findsOneWidget);
+    expect(find.byKey(const Key('help-request')), findsOneWidget);
     expect(find.byKey(const Key('next-step')), findsOneWidget);
     expect(find.byKey(const Key('timer-toggle')), findsOneWidget);
     expect(find.byKey(const Key('abort-session')), findsOneWidget);
@@ -64,6 +65,50 @@ void main() {
     expect(find.text('2 / 3 단계'), findsOneWidget);
     expect(find.textContaining('완료 기준:'), findsWidgets);
     expect(find.textContaining('이미지를 불러오지 못했어요'), findsNothing);
+  });
+
+  testWidgets('도움 버튼은 질문 입력 시트를 열고 답변을 표시한다', (tester) async {
+    final controller = _buildController();
+    addTearDown(controller.dispose);
+    await _pumpCookingScreen(tester, controller: controller);
+
+    await tester.tap(find.byKey(const Key('help-request')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('help-question-field')), findsOneWidget);
+
+    await tester.enterText(
+      find.byKey(const Key('help-question-field')),
+      '물이 안 끓어요',
+    );
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('help-question-submit')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('help-question-field')), findsNothing);
+    expect(controller.state.exceptionFeedback, contains('30초'));
+    expect(find.textContaining('30초'), findsOneWidget);
+    expect(
+      controller.events.any(
+        (event) =>
+            event.command == 'exception_advice_requested' &&
+            event.source.name == 'button',
+      ),
+      isTrue,
+    );
+  });
+
+  testWidgets('빈 질문은 제출 버튼이 비활성화된다', (tester) async {
+    final controller = _buildController();
+    addTearDown(controller.dispose);
+    await _pumpCookingScreen(tester, controller: controller);
+
+    await tester.tap(find.byKey(const Key('help-request')));
+    await tester.pumpAndSettle();
+
+    final submit = tester.widget<FilledButton>(
+      find.byKey(const Key('help-question-submit')),
+    );
+    expect(submit.onPressed, isNull);
   });
 
   testWidgets('완료는 확인 뒤 review callback을 한 번 호출한다', (tester) async {

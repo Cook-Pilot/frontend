@@ -93,6 +93,59 @@ void main() {
       expect(controller.events.last.command, 'add_minute');
     });
 
+    test('도움 버튼 질문은 음성과 동일한 예외 조언 이벤트로 저장된다', () async {
+      final result = await controller.requestHelp('물이 안 끓어');
+
+      expect(result.executed, isTrue);
+      expect(advice.requests.single.utterance, '물이 안 끓어');
+      expect(controller.state.exceptionFeedback, contains('30초'));
+      expect(speech.spoken.last, contains('30초'));
+      final requested = controller.events.firstWhere(
+        (event) => event.command == 'exception_advice_requested',
+      );
+      expect(requested.source.name, 'button');
+      final received = controller.events.firstWhere(
+        (event) => event.command == 'exception_advice_received',
+      );
+      expect(received.source.name, 'button');
+    });
+
+    test('마이크 권한 거절 상태에서도 도움 질문이 동작하고 권한 상태를 유지한다', () async {
+      controller.setMicrophonePermissionDenied();
+
+      final result = await controller.requestHelp('물이 안 끓어');
+
+      expect(result.executed, isTrue);
+      expect(controller.state.exceptionFeedback, contains('30초'));
+      expect(controller.state.voicePhase, VoicePhase.permissionDenied);
+    });
+
+    test('도움 질문 실패는 진입 시점 음성 상태를 되돌린다', () async {
+      controller.setMicrophonePermissionDenied();
+      advice.error = StateError('network failed');
+
+      final result = await controller.requestHelp('물이 안 끓어');
+
+      expect(result.executed, isFalse);
+      expect(controller.state.voicePhase, VoicePhase.permissionDenied);
+      expect(
+        controller.events.last.command,
+        'exception_advice_failed',
+      );
+      expect(controller.events.last.source.name, 'button');
+      expect(
+        (await controller.execute(CookingCommand.addMinute)).executed,
+        isTrue,
+      );
+    });
+
+    test('빈 도움 질문은 요청 없이 거절한다', () async {
+      final result = await controller.requestHelp('   ');
+
+      expect(result.executed, isFalse);
+      expect(advice.requests, isEmpty);
+    });
+
     test('동일 utterance id는 A-B-A 순서에서도 다시 실행하지 않는다', () async {
       await controller.enterForeground();
       speech.spoken.clear();
