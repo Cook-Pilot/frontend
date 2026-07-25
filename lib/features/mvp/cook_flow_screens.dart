@@ -4,16 +4,13 @@ import 'package:flutter/material.dart';
 
 import '../../app/app_theme.dart';
 import '../cooking/application/cooking_ports.dart';
-import '../cooking/application/cooking_session_controller.dart';
 import '../cooking/application/cooking_session_store.dart';
 import '../cooking/application/timer_controller.dart';
 import '../cooking/domain/cooking_session_state.dart';
-import '../cooking/presentation/cooking_screen.dart';
 import '../cooking/presentation/timer_alarm_provider.dart';
 import 'main_shell.dart';
 import 'mock_data.dart';
 import 'mvp_widgets.dart';
-import 'recipe_cooking_steps.dart';
 
 class RecipeDetailScreen extends StatelessWidget {
   const RecipeDetailScreen({super.key, required this.recipe});
@@ -518,17 +515,13 @@ class _CookSetupScreenState extends State<CookSetupScreen> {
   }
 }
 
-/// 실제 조리 세션 화면의 호스트.
-///
-/// [CookingSessionController]와 [CookingScreen]을 MVP 플로우에 연결하고,
-/// 진행 상태(현재 단계·타이머)를 [CookingSessionStore]에 저장해 앱을 껐다
-/// 켜도 이어서 조리할 수 있게 한다.
 class CookSessionScreen extends StatefulWidget {
   const CookSessionScreen({
     super.key,
     required this.recipe,
     required this.servings,
     this.restoredSession,
+    this.alarm,
   });
 
   final Recipe recipe;
@@ -537,90 +530,110 @@ class CookSessionScreen extends StatefulWidget {
   /// 홈의 "이어서 조리하기"로 진입할 때 전달되는 저장 세션.
   final PersistedCookingSession? restoredSession;
 
+  /// 테스트에서 플랫폼 알림 초기화를 대체하기 위한 주입 지점.
+  final TimerAlarmPort? alarm;
+
   @override
   State<CookSessionScreen> createState() => _CookSessionScreenState();
 }
 
-class _CookSessionScreenState extends State<CookSessionScreen> {
+class _CookSessionScreenState extends State<CookSessionScreen>
+    with WidgetsBindingObserver {
   final CookingSessionStore _store = const CookingSessionStore();
 
-  CookingSessionController? _controller;
+  int step = 1;
 
-  // 타이머가 250ms마다 알림을 보내므로, 마지막으로 저장한 상태를 기억해
-  // 의미 있는 변화(단계·상태·연장)가 있을 때만 저장한다. 남은 시간은 저장
+  // 원래 디자인은 그대로 두고 시계(타이머)만 실제로 동작시킨다.
+  // 기본 클럭이 WallAnchoredMonotonicClock이라 화면이 꺼져도 시간이 이어진다.
+  final LocalTimerController _timer = LocalTimerController();
+  TimerAlarmPort? _alarm;
+  TimerStatus _lastStatus = TimerStatus.idle;
+
+  // 마지막으로 저장한 상태. 타이머가 틱마다 알림을 보내므로 의미 있는
+  // 변화(단계·타이머 상태·연장)가 있을 때만 저장한다. 남은 시간은 저장
   // 시각과 함께 기록해 복원 시 재계산하므로 매 틱 저장이 필요 없다.
-  int? _persistedStepIndex;
-  CookingSessionStatus? _persistedSessionStatus;
+  int? _persistedStep;
   TimerStatus? _persistedTimerStatus;
   Duration? _persistedTimerEffective;
 
   @override
   void initState() {
     super.initState();
-    unawaited(_prepareSession());
+    WidgetsBinding.instance.addObserver(this);
+    _timer.addListener(_onTimerChanged);
+    final restored = widget.restoredSession;
+    if (restored == null) {
+      _resetTimerForStep();
+    } else {
+      // 손상된 저장값이 들어와도 단계 범위 안으로 보정한다.
+      final restoredStep = restored.stepIndex + 1;
+      step = restoredStep < 1
+          ? 1
+          : restoredStep > widget.recipe.steps.length
+          ? widget.recipe.steps.length
+          : restoredStep;
+      // 저장 이후 흐른 시간이 차감된 스냅샷으로 타이머를 되살린다.
+      _timer.restore(restored.timerSnapshotAt(DateTime.now()));
+      _lastStatus = _timer.status;
+    }
+    unawaited(_initAlarm());
+    _persist();
   }
 
-  Future<void> _prepareSession() async {
-    final alarm = await resolveTimerAlarm();
-    if (!mounted) {
-      return;
+  Future<void> _initAlarm() async {
+    // 백그라운드 알림용 로컬 알림을 한 번 초기화(권한 요청 포함)한다.
+    final alarm = widget.alarm ?? await resolveTimerAlarm();
+    if (mounted) {
+      _alarm = alarm;
+      // 복원된 타이머가 이미 실행 중이면 종료 알림을 다시 예약한다.
+      _scheduleAlarm();
     }
-    final restored = widget.restoredSession;
-    final controller = CookingSessionController(
-      recipeId: widget.recipe.title,
-      recipeVersionId: 'my-custom',
-      steps: cookingStepsFromRecipe(widget.recipe),
-      timer: LocalTimerController(),
-      speechInput: DemoSpeechInput(),
-      speechOutput: DemoSpeechOutput(),
-      exceptionAdvice: DemoExceptionAdvicePort(),
-      alarm: alarm,
-      initialStepIndex: restored?.stepIndex ?? 0,
-      initialTimerSnapshot: restored?.timerSnapshotAt(DateTime.now()),
-    );
-    controller.addListener(_persistSession);
-    setState(() => _controller = controller);
-    _persistSession();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // 화면을 다시 켜면 잠든 사이 흐른 시간을 반영해 남은 시간을 재계산한다.
+    if (state == AppLifecycleState.resumed) {
+      _timer.sync();
+    }
   }
 
   @override
   void dispose() {
-    _controller
-      ?..removeListener(_persistSession)
-      ..dispose();
+    WidgetsBinding.instance.removeObserver(this);
+    _timer.removeListener(_onTimerChanged);
+    unawaited(_alarm?.cancelScheduledAlarm() ?? Future<void>.value());
+    _timer.dispose();
     super.dispose();
   }
 
-  void _persistSession() {
-    final controller = _controller;
-    if (controller == null) {
+  void _onTimerChanged() {
+    final status = _timer.status;
+    if (status == TimerStatus.elapsed && _lastStatus != TimerStatus.elapsed) {
+      _alarm?.signalTimerElapsed();
+      unawaited(_alarm?.cancelScheduledAlarm() ?? Future<void>.value());
+    }
+    _lastStatus = status;
+    _persist();
+  }
+
+  void _persist() {
+    if (step == _persistedStep &&
+        _timer.status == _persistedTimerStatus &&
+        _timer.effectiveDuration == _persistedTimerEffective) {
       return;
     }
-    if (controller.isTerminal) {
-      // 완료/중단된 세션은 복원 대상이 아니므로 저장본을 정리한다.
-      unawaited(_store.clear());
-      return;
-    }
-    final state = controller.state;
-    final timer = controller.timer;
-    if (state.stepIndex == _persistedStepIndex &&
-        state.sessionStatus == _persistedSessionStatus &&
-        timer.status == _persistedTimerStatus &&
-        timer.effectiveDuration == _persistedTimerEffective) {
-      return;
-    }
-    _persistedStepIndex = state.stepIndex;
-    _persistedSessionStatus = state.sessionStatus;
-    _persistedTimerStatus = timer.status;
-    _persistedTimerEffective = timer.effectiveDuration;
-    final snapshot = timer.snapshot();
+    _persistedStep = step;
+    _persistedTimerStatus = _timer.status;
+    _persistedTimerEffective = _timer.effectiveDuration;
+    final snapshot = _timer.snapshot();
     unawaited(
       _store.save(
         PersistedCookingSession(
           recipeTitle: widget.recipe.title,
           servings: widget.servings,
-          stepIndex: state.stepIndex,
-          sessionStatus: state.sessionStatus.name,
+          stepIndex: step - 1,
+          sessionStatus: CookingSessionStatus.cooking.name,
           timerOriginalMs: snapshot.originalDuration.inMilliseconds,
           timerEffectiveMs: snapshot.effectiveDuration.inMilliseconds,
           timerRemainingMs: snapshot.remaining.inMilliseconds,
@@ -631,24 +644,265 @@ class _CookSessionScreenState extends State<CookSessionScreen> {
     );
   }
 
+  void _resetTimerForStep() {
+    final minutes = widget.recipe.steps[step - 1].minutes;
+    _timer.reset(Duration(minutes: minutes), autoStart: false);
+    _lastStatus = _timer.status;
+    unawaited(_alarm?.cancelScheduledAlarm() ?? Future<void>.value());
+  }
+
+  void _scheduleAlarm() {
+    if (_timer.status == TimerStatus.running &&
+        _timer.remaining > Duration.zero) {
+      unawaited(
+        _alarm?.scheduleTimerElapsed(DateTime.now().add(_timer.remaining)) ??
+            Future<void>.value(),
+      );
+    }
+  }
+
+  void _toggleTimer() {
+    switch (_timer.status) {
+      case TimerStatus.idle:
+        _timer.start();
+        _scheduleAlarm();
+      case TimerStatus.paused:
+        _timer.resume();
+        _scheduleAlarm();
+      case TimerStatus.running:
+        _timer.pause();
+        unawaited(_alarm?.cancelScheduledAlarm() ?? Future<void>.value());
+      case TimerStatus.elapsed:
+        break;
+    }
+  }
+
+  void _addMinute() {
+    // add()는 정지/종료 상태여도 타이머를 다시 진행시킨다.
+    _timer.add(const Duration(minutes: 1));
+    _scheduleAlarm();
+  }
+
+  String _timerLabel(int stepMinutes) {
+    if (stepMinutes <= 0) {
+      return '타이머 없음';
+    }
+    return switch (_timer.status) {
+      TimerStatus.idle => '타이머 시작',
+      TimerStatus.running => '일시정지',
+      TimerStatus.paused => '계속',
+      TimerStatus.elapsed => '시간 종료',
+    };
+  }
+
+  static String _formatRemaining(Duration remaining) {
+    final totalSeconds = (remaining.inMilliseconds / 1000).ceil().clamp(0, 5999);
+    final minutes = totalSeconds ~/ 60;
+    final seconds = totalSeconds % 60;
+    return '${minutes.toString().padLeft(2, '0')}:'
+        '${seconds.toString().padLeft(2, '0')}';
+  }
+
   @override
   Widget build(BuildContext context) {
-    final controller = _controller;
-    if (controller == null) {
-      // 알림 초기화(최초 1회 권한 요청)가 끝나면 바로 세션이 시작된다.
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
-    }
-    return CookingScreen(
-      controller: controller,
-      recipeName: '${widget.recipe.title} · ${widget.servings}인분',
-      onComplete: () {
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute<void>(
-            builder: (_) => ReviewScreen(recipe: widget.recipe),
+    final current = widget.recipe.steps[step - 1];
+    final isLast = step == widget.recipe.steps.length;
+    final hasTimer = current.minutes > 0;
+
+    return Scaffold(
+      appBar: AppBar(
+        leading: IconButton(
+          onPressed: () => Navigator.of(context).pop(),
+          icon: const Icon(Icons.close_rounded),
+        ),
+        title: Text(
+          '${widget.recipe.title} · ${widget.servings}인분',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+        actions: [
+          IconButton(onPressed: () {}, icon: const Icon(Icons.pause_rounded)),
+        ],
+      ),
+      body: SafeArea(
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+          children: [
+            Row(
+              children: [
+                Text(
+                  '$step / ${widget.recipe.steps.length} 단계',
+                  style: const TextStyle(fontWeight: FontWeight.w900),
+                ),
+                const SizedBox(width: 12),
+                const Expanded(
+                  child: Text(
+                    '자동 저장됨',
+                    textAlign: TextAlign.right,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(color: AppColors.slate),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            LinearProgressIndicator(value: step / widget.recipe.steps.length),
+            const SizedBox(height: 18),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                FoodImage(
+                  image: widget.recipe.image,
+                  width: double.infinity,
+                  height: 210,
+                  radius: AppShape.container,
+                ),
+                const SizedBox(height: 18),
+                Text(
+                  current.title,
+                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                    color: AppColors.ink,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  current.description,
+                  style: const TextStyle(color: AppColors.slate),
+                ),
+              ],
+            ),
+            const SizedBox(height: 18),
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: AppColors.ink,
+                borderRadius: BorderRadius.circular(AppShape.container),
+                boxShadow: const [
+                  BoxShadow(
+                    color: AppColors.shadow,
+                    blurRadius: 22,
+                    offset: Offset(0, 8),
+                  ),
+                ],
+              ),
+              child: Column(
+                children: [
+                  const Text(
+                    '남은 시간',
+                    style: TextStyle(color: Color(0xB3FFFFFF)),
+                  ),
+                  const SizedBox(height: 8),
+                  // 시계만 실제로 동작하는 부분: 타이머 상태에 맞춰 매초 갱신된다.
+                  AnimatedBuilder(
+                    animation: _timer,
+                    builder: (context, _) => Text(
+                      _formatRemaining(_timer.remaining),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 44,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: -1,
+                        fontFeatures: [FontFeature.tabularFigures()],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  AnimatedBuilder(
+                    animation: _timer,
+                    builder: (context, _) => PressableScale(
+                      child: FilledButton(
+                        onPressed: hasTimer && _timer.status != TimerStatus.elapsed
+                            ? _toggleTimer
+                            : null,
+                        style: FilledButton.styleFrom(
+                          backgroundColor: AppColors.accent,
+                          minimumSize: const Size.fromHeight(48),
+                        ),
+                        child: Text(_timerLabel(current.minutes)),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  // 시계 보조 컨트롤: 1분 추가 / 리셋. 다크 카드에 맞춘 아웃라인 버튼.
+                  AnimatedBuilder(
+                    animation: _timer,
+                    builder: (context, _) {
+                      final style = OutlinedButton.styleFrom(
+                        foregroundColor: Colors.white,
+                        side: const BorderSide(color: Color(0x33FFFFFF)),
+                        minimumSize: const Size.fromHeight(44),
+                      );
+                      return Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              onPressed: hasTimer ? _addMinute : null,
+                              icon: const Icon(Icons.add_rounded, size: 18),
+                              label: const Text('1분 추가'),
+                              style: style,
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              onPressed:
+                                  hasTimer && _timer.status != TimerStatus.idle
+                                  ? _resetTimerForStep
+                                  : null,
+                              icon: const Icon(Icons.refresh_rounded, size: 18),
+                              label: const Text('리셋'),
+                              style: style,
+                            ),
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 14),
+            const InfoStrip(
+              icon: Icons.mic_rounded,
+              title: '"얼마나 익었나요?"',
+              body: '말하면 익힘 상태를 확인하고 다음 행동을 안내해요.',
+            ),
+            const SizedBox(height: 12),
+            const Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [Pill('재료 문제'), Pill('반복'), Pill('타이머'), Pill('도움')],
+            ),
+          ],
+        ),
+      ),
+      bottomNavigationBar: SafeArea(
+        minimum: const EdgeInsets.fromLTRB(20, 8, 20, 20),
+        child: PressableScale(
+          child: FilledButton(
+            onPressed: () {
+              if (isLast) {
+                // 완료된 세션은 복원 대상이 아니므로 저장본을 정리한다.
+                unawaited(_store.clear());
+                Navigator.of(context).pushReplacement(
+                  MaterialPageRoute<void>(
+                    builder: (_) => ReviewScreen(recipe: widget.recipe),
+                  ),
+                );
+              } else {
+                setState(() => step++);
+                _resetTimerForStep();
+                _persist();
+              }
+            },
+            child: Text(isLast ? '조리 완료' : '다음 단계'),
           ),
-        );
-      },
-      onAbort: () => Navigator.of(context).pop(),
+        ),
+      ),
     );
   }
 }

@@ -1,119 +1,115 @@
-import 'package:cookpilot/features/cooking/application/cooking_session_controller.dart';
-import 'package:cookpilot/features/cooking/application/timer_controller.dart';
-import 'package:cookpilot/features/cooking/domain/cooking_session_state.dart';
-import 'package:cookpilot/features/cooking/domain/cooking_step.dart';
+import 'package:cookpilot/features/cooking/application/cooking_ports.dart';
+import 'package:cookpilot/features/cooking/application/cooking_session_store.dart';
+import 'package:cookpilot/features/mvp/cook_flow_screens.dart';
+import 'package:cookpilot/features/mvp/mock_data.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-
-import '../../../helpers/cooking_fakes.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
-  group('CookingSessionController 복원', () {
-    late FakeMonotonicClock monotonicClock;
-    late FakeTimerAlarm alarm;
+  const store = CookingSessionStore();
 
-    setUp(() {
-      monotonicClock = FakeMonotonicClock();
-      alarm = FakeTimerAlarm();
+  final recipe = recipes.first;
+
+  PersistedCookingSession buildSession({
+    int stepIndex = 2,
+    String timerStatus = 'paused',
+    int timerRemainingMs = 90 * 1000,
+  }) {
+    return PersistedCookingSession(
+      recipeTitle: recipe.title,
+      servings: 2,
+      stepIndex: stepIndex,
+      sessionStatus: 'cooking',
+      timerOriginalMs: 3 * 60 * 1000,
+      timerEffectiveMs: 3 * 60 * 1000,
+      timerRemainingMs: timerRemainingMs,
+      timerStatus: timerStatus,
+      savedAtEpochMs: DateTime.now().millisecondsSinceEpoch,
+    );
+  }
+
+  Future<void> pumpSession(
+    WidgetTester tester, {
+    PersistedCookingSession? restoredSession,
+  }) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: CookSessionScreen(
+          recipe: recipe,
+          servings: 2,
+          restoredSession: restoredSession,
+          alarm: SilentTimerAlarm(),
+        ),
+      ),
+    );
+    await tester.pump();
+  }
+
+  setUp(() {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+  });
+
+  group('CookSessionScreen 복원', () {
+    testWidgets('저장된 단계에서 세션을 다시 시작한다', (tester) async {
+      await pumpSession(tester, restoredSession: buildSession(stepIndex: 2));
+
+      expect(find.text('3 / ${recipe.steps.length} 단계'), findsOneWidget);
+      expect(find.text(recipe.steps[2].title), findsOneWidget);
     });
 
-    CookingSessionController buildController({
-      int initialStepIndex = 0,
-      StepTimerSnapshot? initialTimerSnapshot,
-    }) {
-      return CookingSessionController(
-        sessionId: 'restore-test',
-        recipeId: 'ramen',
-        recipeVersionId: 'base-v1',
-        steps: ramenDemoSteps,
-        timer: LocalTimerController(clock: monotonicClock, autoTick: false),
-        speechInput: FakeSpeechInput(),
-        speechOutput: FakeSpeechOutput(),
-        exceptionAdvice: FakeExceptionAdvicePort(),
-        alarm: alarm,
-        wallClock: () => DateTime(2026, 7, 24, 18),
-        initialStepIndex: initialStepIndex,
-        initialTimerSnapshot: initialTimerSnapshot,
-      );
-    }
+    testWidgets('범위 밖 단계는 마지막 단계로 보정한다', (tester) async {
+      await pumpSession(tester, restoredSession: buildSession(stepIndex: 99));
 
-    test('저장된 단계와 타이머로 세션을 이어서 시작한다', () {
-      final controller = buildController(
-        initialStepIndex: 1,
-        initialTimerSnapshot: const StepTimerSnapshot(
-          originalDuration: Duration(minutes: 3),
-          effectiveDuration: Duration(minutes: 3),
-          remaining: Duration(minutes: 1, seconds: 30),
-          status: TimerStatus.running,
-        ),
-      );
-      addTearDown(controller.dispose);
-
-      expect(controller.state.stepIndex, 1);
-      expect(controller.currentStep.id, 'ramen-noodles');
-      expect(controller.state.sessionStatus, CookingSessionStatus.cooking);
-      expect(controller.timer.status, TimerStatus.running);
       expect(
-        controller.timer.remaining,
-        const Duration(minutes: 1, seconds: 30),
-      );
-      expect(controller.events.first.command, 'session_restored');
-      // 실행 중 타이머는 완료 시각 기준으로 백그라운드 알림을 다시 예약한다.
-      expect(
-        alarm.lastScheduledAt,
-        DateTime(2026, 7, 24, 18).add(const Duration(minutes: 1, seconds: 30)),
+        find.text('${recipe.steps.length} / ${recipe.steps.length} 단계'),
+        findsOneWidget,
       );
     });
 
-    test('일시정지 상태로 저장된 세션은 일시정지로 복원한다', () {
-      final controller = buildController(
-        initialStepIndex: 1,
-        initialTimerSnapshot: const StepTimerSnapshot(
-          originalDuration: Duration(minutes: 3),
-          effectiveDuration: Duration(minutes: 3),
-          remaining: Duration(minutes: 2),
-          status: TimerStatus.paused,
-        ),
+    testWidgets('일시정지된 타이머의 남은 시간을 되살린다', (tester) async {
+      await pumpSession(
+        tester,
+        restoredSession: buildSession(timerRemainingMs: 90 * 1000),
       );
-      addTearDown(controller.dispose);
 
-      expect(controller.state.sessionStatus, CookingSessionStatus.paused);
-      expect(controller.timer.status, TimerStatus.paused);
-      expect(controller.timer.remaining, const Duration(minutes: 2));
+      expect(find.text('01:30'), findsOneWidget);
+      // paused 상태 복원이므로 토글 라벨은 "계속"이어야 한다.
+      expect(find.text('계속'), findsOneWidget);
+    });
+  });
+
+  group('CookSessionScreen 저장', () {
+    testWidgets('진입하면 현재 진행 상황을 저장한다', (tester) async {
+      await pumpSession(tester);
+
+      final saved = await store.load();
+      expect(saved, isNotNull);
+      expect(saved!.recipeTitle, recipe.title);
+      expect(saved.stepIndex, 0);
+      expect(saved.isResumable, isTrue);
     });
 
-    test('앱이 꺼진 사이 시간이 다 지난 타이머는 종료 상태로 복원한다', () {
-      final controller = buildController(
-        initialStepIndex: 0,
-        initialTimerSnapshot: const StepTimerSnapshot(
-          originalDuration: Duration(minutes: 2, seconds: 14),
-          effectiveDuration: Duration(minutes: 2, seconds: 14),
-          remaining: Duration(minutes: -3), // 복원 계산 결과 음수
-          status: TimerStatus.running,
-        ),
+    testWidgets('다음 단계로 넘어가면 단계를 갱신해 저장한다', (tester) async {
+      await pumpSession(tester);
+
+      await tester.tap(find.text('다음 단계'));
+      await tester.pump();
+
+      final saved = await store.load();
+      expect(saved!.stepIndex, 1);
+    });
+
+    testWidgets('조리를 완료하면 저장본을 정리한다', (tester) async {
+      await pumpSession(
+        tester,
+        restoredSession: buildSession(stepIndex: recipe.steps.length - 1),
       );
-      addTearDown(controller.dispose);
 
-      expect(controller.timer.status, TimerStatus.elapsed);
-      expect(controller.timer.remaining, Duration.zero);
-    });
+      await tester.tap(find.text('조리 완료'));
+      await tester.pumpAndSettle();
 
-    test('범위를 벗어난 단계 인덱스는 안전하게 보정한다', () {
-      final tooLarge = buildController(initialStepIndex: 99);
-      addTearDown(tooLarge.dispose);
-      expect(tooLarge.state.stepIndex, ramenDemoSteps.length - 1);
-
-      final negative = buildController(initialStepIndex: -1);
-      addTearDown(negative.dispose);
-      expect(negative.state.stepIndex, 0);
-    });
-
-    test('복원 없이 시작하면 기존과 동일하게 동작한다', () {
-      final controller = buildController();
-      addTearDown(controller.dispose);
-
-      expect(controller.state.stepIndex, 0);
-      expect(controller.events.first.command, 'session_started');
-      expect(controller.state.lastCommandMessage, '조리를 시작했어요.');
+      expect(await store.load(), isNull);
     });
   });
 }
