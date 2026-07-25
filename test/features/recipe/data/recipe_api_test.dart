@@ -121,6 +121,59 @@ void main() {
     expect(recipe.timerMinutes, 2);
   });
 
+  test('개인 버전 상세의 합성된 재료와 단계를 읽는다', () async {
+    const versionId = '20000000-0000-0000-0000-000000000001';
+    final repository = RecipeRepository(
+      baseUrl: baseUrl,
+      client: MockClient((request) async {
+        expect(
+          request.url.toString(),
+          '$baseUrl/api/v1/personal-versions/$versionId',
+        );
+        expect(request.headers[cookPilotUserIdHeader], userId);
+        return _jsonResponse('''
+          {
+            "version": {
+              "id": "$versionId",
+              "title": "덜 짠 라면 v2",
+              "summary": "스프를 줄인 버전"
+            },
+            "ingredients": [
+              {
+                "originalIngredientId": null,
+                "name": "물",
+                "amount": 550,
+                "unit": "ml",
+                "required": true,
+                "origin": "MODIFIED"
+              }
+            ],
+            "steps": [
+              {
+                "stepIndex": 0,
+                "originalStepId": null,
+                "instruction": "물을 끓이세요.",
+                "timerSeconds": 90,
+                "cautionNote": null,
+                "origin": "ORIGINAL"
+              }
+            ],
+            "ingredientAdjustments": [],
+            "stepAdjustments": []
+          }
+        ''');
+      }),
+    );
+
+    final version = await repository.findPersonalVersionDetail(versionId);
+
+    expect(version.id, versionId);
+    expect(version.title, '덜 짠 라면 v2');
+    expect(version.summary, '스프를 줄인 버전');
+    expect(version.ingredients.single.amountLabel, '550ml');
+    expect(version.steps.single.timerSeconds, 90);
+  });
+
   test('상세 응답 ID가 요청한 레시피와 다르면 거부한다', () async {
     const summary = RecipeSummary(
       id: recipeId,

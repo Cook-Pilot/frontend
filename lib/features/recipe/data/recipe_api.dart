@@ -48,6 +48,45 @@ class RecipeSummary {
   final DateTime? favoritedAt;
 }
 
+class PersonalRecipeVersionDetail {
+  const PersonalRecipeVersionDetail({
+    required this.id,
+    required this.title,
+    required this.summary,
+    required this.ingredients,
+    required this.steps,
+  });
+
+  factory PersonalRecipeVersionDetail.fromJson(Map<String, dynamic> json) {
+    final version = json['version'];
+    final ingredientsJson = json['ingredients'];
+    final stepsJson = json['steps'];
+    if (version is! Map<String, dynamic> ||
+        ingredientsJson is! List ||
+        stepsJson is! List) {
+      throw const RecipeApiException('개인 레시피 응답 형식이 올바르지 않습니다.');
+    }
+
+    return PersonalRecipeVersionDetail(
+      id: _requiredString(version, 'id'),
+      title: _requiredString(version, 'title'),
+      summary: version['summary'] as String? ?? '',
+      ingredients: ingredientsJson
+          .map((item) => _ingredientFromJson(item as Map<String, dynamic>))
+          .toList(growable: false),
+      steps: stepsJson
+          .map((item) => _personalStepFromJson(item as Map<String, dynamic>))
+          .toList(growable: false),
+    );
+  }
+
+  final String id;
+  final String title;
+  final String summary;
+  final List<Ingredient> ingredients;
+  final List<CookStep> steps;
+}
+
 class RecipeApiException implements Exception {
   const RecipeApiException(this.message, {this.statusCode});
 
@@ -76,6 +115,17 @@ class RecipeRepository {
 
   Future<List<RecipeSummary>> findFavorites() async {
     return _findSummaries('/api/v1/favorites');
+  }
+
+  Future<PersonalRecipeVersionDetail> findPersonalVersionDetail(
+    String versionId,
+  ) async {
+    final response = await _get('/api/v1/personal-versions/$versionId');
+    final decoded = jsonDecode(response.body);
+    if (decoded is! Map<String, dynamic>) {
+      throw const RecipeApiException('개인 레시피 응답 형식이 올바르지 않습니다.');
+    }
+    return PersonalRecipeVersionDetail.fromJson(decoded);
   }
 
   Future<void> addFavorite(String recipeId) async {
@@ -221,6 +271,18 @@ CookStep _stepFromJson(Map<String, dynamic> json) {
     timerSeconds: json['timerSeconds'] == null ? null : seconds,
     cautionNote: caution,
     imageUrl: json['imageUrl'] as String? ?? '',
+  );
+}
+
+CookStep _personalStepFromJson(Map<String, dynamic> json) {
+  final stepIndex = (json['stepIndex'] as num?)?.toInt() ?? 0;
+  final timerSeconds = (json['timerSeconds'] as num?)?.toInt();
+  return CookStep(
+    stepIndex: stepIndex,
+    instruction: _requiredString(json, 'instruction'),
+    timerSeconds: timerSeconds,
+    cautionNote: json['cautionNote'] as String?,
+    imageUrl: '',
   );
 }
 
