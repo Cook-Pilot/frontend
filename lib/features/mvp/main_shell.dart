@@ -93,6 +93,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _retry() {
     setState(() => _catalog = _loadCatalog());
+    unawaited(_loadResumableSession());
   }
 
   Future<void> _loadResumableSession() async {
@@ -129,6 +130,16 @@ class _HomeScreenState extends State<HomeScreen> {
       }
 
       final recipe = await _recipeRepository.findById(matchingSummary);
+      if (recipe.steps.isEmpty) {
+        await _sessionStore.clear();
+        if (mounted) {
+          setState(() {
+            _resumableSession = null;
+            _resumableRecipe = null;
+          });
+        }
+        return;
+      }
       if (!mounted) {
         return;
       }

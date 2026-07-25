@@ -73,7 +73,7 @@ void main() {
               {
                 "stepIndex": 0,
                 "instruction": "물을 끓이세요.",
-                "timerSeconds": 180,
+                "timerSeconds": 90,
                 "cautionNote": "화상 주의",
                 "imageUrl": null
               },
@@ -96,9 +96,60 @@ void main() {
     expect(recipe.baseServings, 1);
     expect(recipe.ingredients.single.amountLabel, '500ml');
     expect(recipe.steps, hasLength(2));
-    expect(recipe.steps.first.minutes, 3);
+    expect(recipe.steps.first.timerDuration, const Duration(seconds: 90));
+    expect(recipe.steps.first.minutes, 2);
     expect(recipe.steps.first.description, contains('화상 주의'));
-    expect(recipe.timerMinutes, 3);
+    expect(recipe.timerMinutes, 2);
+  });
+
+  test('상세 응답 ID가 요청한 레시피와 다르면 거부한다', () async {
+    const summary = RecipeSummary(
+      id: recipeId,
+      title: '라면',
+      description: '기본 라면',
+      imageUrl: '',
+      hasPersonalVersion: false,
+      latestPersonalVersionId: null,
+    );
+    final repository = RecipeRepository(
+      baseUrl: baseUrl,
+      client: MockClient(
+        (_) async => _jsonResponse('''
+          {
+            "id": "10000000-0000-0000-0000-000000000099",
+            "title": "다른 레시피",
+            "ingredients": [
+              {
+                "name": "물",
+                "amount": 500,
+                "unit": "ml",
+                "required": true
+              }
+            ],
+            "steps": [
+              {
+                "stepIndex": 0,
+                "instruction": "물을 끓이세요.",
+                "timerSeconds": 90,
+                "cautionNote": null,
+                "imageUrl": null
+              }
+            ]
+          }
+        '''),
+      ),
+    );
+
+    await expectLater(
+      repository.findById(summary),
+      throwsA(
+        isA<RecipeApiException>().having(
+          (exception) => exception.message,
+          'message',
+          contains('다른 상세 응답'),
+        ),
+      ),
+    );
   });
 
   test('서버 오류 상태는 RecipeApiException으로 전달한다', () async {

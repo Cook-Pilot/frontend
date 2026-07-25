@@ -686,8 +686,8 @@ class _CookSessionScreenState extends State<CookSessionScreen>
   }
 
   void _resetTimerForStep() {
-    final minutes = widget.recipe.steps[step - 1].minutes;
-    _timer.reset(Duration(minutes: minutes), autoStart: false);
+    final duration = widget.recipe.steps[step - 1].timerDuration;
+    _timer.reset(duration, autoStart: false);
     _lastStatus = _timer.status;
     unawaited(_alarm?.cancelScheduledAlarm() ?? Future<void>.value());
   }
@@ -801,7 +801,7 @@ class _CookSessionScreenState extends State<CookSessionScreen>
   Widget build(BuildContext context) {
     final current = widget.recipe.steps[step - 1];
     final isLast = step == widget.recipe.steps.length;
-    final hasTimer = current.minutes > 0;
+    final hasTimer = current.timerDuration > Duration.zero;
 
     return Scaffold(
       appBar: AppBar(

@@ -111,6 +111,40 @@ void main() {
   });
 
   group('CookSessionScreen 저장', () {
+    testWidgets('분으로 나누어지지 않는 단계 타이머도 정확한 초로 시작한다', (tester) async {
+      const exactSecondsRecipe = Recipe(
+        id: 'exact-seconds-recipe',
+        title: '90초 타이머 레시피',
+        description: '초 단위 타이머를 검증한다.',
+        baseServings: 1,
+        imageUrl: '',
+        ingredients: <Ingredient>[],
+        steps: <CookStep>[
+          CookStep(
+            stepIndex: 0,
+            instruction: '90초 동안 조리하세요.',
+            timerSeconds: 90,
+            cautionNote: null,
+            imageUrl: '',
+          ),
+        ],
+        hasPersonalVersion: false,
+      );
+
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: CookSessionScreen(
+            recipe: exactSecondsRecipe,
+            servings: 1,
+            alarm: SilentTimerAlarm(),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(find.text('01:30'), findsOneWidget);
+    });
+
     testWidgets('진입하면 현재 진행 상황을 저장한다', (tester) async {
       await pumpSession(tester);
 

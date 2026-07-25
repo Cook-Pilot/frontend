@@ -79,5 +79,7 @@ class CookStep {
   String get description =>
       cautionNote == null ? instruction : '$instruction\n주의: $cautionNote';
 
+  Duration get timerDuration => Duration(seconds: timerSeconds ?? 0);
+
   int get minutes => ((timerSeconds ?? 0) / 60).ceil();
 }

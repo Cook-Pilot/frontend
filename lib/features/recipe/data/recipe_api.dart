@@ -81,6 +81,11 @@ class RecipeRepository {
       throw const RecipeApiException('레시피 재료 또는 조리 단계가 없습니다.');
     }
 
+    final responseId = _requiredString(decoded, 'id');
+    if (responseId != summary.id) {
+      throw const RecipeApiException('요청한 레시피와 다른 상세 응답을 받았습니다.');
+    }
+
     final ingredients = ingredientsJson
         .map((item) => _ingredientFromJson(item as Map<String, dynamic>))
         .toList(growable: false);
@@ -89,7 +94,7 @@ class RecipeRepository {
         .toList(growable: false);
 
     return Recipe(
-      id: _requiredString(decoded, 'id'),
+      id: responseId,
       title: _requiredString(decoded, 'title'),
       description: decoded['description'] as String? ?? '',
       baseServings: (decoded['baseServings'] as num?)?.toDouble() ?? 1,
