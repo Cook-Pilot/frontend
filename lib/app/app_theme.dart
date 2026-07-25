@@ -72,6 +72,14 @@ class AppShape {
 class _CookPilotPageTransitionsBuilder extends PageTransitionsBuilder {
   const _CookPilotPageTransitionsBuilder();
 
+  // 시각 효과뿐 아니라 라우트 애니메이션 자체를 0ms로 만들어, 전환 중
+  // 이전 화면이 오버레이에 남아 티커를 돌리는 구간을 없앤다.
+  @override
+  Duration get transitionDuration => Duration.zero;
+
+  @override
+  Duration get reverseTransitionDuration => Duration.zero;
+
   @override
   Widget buildTransitions<T>(
     PageRoute<T> route,
