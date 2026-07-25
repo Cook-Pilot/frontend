@@ -72,6 +72,14 @@ class AppShape {
 class _CookPilotPageTransitionsBuilder extends PageTransitionsBuilder {
   const _CookPilotPageTransitionsBuilder();
 
+  // 시각 효과뿐 아니라 라우트 애니메이션 자체를 0ms로 만들어, 전환 중
+  // 이전 화면이 오버레이에 남아 티커를 돌리는 구간을 없앤다.
+  @override
+  Duration get transitionDuration => Duration.zero;
+
+  @override
+  Duration get reverseTransitionDuration => Duration.zero;
+
   @override
   Widget buildTransitions<T>(
     PageRoute<T> route,
@@ -80,21 +88,9 @@ class _CookPilotPageTransitionsBuilder extends PageTransitionsBuilder {
     Animation<double> secondaryAnimation,
     Widget child,
   ) {
-    if (MediaQuery.maybeOf(context)?.disableAnimations ?? false) {
-      return child;
-    }
-
-    final curved = CurvedAnimation(parent: animation, curve: AppMotion.easeOut);
-    return FadeTransition(
-      opacity: curved,
-      child: SlideTransition(
-        position: Tween<Offset>(
-          begin: const Offset(0.06, 0),
-          end: Offset.zero,
-        ).animate(curved),
-        child: child,
-      ),
-    );
+    // 화면 전환 애니메이션 없이 즉시 전환한다. 저사양 기기에서 전환·진입
+    // 애니메이션이 겹치며 씹히는 문제로 장식용 모션은 전부 걷어냈다.
+    return child;
   }
 }
 

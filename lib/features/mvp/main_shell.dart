@@ -135,11 +135,9 @@ class HomeScreen extends StatelessWidget {
               ),
             ),
             SectionTitle('오늘의 메뉴', onMore: () {}),
-            FadeSlideIn(
-              child: RecipeHeroCard(
-                recipe: tofuRecipe,
-                onTap: () => _openDetail(context, tofuRecipe),
-              ),
+            RecipeHeroCard(
+              recipe: tofuRecipe,
+              onTap: () => _openDetail(context, tofuRecipe),
             ),
             SectionTitle('최근 조리', onMore: () {}),
             _CardCarousel(
@@ -198,24 +196,20 @@ class SearchScreen extends StatelessWidget {
           ],
         ),
         const SectionTitle('검색 결과 24'),
-        for (final (i, recipe) in recipes.indexed)
-          FadeSlideIn(
-            delay: Duration(milliseconds: 40 * i),
-            child: FoodTile(
-              title: recipe.title,
-              subtitle: '${recipe.minutes}분 · ${recipe.difficulty}',
-              image: recipe.image,
-              rating: recipe.rating,
-              reviewCount: recipe.reviewCount,
-              trailing: const Icon(
-                Icons.bookmark_outline_rounded,
-                color: AppColors.muted,
-              ),
-              heroTag: 'recipe-image-${recipe.title}',
-              onTap: () => Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                  builder: (_) => RecipeDetailScreen(recipe: recipe),
-                ),
+        for (final recipe in recipes)
+          FoodTile(
+            title: recipe.title,
+            subtitle: '${recipe.minutes}분 · ${recipe.difficulty}',
+            image: recipe.image,
+            rating: recipe.rating,
+            reviewCount: recipe.reviewCount,
+            trailing: const Icon(
+              Icons.bookmark_outline_rounded,
+              color: AppColors.muted,
+            ),
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => RecipeDetailScreen(recipe: recipe),
               ),
             ),
           ),
@@ -245,18 +239,15 @@ class MemoryScreen extends StatelessWidget {
           body: '나 맞춤 ★5 · 변형 2 · 기본 레시피',
         ),
         const SizedBox(height: 10),
-        for (final (i, memory) in memories.indexed)
-          FadeSlideIn(
-            delay: Duration(milliseconds: 40 * i),
-            child: FoodTile(
-              title: memory.variant,
-              subtitle: memory.summary,
-              image: memory.image,
-              rating: memory.rating,
-              trailing: Text(
-                memory.lastCooked.split(' ').first,
-                style: const TextStyle(color: AppColors.muted, fontSize: 12),
-              ),
+        for (final memory in memories)
+          FoodTile(
+            title: memory.variant,
+            subtitle: memory.summary,
+            image: memory.image,
+            rating: memory.rating,
+            trailing: Text(
+              memory.lastCooked.split(' ').first,
+              style: const TextStyle(color: AppColors.muted, fontSize: 12),
             ),
           ),
         const SizedBox(height: 12),
@@ -290,10 +281,8 @@ class _CardCarousel extends StatelessWidget {
         clipBehavior: Clip.none,
         itemCount: items.length,
         separatorBuilder: (_, _) => const SizedBox(width: 14),
-        itemBuilder: (context, index) => FadeSlideIn(
-          delay: Duration(milliseconds: 40 * index),
-          child: RecipeCardSmall(data: items[index], onTap: onTap),
-        ),
+        itemBuilder: (context, index) =>
+            RecipeCardSmall(data: items[index], onTap: onTap),
       ),
     );
   }
