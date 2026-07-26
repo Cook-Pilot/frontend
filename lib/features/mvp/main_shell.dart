@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 
 import '../../app/app_theme.dart';
 import '../cooking/application/cooking_session_store.dart';
+import '../pantry/data/pantry_api.dart';
+import '../pantry/presentation/pantry_screen.dart';
 import '../recipe/data/recipe_api.dart';
 import '../recipe/domain/recipe.dart';
 import '../review/data/review_api.dart';
@@ -11,6 +13,7 @@ import 'cook_flow_screens.dart';
 import 'mvp_widgets.dart';
 
 final _recipeRepository = RecipeRepository();
+final _pantryRepository = PantryRepository();
 
 class MainShell extends StatefulWidget {
   const MainShell({super.key});
@@ -24,7 +27,12 @@ class _MainShellState extends State<MainShell> {
 
   @override
   Widget build(BuildContext context) {
-    const pages = [HomeScreen(), SearchScreen(), MemoryScreen()];
+    const pages = [
+      HomeScreen(),
+      SearchScreen(),
+      MemoryScreen(),
+      PantryScreen(),
+    ];
 
     return Scaffold(
       body: pages[index],
@@ -47,6 +55,11 @@ class _MainShellState extends State<MainShell> {
             icon: Icon(Icons.bookmark_outline_rounded),
             selectedIcon: Icon(Icons.bookmark_rounded),
             label: '메모리',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.kitchen_outlined),
+            selectedIcon: Icon(Icons.kitchen_rounded),
+            label: '개인 재료',
           ),
         ],
       ),
@@ -91,12 +104,20 @@ class _HomeScreenState extends State<HomeScreen> {
     final summaries = results[0];
     final recent = results[1];
     final favorites = results[2];
+    List<PantryRecipeSuggestion> pantrySuggestions;
+    try {
+      pantrySuggestions = await _pantryRepository.findRecipeSuggestions();
+    } on Object {
+      // 냉장고 추천이 실패해도 나머지 홈 화면은 그대로 보여준다.
+      pantrySuggestions = const [];
+    }
     if (summaries.isEmpty) {
       return _HomeCatalog(
         summaries: summaries,
         featured: null,
         recent: recent,
         favorites: favorites,
+        pantrySuggestions: pantrySuggestions,
       );
     }
     Recipe? featured;
@@ -111,6 +132,7 @@ class _HomeScreenState extends State<HomeScreen> {
       featured: featured,
       recent: recent,
       favorites: favorites,
+      pantrySuggestions: pantrySuggestions,
     );
   }
 
@@ -315,6 +337,10 @@ class _HomeScreenState extends State<HomeScreen> {
                   return Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
+                      if (catalog.pantrySuggestions.isNotEmpty)
+                        _PantrySuggestionSection(
+                          suggestions: catalog.pantrySuggestions,
+                        ),
                       if (catalog.featured != null) ...[
                         const SectionTitle('오늘의 메뉴'),
                         RecipeHeroCard(
@@ -1225,10 +1251,131 @@ class _HomeCatalog {
     required this.featured,
     required this.recent,
     required this.favorites,
+    required this.pantrySuggestions,
   });
 
   final List<RecipeSummary> summaries;
   final Recipe? featured;
   final List<RecipeSummary> recent;
   final List<RecipeSummary> favorites;
+  final List<PantryRecipeSuggestion> pantrySuggestions;
+}
+
+class _PantrySuggestionSection extends StatelessWidget {
+  const _PantrySuggestionSection({required this.suggestions});
+
+  final List<PantryRecipeSuggestion> suggestions;
+
+  Future<void> _open(BuildContext context, String recipeId) async {
+    try {
+      final recipe = await _recipeRepository.findByRecipeId(recipeId);
+      if (!context.mounted) return;
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => RecipeDetailScreen(recipe: recipe),
+        ),
+      );
+    } on Object {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('레시피를 불러오지 못했어요.')),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const SectionTitle('이런 재료가 있네요~ 이런 요리 어때요?'),
+        for (final suggestion in suggestions)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: _PantrySuggestionCard(
+              suggestion: suggestion,
+              onTap: () => unawaited(_open(context, suggestion.recipeId)),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _PantrySuggestionCard extends StatelessWidget {
+  const _PantrySuggestionCard({required this.suggestion, required this.onTap});
+
+  final PantryRecipeSuggestion suggestion;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return PressableScale(
+      child: Card(
+        child: InkWell(
+          borderRadius: BorderRadius.circular(AppShape.container),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                FoodImage(image: suggestion.recipeImageUrl, width: 64, height: 64),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        suggestion.recipeTitle,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 16,
+                          color: AppColors.ink,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 6,
+                        children: [
+                          for (final ingredient in suggestion.matchedIngredients)
+                            _MatchedIngredientChip(ingredient: ingredient),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _MatchedIngredientChip extends StatelessWidget {
+  const _MatchedIngredientChip({required this.ingredient});
+
+  final PantryMatchedIngredient ingredient;
+
+  @override
+  Widget build(BuildContext context) {
+    final urgent = ingredient.daysUntilExpiry <= 2;
+    final color = urgent ? AppColors.accent : AppColors.slate;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        '${ingredient.emoji} ${ingredient.ingredientName} · ${dDayLabel(ingredient.daysUntilExpiry)}',
+        style: TextStyle(color: color, fontWeight: FontWeight.w700, fontSize: 11),
+      ),
+    );
+  }
 }
