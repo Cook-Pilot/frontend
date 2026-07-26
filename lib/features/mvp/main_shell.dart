@@ -139,27 +139,32 @@ class _HomeScreenState extends State<HomeScreen> {
     try {
       var restoredSession = session;
       final Recipe recipe;
-      final recipeId = storedRecipeId;
-      if (recipeId != null && recipeId.isNotEmpty) {
-        recipe = await _recipeRepository.findByRecipeId(recipeId);
+      final setupSnapshot = session.setupSnapshot;
+      if (setupSnapshot != null) {
+        recipe = setupSnapshot.toExecutionRecipe();
       } else {
-        final summaries = await _recipeRepository.findAll();
-        final matches = summaries
-            .where((summary) => summary.title == session.recipeTitle)
-            .toList(growable: false);
-        if (matches.length != 1) {
-          if (matches.isEmpty) {
-            await _sessionStore.clear();
+        final recipeId = storedRecipeId;
+        if (recipeId != null && recipeId.isNotEmpty) {
+          recipe = await _recipeRepository.findByRecipeId(recipeId);
+        } else {
+          final summaries = await _recipeRepository.findAll();
+          final matches = summaries
+              .where((summary) => summary.title == session.recipeTitle)
+              .toList(growable: false);
+          if (matches.length != 1) {
+            if (matches.isEmpty) {
+              await _sessionStore.clear();
+            }
+            if (mounted) {
+              setState(() {
+                _resumableSession = null;
+                _resumableRecipe = null;
+              });
+            }
+            return;
           }
-          if (mounted) {
-            setState(() {
-              _resumableSession = null;
-              _resumableRecipe = null;
-            });
-          }
-          return;
+          recipe = await _recipeRepository.findById(matches.single);
         }
-        recipe = await _recipeRepository.findById(matches.single);
       }
       if (recipe.steps.isEmpty) {
         await _sessionStore.clear();
@@ -215,6 +220,7 @@ class _HomeScreenState extends State<HomeScreen> {
         builder: (_) => CookSessionScreen(
           recipe: recipe,
           servings: session.servings,
+          setupSnapshot: session.setupSnapshot,
           restoredSession: session,
         ),
       ),

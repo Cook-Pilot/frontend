@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:cookpilot/features/cooking/application/cooking_session_store.dart';
+import 'package:cookpilot/features/cooking/domain/cooking_setup_snapshot.dart';
 import 'package:cookpilot/features/cooking/domain/cooking_session_state.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -14,11 +15,13 @@ void main() {
     String timerStatus = 'running',
     int timerRemainingMs = 3 * 60 * 1000,
     int savedAtEpochMs = 1000000,
+    CookingSetupSnapshot? setupSnapshot,
   }) {
     return PersistedCookingSession(
       recipeId: recipeId,
       recipeTitle: '두부 조림',
       servings: 2,
+      setupSnapshot: setupSnapshot,
       stepIndex: 2,
       sessionStatus: sessionStatus,
       timerOriginalMs: 4 * 60 * 1000,
@@ -59,6 +62,67 @@ void main() {
       expect(loaded, isNotNull);
       expect(loaded!.recipeId, isNull);
       expect(loaded.recipeTitle, '두부 조림');
+    });
+
+    test('실행 스냅샷을 세션과 함께 저장하고 복원한다', () async {
+      final snapshot = CookingSetupSnapshot(
+        recipeId: '10000000-0000-0000-0000-000000000001',
+        title: '두부 조림',
+        description: '',
+        imageUrl: '',
+        baseServings: 1,
+        targetServings: 2,
+        source: CookingRecipeSource.base,
+        personalVersionId: null,
+        ingredients: const [
+          CookingSetupIngredient(
+            originalName: '두부',
+            name: '두부',
+            amount: 2,
+            unit: '모',
+            isRequired: true,
+          ),
+        ],
+        steps: const [
+          CookingSetupStep(
+            stepIndex: 0,
+            instruction: '두부를 부치세요.',
+            timerSeconds: 120,
+            cautionNote: null,
+            imageUrl: '',
+          ),
+        ],
+      );
+      await store.save(buildSession(setupSnapshot: snapshot));
+
+      final loaded = await store.load();
+
+      expect(loaded, isNotNull);
+      expect(loaded!.setupSnapshot, isNotNull);
+      expect(loaded.setupSnapshot!.targetServings, 2);
+      expect(loaded.setupSnapshot!.ingredients.single.amount, 2);
+      expect(loaded.setupSnapshot!.steps.single.timerSeconds, 120);
+    });
+
+    test('실행 스냅샷만 손상되면 단계와 타이머 세션은 유지한다', () async {
+      final json = buildSession().toJson();
+      json['setupSnapshot'] = <String, Object?>{
+        'schemaVersion': CookingSetupSnapshot.currentSchemaVersion + 1,
+      };
+      SharedPreferences.setMockInitialValues(<String, Object>{
+        'cookpilot.active_cooking_session.v1': jsonEncode(json),
+      });
+
+      final loaded = await store.load();
+
+      expect(loaded, isNotNull);
+      expect(loaded!.setupSnapshot, isNull);
+      expect(loaded.recipeId, '10000000-0000-0000-0000-000000000001');
+      expect(loaded.stepIndex, 2);
+      expect(loaded.timerRemainingMs, 3 * 60 * 1000);
+
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getString('cookpilot.active_cooking_session.v1'), isNotNull);
     });
 
     test('recipeId 타입이 손상된 저장값은 정리한다', () async {

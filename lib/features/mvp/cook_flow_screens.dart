@@ -6,6 +6,7 @@ import '../../app/app_theme.dart';
 import '../cooking/application/cooking_ports.dart';
 import '../cooking/application/cooking_session_store.dart';
 import '../cooking/application/timer_controller.dart';
+import '../cooking/domain/cooking_setup_snapshot.dart';
 import '../cooking/domain/cooking_session_state.dart';
 import '../cooking/presentation/timer_alarm_provider.dart';
 import '../cooking/presentation/widgets/help_question_sheet.dart';
@@ -390,9 +391,16 @@ class _IngredientRow extends StatelessWidget {
 }
 
 class CookSetupScreen extends StatefulWidget {
-  const CookSetupScreen({super.key, required this.recipe});
+  const CookSetupScreen({
+    super.key,
+    required this.recipe,
+    this.recipeRepository,
+    this.sessionAlarm,
+  });
 
   final Recipe recipe;
+  final RecipeRepository? recipeRepository;
+  final TimerAlarmPort? sessionAlarm;
 
   @override
   State<CookSetupScreen> createState() => _CookSetupScreenState();
@@ -400,15 +408,140 @@ class CookSetupScreen extends StatefulWidget {
 
 class _CookSetupScreenState extends State<CookSetupScreen> {
   late int servings;
+  late final RecipeRepository _recipeRepository;
+  late List<_IngredientSetupDraft> _ingredients;
+  late List<CookStep> _steps;
+  PersonalRecipeVersionDetail? _personalVersion;
+  bool _loadingPersonalVersion = false;
+  bool _usePersonalVersion = false;
+  String? _personalVersionError;
 
   @override
   void initState() {
     super.initState();
+    _recipeRepository = widget.recipeRepository ?? RecipeRepository();
     servings = widget.recipe.baseServings.round().clamp(1, 99);
+    _applySelectedRecipe();
+    unawaited(_loadPersonalVersion());
+  }
+
+  Future<void> _loadPersonalVersion() async {
+    final versionId = widget.recipe.latestPersonalVersionId;
+    if (!widget.recipe.hasPersonalVersion ||
+        versionId == null ||
+        versionId.isEmpty) {
+      return;
+    }
+    setState(() {
+      _loadingPersonalVersion = true;
+      _personalVersionError = null;
+    });
+    try {
+      final version = await _recipeRepository.findPersonalVersionDetail(
+        versionId,
+      );
+      if (version.steps.isEmpty) {
+        throw const RecipeApiException('나 맞춤 버전에 조리 단계가 없습니다.');
+      }
+      if (!mounted) return;
+      setState(() {
+        _personalVersion = version;
+        _usePersonalVersion = true;
+        _loadingPersonalVersion = false;
+        _applySelectedRecipe();
+      });
+    } on Object {
+      if (!mounted) return;
+      setState(() {
+        _loadingPersonalVersion = false;
+        _personalVersionError = '나 맞춤 버전을 불러오지 못해 기본 레시피로 진행해요.';
+      });
+    }
+  }
+
+  void _selectPersonalVersion(bool selected) {
+    if (selected == _usePersonalVersion ||
+        (selected && _personalVersion == null)) {
+      return;
+    }
+    setState(() {
+      _usePersonalVersion = selected;
+      _applySelectedRecipe();
+    });
+  }
+
+  void _applySelectedRecipe() {
+    final personal = _usePersonalVersion ? _personalVersion : null;
+    final sourceIngredients =
+        personal?.ingredients ?? widget.recipe.ingredients;
+    _steps = List<CookStep>.of(personal?.steps ?? widget.recipe.steps);
+    final scale = servings / _safeBaseServings;
+    _ingredients = sourceIngredients
+        .map(
+          (ingredient) => _IngredientSetupDraft(
+            originalName: ingredient.name,
+            name: ingredient.name,
+            amount: ingredient.amount == null
+                ? null
+                : ingredient.amount! * scale,
+            baselineAmount: ingredient.amount == null
+                ? null
+                : ingredient.amount! * scale,
+            unit: ingredient.unit,
+            isRequired: ingredient.isRequired,
+          ),
+        )
+        .toList(growable: false);
+  }
+
+  double get _safeBaseServings =>
+      widget.recipe.baseServings > 0 ? widget.recipe.baseServings : 1;
+
+  void _changeServings(int delta) {
+    final next = (servings + delta).clamp(1, 99);
+    if (next == servings) return;
+    final scale = next / servings;
+    setState(() {
+      servings = next;
+      _ingredients = _ingredients
+          .map((ingredient) => ingredient.scaled(scale))
+          .toList(growable: false);
+    });
+  }
+
+  CookingSetupSnapshot _buildSnapshot() {
+    return CookingSetupSnapshot(
+      recipeId: widget.recipe.id,
+      title: widget.recipe.title,
+      description: widget.recipe.description,
+      imageUrl: widget.recipe.imageUrl,
+      baseServings: _safeBaseServings,
+      targetServings: servings,
+      source: _usePersonalVersion
+          ? CookingRecipeSource.personal
+          : CookingRecipeSource.base,
+      personalVersionId: _usePersonalVersion ? _personalVersion?.id : null,
+      ingredients: _ingredients
+          .map((ingredient) => ingredient.toSnapshot())
+          .toList(growable: false),
+      steps: _steps
+          .map(
+            (step) => CookingSetupStep(
+              stepIndex: step.stepIndex,
+              instruction: step.instruction,
+              timerSeconds: step.timerSeconds,
+              cautionNote: step.cautionNote,
+              imageUrl: step.imageUrl,
+            ),
+          )
+          .toList(growable: false),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
+    final setupLocked = _loadingPersonalVersion;
+
     return PageShell(
       title: '조리 설정',
       leading: IconButton(
@@ -425,27 +558,44 @@ class _CookSetupScreenState extends State<CookSetupScreen> {
         Wrap(
           spacing: 8,
           children: [
-            const Pill('기본', selected: true),
-            if (widget.recipe.hasPersonalVersion) const Pill('나 맞춤 버전 있음'),
+            ChoiceChip(
+              label: const Text('기본'),
+              selected: !_usePersonalVersion,
+              onSelected: setupLocked
+                  ? null
+                  : (_) => _selectPersonalVersion(false),
+            ),
+            if (widget.recipe.hasPersonalVersion)
+              ChoiceChip(
+                label: Text(
+                  _loadingPersonalVersion ? '나 맞춤 불러오는 중' : '나 맞춤 버전',
+                ),
+                selected: _usePersonalVersion,
+                onSelected: setupLocked || _personalVersion == null
+                    ? null
+                    : (_) => _selectPersonalVersion(true),
+              ),
           ],
         ),
         const SizedBox(height: 12),
         InfoStrip(
           icon: Icons.auto_awesome_rounded,
-          title: widget.recipe.hasPersonalVersion
-              ? '이 레시피의 나 맞춤 버전이 있어요'
-              : '기본 레시피',
-          body: widget.recipe.hasPersonalVersion
-              ? '이번 조리는 원본 레시피로 진행해요.'
-              : widget.recipe.memorySummary,
+          title: _usePersonalVersion ? _personalVersion!.title : '기본 레시피',
+          body:
+              _personalVersionError ??
+              (_usePersonalVersion
+                  ? (_personalVersion!.summary.isEmpty
+                        ? '저장된 나 맞춤 재료와 조리 단계를 적용했어요.'
+                        : _personalVersion!.summary)
+                  : widget.recipe.memorySummary),
         ),
         const SectionTitle('몇 인분인가요?'),
         Row(
           children: [
             PressableScale(
               child: IconButton.filledTonal(
-                onPressed: servings > 1
-                    ? () => setState(() => servings--)
+                onPressed: !setupLocked && servings > 1
+                    ? () => _changeServings(-1)
                     : null,
                 icon: const Icon(Icons.remove_rounded),
               ),
@@ -463,14 +613,14 @@ class _CookSetupScreenState extends State<CookSetupScreen> {
             ),
             PressableScale(
               child: IconButton.filled(
-                onPressed: () => setState(() => servings++),
+                onPressed: setupLocked ? null : () => _changeServings(1),
                 icon: const Icon(Icons.add_rounded),
               ),
             ),
           ],
         ),
         const SectionTitle('재료 변경'),
-        for (final ingredient in widget.recipe.ingredients)
+        for (final (index, ingredient) in _ingredients.indexed)
           Card(
             child: ListTile(
               title: Text(
@@ -478,13 +628,27 @@ class _CookSetupScreenState extends State<CookSetupScreen> {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
-              subtitle: Text(
-                ingredient.amountLabel,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
+              subtitle: Row(
+                children: [
+                  Flexible(
+                    child: Text(
+                      ingredient.omitted
+                          ? '이번 조리에서 생략'
+                          : ingredient.amountLabel,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  if (ingredient.isSubstituted) ...[
+                    const SizedBox(width: 6),
+                    const Pill('대체'),
+                  ],
+                ],
               ),
               trailing: TextButton(
-                onPressed: () => _openIngredientSheet(context, ingredient),
+                onPressed: setupLocked
+                    ? null
+                    : () => _openIngredientSheet(context, index),
                 child: const Text('수정'),
               ),
             ),
@@ -492,98 +656,353 @@ class _CookSetupScreenState extends State<CookSetupScreen> {
         const SectionTitle('이번 조리 요약'),
         InfoStrip(
           icon: Icons.check_circle_outline_rounded,
-          title: '$servings인분 · 기본',
+          title: '$servings인분 · ${_usePersonalVersion ? '나 맞춤' : '기본'}',
           body:
-              '재료 ${widget.recipe.ingredients.length}개 · 조리 ${widget.recipe.steps.length}단계',
+              '사용 재료 ${_ingredients.where((item) => !item.omitted).length}개'
+              ' · 생략 ${_ingredients.where((item) => item.omitted).length}개'
+              ' · 조리 ${_steps.length}단계',
         ),
       ],
       bottom: PressableScale(
         child: FilledButton(
-          onPressed: () {
-            Navigator.of(context).push(
-              MaterialPageRoute<void>(
-                builder: (_) => CookSessionScreen(
-                  recipe: widget.recipe,
-                  servings: servings,
-                ),
-              ),
-            );
-          },
-          child: const Text('이 설정으로 조리 시작'),
+          onPressed: setupLocked
+              ? null
+              : () {
+                  final snapshot = _buildSnapshot();
+                  Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => CookSessionScreen(
+                        recipe: snapshot.toExecutionRecipe(),
+                        servings: servings,
+                        setupSnapshot: snapshot,
+                        alarm: widget.sessionAlarm,
+                      ),
+                    ),
+                  );
+                },
+          child: Text(setupLocked ? '나 맞춤 버전 불러오는 중' : '이 설정으로 조리 시작'),
         ),
       ),
     );
   }
 
-  void _openIngredientSheet(BuildContext context, Ingredient ingredient) {
-    showModalBottomSheet<void>(
+  Future<void> _openIngredientSheet(BuildContext context, int index) async {
+    final ingredient = _ingredients[index];
+    var mode = ingredient.omitted
+        ? _IngredientEditMode.omit
+        : ingredient.isSubstituted
+        ? _IngredientEditMode.substitute
+        : _IngredientEditMode.amount;
+    var amount = ingredient.amount;
+    var replacementName = ingredient.isSubstituted ? ingredient.name : '';
+    String? validationMessage;
+
+    final result = await showModalBottomSheet<_IngredientEditResult>(
       context: context,
       showDragHandle: true,
       builder: (context) {
-        return Padding(
-          padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                '${ingredient.name} · ${ingredient.amountLabel}',
-                style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  color: AppColors.ink,
-                  fontWeight: FontWeight.w900,
-                ),
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            final amountLabel = _formatAmount(amount, ingredient.unit);
+            return Padding(
+              padding: EdgeInsets.fromLTRB(
+                20,
+                4,
+                20,
+                24 + MediaQuery.viewInsetsOf(context).bottom,
               ),
-              const SizedBox(height: 14),
-              const Wrap(
-                spacing: 8,
-                children: [
-                  Pill('양 조절', selected: true),
-                  Pill('대체'),
-                  Pill('생략'),
-                ],
-              ),
-              const SizedBox(height: 18),
-              Row(
-                children: [
-                  IconButton.filledTonal(
-                    onPressed: () {},
-                    icon: const Icon(Icons.remove_rounded),
-                  ),
-                  Expanded(
-                    child: Text(
-                      ingredient.amountLabel,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '${ingredient.originalName} · ${ingredient.amountLabel}',
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        color: AppColors.ink,
                         fontWeight: FontWeight.w900,
-                        fontSize: 18,
                       ),
                     ),
-                  ),
-                  IconButton.filled(
-                    onPressed: () {},
-                    icon: const Icon(Icons.add_rounded),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              const InfoStrip(
-                icon: Icons.calculate_rounded,
-                title: '비율 자동 재계산',
-                body: '간장을 줄이면 나머지 양념 비율이 함께 조정돼요.',
-              ),
-              const SizedBox(height: 18),
-              PressableScale(
-                child: FilledButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  child: const Text('적용'),
+                    const SizedBox(height: 14),
+                    Wrap(
+                      spacing: 8,
+                      children: [
+                        ChoiceChip(
+                          label: const Text('양 조절'),
+                          selected: mode == _IngredientEditMode.amount,
+                          onSelected: (_) => setSheetState(
+                            () => mode = _IngredientEditMode.amount,
+                          ),
+                        ),
+                        ChoiceChip(
+                          label: const Text('대체'),
+                          selected: mode == _IngredientEditMode.substitute,
+                          onSelected: (_) => setSheetState(
+                            () => mode = _IngredientEditMode.substitute,
+                          ),
+                        ),
+                        ChoiceChip(
+                          label: const Text('생략'),
+                          selected: mode == _IngredientEditMode.omit,
+                          onSelected: (_) => setSheetState(
+                            () => mode = _IngredientEditMode.omit,
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (ingredient.isSubstituted) ...[
+                      const SizedBox(height: 12),
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          onPressed: () {
+                            Navigator.of(context).pop(
+                              _IngredientEditResult(
+                                mode: _IngredientEditMode.restoreOriginal,
+                                amount: amount,
+                                replacementName: '',
+                              ),
+                            );
+                          },
+                          icon: const Icon(Icons.restart_alt_rounded),
+                          label: Text(
+                            '기본 재료(${ingredient.originalName})로 되돌리기',
+                          ),
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 18),
+                    if (mode == _IngredientEditMode.substitute) ...[
+                      TextFormField(
+                        initialValue: replacementName,
+                        autofocus: true,
+                        decoration: const InputDecoration(
+                          labelText: '대체할 재료',
+                          hintText: '예: 쪽파',
+                        ),
+                        onChanged: (value) => setSheetState(() {
+                          replacementName = value;
+                          validationMessage = null;
+                        }),
+                      ),
+                      const SizedBox(height: 12),
+                      const InfoStrip(
+                        icon: Icons.lightbulb_outline_rounded,
+                        title: '추천 대체재는 준비 중이에요',
+                        body: '지금은 사용할 재료를 직접 입력해주세요.',
+                      ),
+                    ] else if (mode == _IngredientEditMode.omit) ...[
+                      InfoStrip(
+                        icon: ingredient.isRequired
+                            ? Icons.warning_amber_rounded
+                            : Icons.remove_circle_outline_rounded,
+                        title: ingredient.isRequired
+                            ? '필수 재료를 생략할까요?'
+                            : '이번 조리에서 생략해요',
+                        body: ingredient.isRequired
+                            ? '맛과 조리 결과가 달라질 수 있어요.'
+                            : '조리 시작 전까지 다시 변경할 수 있어요.',
+                      ),
+                    ] else ...[
+                      Row(
+                        children: [
+                          IconButton.filledTonal(
+                            onPressed: amount == null || (amount ?? 0) <= 0
+                                ? null
+                                : () => setSheetState(() {
+                                    amount = _adjustAmount(
+                                      amount!,
+                                      ingredient.unit,
+                                      -1,
+                                    );
+                                  }),
+                            icon: const Icon(Icons.remove_rounded),
+                          ),
+                          Expanded(
+                            child: Text(
+                              amountLabel,
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w900,
+                                fontSize: 18,
+                              ),
+                            ),
+                          ),
+                          IconButton.filled(
+                            onPressed: amount == null
+                                ? null
+                                : () => setSheetState(() {
+                                    amount = _adjustAmount(
+                                      amount!,
+                                      ingredient.unit,
+                                      1,
+                                    );
+                                  }),
+                            icon: const Icon(Icons.add_rounded),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      const InfoStrip(
+                        icon: Icons.calculate_rounded,
+                        title: '이 재료의 양만 조절해요',
+                        body: '다른 양념 비율은 자동으로 바꾸지 않아요.',
+                      ),
+                    ],
+                    if (validationMessage != null) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        validationMessage!,
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.error,
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 18),
+                    PressableScale(
+                      child: FilledButton(
+                        onPressed: () {
+                          final replacement = replacementName.trim();
+                          if (mode == _IngredientEditMode.substitute &&
+                              replacement.isEmpty) {
+                            setSheetState(
+                              () => validationMessage = '대체할 재료를 입력해주세요.',
+                            );
+                            return;
+                          }
+                          Navigator.of(context).pop(
+                            _IngredientEditResult(
+                              mode: mode,
+                              amount: amount,
+                              replacementName: replacement,
+                            ),
+                          );
+                        },
+                        child: const Text('적용'),
+                      ),
+                    ),
+                  ],
                 ),
               ),
-            ],
-          ),
+            );
+          },
         );
       },
     );
+
+    if (!mounted || result == null) return;
+    setState(() {
+      _ingredients[index] = switch (result.mode) {
+        _IngredientEditMode.amount => ingredient.copyWith(
+          name: ingredient.name,
+          amount: result.amount,
+          omitted: false,
+        ),
+        _IngredientEditMode.substitute => ingredient.copyWith(
+          name: result.replacementName,
+          amount: result.amount,
+          omitted: false,
+        ),
+        _IngredientEditMode.omit => ingredient.copyWith(omitted: true),
+        _IngredientEditMode.restoreOriginal => ingredient.copyWith(
+          name: ingredient.originalName,
+          amount: ingredient.baselineAmount,
+          omitted: false,
+        ),
+      };
+    });
   }
+}
+
+enum _IngredientEditMode { amount, substitute, omit, restoreOriginal }
+
+final class _IngredientEditResult {
+  const _IngredientEditResult({
+    required this.mode,
+    required this.amount,
+    required this.replacementName,
+  });
+
+  final _IngredientEditMode mode;
+  final double? amount;
+  final String replacementName;
+}
+
+final class _IngredientSetupDraft {
+  const _IngredientSetupDraft({
+    required this.originalName,
+    required this.name,
+    required this.amount,
+    required this.baselineAmount,
+    required this.unit,
+    required this.isRequired,
+    this.omitted = false,
+  });
+
+  static const _unset = Object();
+
+  final String originalName;
+  final String name;
+  final double? amount;
+  final double? baselineAmount;
+  final String unit;
+  final bool isRequired;
+  final bool omitted;
+
+  bool get isSubstituted => originalName != name;
+  String get amountLabel => _formatAmount(amount, unit);
+
+  _IngredientSetupDraft scaled(double scale) => _IngredientSetupDraft(
+    originalName: originalName,
+    name: name,
+    amount: amount == null ? null : amount! * scale,
+    baselineAmount: baselineAmount == null ? null : baselineAmount! * scale,
+    unit: unit,
+    isRequired: isRequired,
+    omitted: omitted,
+  );
+
+  _IngredientSetupDraft copyWith({
+    String? name,
+    Object? amount = _unset,
+    bool? omitted,
+  }) {
+    return _IngredientSetupDraft(
+      originalName: originalName,
+      name: name ?? this.name,
+      amount: identical(amount, _unset) ? this.amount : amount as double?,
+      baselineAmount: baselineAmount,
+      unit: unit,
+      isRequired: isRequired,
+      omitted: omitted ?? this.omitted,
+    );
+  }
+
+  CookingSetupIngredient toSnapshot() => CookingSetupIngredient(
+    originalName: originalName,
+    name: name,
+    amount: amount,
+    unit: unit,
+    isRequired: isRequired,
+    omitted: omitted,
+  );
+}
+
+String _formatAmount(double? amount, String unit) {
+  if (amount == null) return unit;
+  final value = amount == amount.roundToDouble()
+      ? amount.toInt().toString()
+      : amount.toStringAsFixed(2).replaceFirst(RegExp(r'\.?0+$'), '');
+  return '$value$unit';
+}
+
+double _adjustAmount(double amount, String unit, int direction) {
+  final step = switch (unit.toLowerCase()) {
+    'g' || 'ml' => amount >= 100 ? 10.0 : 5.0,
+    _ => 0.5,
+  };
+  final adjusted = amount + step * direction;
+  return adjusted < 0 ? 0 : adjusted;
 }
 
 class CookSessionScreen extends StatefulWidget {
@@ -591,6 +1010,7 @@ class CookSessionScreen extends StatefulWidget {
     super.key,
     required this.recipe,
     required this.servings,
+    this.setupSnapshot,
     this.restoredSession,
     this.alarm,
     this.advicePort,
@@ -598,6 +1018,7 @@ class CookSessionScreen extends StatefulWidget {
 
   final Recipe recipe;
   final int servings;
+  final CookingSetupSnapshot? setupSnapshot;
 
   /// 홈의 "이어서 조리하기"로 진입할 때 전달되는 저장 세션.
   final PersistedCookingSession? restoredSession;
@@ -722,6 +1143,7 @@ class _CookSessionScreenState extends State<CookSessionScreen>
           recipeId: widget.recipe.id,
           recipeTitle: widget.recipe.title,
           servings: widget.servings,
+          setupSnapshot: widget.setupSnapshot,
           stepIndex: step - 1,
           sessionStatus: CookingSessionStatus.cooking.name,
           timerOriginalMs: snapshot.originalDuration.inMilliseconds,

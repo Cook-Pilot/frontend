@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../domain/cooking_setup_snapshot.dart';
 import '../domain/cooking_session_state.dart';
 import 'timer_controller.dart';
 
@@ -17,6 +18,7 @@ final class PersistedCookingSession {
     this.recipeId,
     required this.recipeTitle,
     required this.servings,
+    this.setupSnapshot,
     required this.stepIndex,
     required this.sessionStatus,
     required this.timerOriginalMs,
@@ -29,6 +31,7 @@ final class PersistedCookingSession {
   final String? recipeId;
   final String recipeTitle;
   final int servings;
+  final CookingSetupSnapshot? setupSnapshot;
   final int stepIndex;
   final String sessionStatus;
   final int timerOriginalMs;
@@ -69,6 +72,7 @@ final class PersistedCookingSession {
       recipeId: recipeId ?? this.recipeId,
       recipeTitle: recipeTitle ?? this.recipeTitle,
       servings: servings,
+      setupSnapshot: setupSnapshot,
       stepIndex: stepIndex,
       sessionStatus: sessionStatus,
       timerOriginalMs: timerOriginalMs,
@@ -94,6 +98,9 @@ final class PersistedCookingSession {
     if (recipeId != null) {
       json['recipeId'] = recipeId!;
     }
+    if (setupSnapshot != null) {
+      json['setupSnapshot'] = setupSnapshot!.toJson();
+    }
     return json;
   }
 
@@ -102,6 +109,15 @@ final class PersistedCookingSession {
     if (recipeId != null && recipeId is! String) {
       return null;
     }
+    final setupSnapshotValue = json['setupSnapshot'];
+    CookingSetupSnapshot? setupSnapshot;
+    if (setupSnapshotValue is Map) {
+      setupSnapshot = CookingSetupSnapshot.fromJson(
+        Map<String, Object?>.from(setupSnapshotValue),
+      );
+    }
+    // 실행 설정만 손상된 경우 단계·타이머 세션은 유지한다.
+    // 홈에서 recipeId 기반 기본 레시피로 다시 조회할 수 있다.
     if (json case {
       'recipeTitle': final String recipeTitle,
       'servings': final int servings,
@@ -117,6 +133,7 @@ final class PersistedCookingSession {
         recipeId: recipeId as String?,
         recipeTitle: recipeTitle,
         servings: servings,
+        setupSnapshot: setupSnapshot,
         stepIndex: stepIndex,
         sessionStatus: sessionStatus,
         timerOriginalMs: timerOriginalMs,
