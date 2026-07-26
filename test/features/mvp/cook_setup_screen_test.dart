@@ -20,18 +20,36 @@ void main() {
 
   tearDown(BetaUserSession.clear);
 
-  testWidgets('최신 개인 버전을 불러와 이번 조리의 기본 선택으로 사용한다', (tester) async {
+  testWidgets('최근 개인 버전을 보여주고 사용자가 선택한 뒤 적용한다', (tester) async {
     final repository = RecipeRepository(
       baseUrl: 'http://example.test',
       client: MockClient((request) async {
+        if (request.url.path.endsWith('/personal-versions')) {
+          return http.Response(
+            '''
+            [{
+              "id": "$versionId",
+              "recipeId": "10000000-0000-0000-0000-000000000001",
+              "versionNumber": 1,
+              "title": "간장을 줄인 계란볶음밥 v1",
+              "summary": "간장 20% 감소",
+              "createdAt": "2026-07-26T01:00:00Z"
+            }]
+            ''',
+            200,
+            headers: {'content-type': 'application/json; charset=utf-8'},
+          );
+        }
         expect(request.url.path, '/api/v1/personal-versions/$versionId');
         return http.Response(
           '''
           {
             "version": {
               "id": "$versionId",
+              "versionNumber": 1,
               "title": "간장을 줄인 계란볶음밥 v1",
-              "summary": "간장 20% 감소"
+              "summary": "간장 20% 감소",
+              "createdAt": "2026-07-26T01:00:00Z"
             },
             "ingredients": [
               {
@@ -76,6 +94,13 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    expect(find.text('기본 레시피'), findsOneWidget);
+    expect(find.text('1공기'), findsOneWidget);
+    expect(find.text('v1'), findsOneWidget);
+
+    await tester.tap(find.text('v1'));
+    await tester.pumpAndSettle();
+
     expect(find.text('간장을 줄인 계란볶음밥 v1'), findsOneWidget);
     expect(find.text('간장 20% 감소'), findsOneWidget);
     expect(find.text('0.8공기'), findsOneWidget);
@@ -92,6 +117,105 @@ void main() {
     await tester.drag(find.byType(ListView), const Offset(0, -500));
     await tester.pump();
     expect(find.text('1인분 · 기본'), findsOneWidget);
+  });
+
+  testWidgets('다른 개인 버전 로딩에 실패하면 기본 레시피로 되돌린다', (tester) async {
+    const secondVersionId = '20000000-0000-0000-0000-000000000002';
+    final repository = RecipeRepository(
+      baseUrl: 'http://example.test',
+      client: MockClient((request) async {
+        if (request.url.path.endsWith('/personal-versions')) {
+          return http.Response(
+            '''
+            [
+              {
+                "id": "$versionId",
+                "recipeId": "10000000-0000-0000-0000-000000000001",
+                "versionNumber": 1,
+                "title": "성공하는 개인 버전",
+                "summary": "밥 양 조정",
+                "createdAt": "2026-07-26T01:00:00Z"
+              },
+              {
+                "id": "$secondVersionId",
+                "recipeId": "10000000-0000-0000-0000-000000000001",
+                "versionNumber": 2,
+                "title": "불러오지 못할 개인 버전",
+                "summary": "테스트",
+                "createdAt": "2026-07-26T02:00:00Z"
+              }
+            ]
+            ''',
+            200,
+            headers: {'content-type': 'application/json; charset=utf-8'},
+          );
+        }
+        if (request.url.path.endsWith(secondVersionId)) {
+          return http.Response('{}', 500);
+        }
+        return http.Response(
+          '''
+          {
+            "version": {
+              "id": "$versionId",
+              "versionNumber": 1,
+              "title": "성공하는 개인 버전",
+              "summary": "밥 양 조정",
+              "createdAt": "2026-07-26T01:00:00Z"
+            },
+            "ingredients": [
+              {
+                "originalIngredientId": null,
+                "name": "밥",
+                "amount": 0.8,
+                "unit": "공기",
+                "required": true,
+                "origin": "MODIFIED"
+              }
+            ],
+            "steps": [
+              {
+                "stepIndex": 0,
+                "originalStepId": null,
+                "instruction": "볶으세요.",
+                "timerSeconds": 60,
+                "cautionNote": null,
+                "origin": "ORIGINAL"
+              }
+            ],
+            "ingredientAdjustments": [],
+            "stepAdjustments": []
+          }
+          ''',
+          200,
+          headers: {'content-type': 'application/json; charset=utf-8'},
+        );
+      }),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: CookSetupScreen(
+          recipe: _recipe(
+            hasPersonalVersion: true,
+            latestPersonalVersionId: secondVersionId,
+          ),
+          recipeRepository: repository,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('v1'));
+    await tester.pumpAndSettle();
+    expect(find.text('0.8공기'), findsOneWidget);
+
+    await tester.tap(find.text('v2'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('기본 레시피'), findsOneWidget);
+    expect(find.text('1공기'), findsOneWidget);
+    expect(find.text('0.8공기'), findsNothing);
   });
 
   testWidgets('인분을 변경하면 현재 재료 양을 같은 비율로 조정한다', (tester) async {

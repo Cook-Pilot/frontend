@@ -6,6 +6,7 @@ import '../../app/app_theme.dart';
 import '../cooking/application/cooking_session_store.dart';
 import '../recipe/data/recipe_api.dart';
 import '../recipe/domain/recipe.dart';
+import '../review/data/review_api.dart';
 import 'cook_flow_screens.dart';
 import 'mvp_widgets.dart';
 
@@ -461,24 +462,67 @@ class _SearchScreenState extends State<SearchScreen> {
 }
 
 class MemoryScreen extends StatefulWidget {
-  const MemoryScreen({super.key});
+  const MemoryScreen({super.key, this.reviewRepository, this.initialDate});
+
+  final ReviewRepository? reviewRepository;
+  final DateTime? initialDate;
 
   @override
   State<MemoryScreen> createState() => _MemoryScreenState();
 }
 
 class _MemoryScreenState extends State<MemoryScreen> {
-  late Future<List<RecipeSummary>> _recipes;
-  String _query = '';
+  late final ReviewRepository _reviewRepository;
+  late DateTime _month;
+  late DateTime _selectedDate;
+  late Future<List<CookingHistoryEntry>> _history;
 
   @override
   void initState() {
     super.initState();
-    _recipes = _recipeRepository.findAll();
+    _reviewRepository = widget.reviewRepository ?? ReviewRepository();
+    final today = widget.initialDate ?? DateTime.now();
+    _month = DateTime(today.year, today.month);
+    _selectedDate = DateTime(today.year, today.month, today.day);
+    _history = _loadMonth();
+  }
+
+  Future<List<CookingHistoryEntry>> _loadMonth() {
+    return _reviewRepository.findHistory(
+      from: _month,
+      to: DateTime(_month.year, _month.month + 1),
+    );
+  }
+
+  void _changeMonth(int delta) {
+    setState(() {
+      _month = DateTime(_month.year, _month.month + delta);
+      _selectedDate = _month;
+      _history = _loadMonth();
+    });
   }
 
   void _retry() {
-    setState(() => _recipes = _recipeRepository.findAll());
+    setState(() => _history = _loadMonth());
+  }
+
+  void _openHistoryDetail(
+    CookingHistoryEntry selected,
+    List<CookingHistoryEntry> monthEntries,
+  ) {
+    final sameRecipe =
+        monthEntries
+            .where((entry) => entry.recipeId == selected.recipeId)
+            .toList(growable: false)
+          ..sort((left, right) => right.cookedAt.compareTo(left.cookedAt));
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => CookingHistoryDetailScreen(
+          entry: selected,
+          sameRecipeEntries: sameRecipe,
+        ),
+      ),
+    );
   }
 
   @override
@@ -486,15 +530,29 @@ class _MemoryScreenState extends State<MemoryScreen> {
     return PageShell(
       title: '레시피 메모리',
       children: [
-        TextField(
-          onChanged: (value) => setState(() => _query = value.trim()),
-          decoration: const InputDecoration(
-            prefixIcon: Icon(Icons.search_rounded, color: AppColors.muted),
-            hintText: '저장한 레시피 검색',
-          ),
+        Row(
+          children: [
+            IconButton(
+              onPressed: () => _changeMonth(-1),
+              icon: const Icon(Icons.chevron_left_rounded),
+            ),
+            Expanded(
+              child: Text(
+                '${_month.year}년 ${_month.month}월',
+                textAlign: TextAlign.center,
+                style: Theme.of(
+                  context,
+                ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
+              ),
+            ),
+            IconButton(
+              onPressed: () => _changeMonth(1),
+              icon: const Icon(Icons.chevron_right_rounded),
+            ),
+          ],
         ),
-        FutureBuilder<List<RecipeSummary>>(
-          future: _recipes,
+        FutureBuilder<List<CookingHistoryEntry>>(
+          future: _history,
           builder: (context, snapshot) {
             if (snapshot.connectionState != ConnectionState.done) {
               return const _RecipeLoading();
@@ -503,34 +561,89 @@ class _MemoryScreenState extends State<MemoryScreen> {
               return _RecipeLoadError(onRetry: _retry);
             }
 
-            final query = _query.toLowerCase();
-            final items = (snapshot.data ?? const <RecipeSummary>[])
-                .where(
-                  (recipe) =>
-                      recipe.hasPersonalVersion &&
-                      (query.isEmpty ||
-                          recipe.title.toLowerCase().contains(query)),
-                )
-                .toList(growable: false);
-
-            if (items.isEmpty) {
-              return const _RecipeEmpty(
-                message: '아직 저장된 개인 레시피가 없어요.\n요리를 마치고 후기를 남겨보세요.',
-              );
+            final entries = snapshot.data ?? const <CookingHistoryEntry>[];
+            final entriesByDay = <int, List<CookingHistoryEntry>>{};
+            for (final entry in entries) {
+              entriesByDay.putIfAbsent(entry.cookedAt.day, () => []).add(entry);
             }
+            final selectedEntries = entries
+                .where((entry) => _isSameDate(entry.cookedAt, _selectedDate))
+                .toList(growable: false);
 
             return Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                SectionTitle('내 레시피 ${items.length}'),
-                for (final recipe in items)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 10),
-                    child: _RecipeSummaryTile(
-                      summary: recipe,
-                      onChanged: _retry,
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    for (final day in ['일', '월', '화', '수', '목', '금', '토'])
+                      Expanded(
+                        child: Text(
+                          day,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            color: AppColors.muted,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                GridView.count(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  crossAxisCount: 7,
+                  mainAxisSpacing: 5,
+                  crossAxisSpacing: 5,
+                  children: [
+                    for (var index = 0; index < _month.weekday % 7; index++)
+                      const SizedBox.shrink(),
+                    for (
+                      var day = 1;
+                      day <= DateTime(_month.year, _month.month + 1, 0).day;
+                      day++
+                    )
+                      _MemoryCalendarDay(
+                        day: day,
+                        count: entriesByDay[day]?.length ?? 0,
+                        selected:
+                            _selectedDate.year == _month.year &&
+                            _selectedDate.month == _month.month &&
+                            _selectedDate.day == day,
+                        onTap: () => setState(
+                          () => _selectedDate = DateTime(
+                            _month.year,
+                            _month.month,
+                            day,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+                SectionTitle(
+                  '${_selectedDate.month}월 ${_selectedDate.day}일 조리',
+                ),
+                if (selectedEntries.isEmpty)
+                  const _RecipeEmpty(message: '이날 저장된 조리 기록이 없어요.')
+                else
+                  for (final entry in selectedEntries)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: FoodTile(
+                        title: entry.recipeTitle,
+                        subtitle:
+                            '${entry.rating == null ? '평점 없음' : '★ ${entry.rating}'}'
+                            '${entry.createdPersonalVersionNumber == null ? '' : ' · 개인 v${entry.createdPersonalVersionNumber}'}',
+                        image: entry.recipeImageUrl,
+                        trailing: const Icon(
+                          Icons.chevron_right_rounded,
+                          color: AppColors.muted,
+                        ),
+                        onTap: () => _openHistoryDetail(entry, entries),
+                      ),
                     ),
-                  ),
               ],
             );
           },
@@ -538,6 +651,337 @@ class _MemoryScreenState extends State<MemoryScreen> {
       ],
     );
   }
+}
+
+class CookingHistoryDetailScreen extends StatelessWidget {
+  const CookingHistoryDetailScreen({
+    super.key,
+    required this.entry,
+    required this.sameRecipeEntries,
+  });
+
+  final CookingHistoryEntry entry;
+  final List<CookingHistoryEntry> sameRecipeEntries;
+
+  @override
+  Widget build(BuildContext context) {
+    final otherEntries = sameRecipeEntries
+        .where((item) => item.reviewId != entry.reviewId)
+        .toList(growable: false);
+    final recipeSource = entry.sourcePersonalVersionId == null
+        ? '기본 레시피'
+        : '개인 레시피';
+
+    return PageShell(
+      title: '조리 기록',
+      leading: IconButton(
+        onPressed: () => Navigator.of(context).pop(),
+        icon: const Icon(Icons.chevron_left_rounded),
+      ),
+      children: [
+        Text(
+          entry.recipeTitle,
+          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+            color: AppColors.ink,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+        const SizedBox(height: 7),
+        Text(
+          _fullDateLabel(entry.cookedAt),
+          style: const TextStyle(
+            color: AppColors.slate,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 20),
+        _CookingResultOverview(entry: entry, recipeSource: recipeSource),
+        if (entry.createdPersonalVersionNumber case final int number) ...[
+          const SizedBox(height: 14),
+          InfoStrip(
+            icon: Icons.auto_awesome_rounded,
+            title: '개인 레시피 v$number 생성',
+            body:
+                entry.createdPersonalVersionSummary ??
+                '이번 실행 변경을 개인 버전으로 저장했어요.',
+          ),
+        ],
+        if (entry.comment case final String comment
+            when comment.isNotEmpty) ...[
+          const SectionTitle('이번 요리 메모'),
+          _MemoryNoteCard(icon: Icons.edit_note_rounded, text: comment),
+        ],
+        if (entry.nextTimeNote case final String note when note.isNotEmpty) ...[
+          const SectionTitle('다음에는'),
+          _MemoryNoteCard(icon: Icons.next_plan_outlined, text: note),
+        ],
+        if (otherEntries.isNotEmpty) ...[
+          const SectionTitle('같은 요리의 다른 기록'),
+          for (var index = 0; index < otherEntries.length; index++)
+            _CookingHistoryTimelineItem(
+              entry: otherEntries[index],
+              isLast: index == otherEntries.length - 1,
+            ),
+        ],
+      ],
+    );
+  }
+}
+
+class _CookingResultOverview extends StatelessWidget {
+  const _CookingResultOverview({
+    required this.entry,
+    required this.recipeSource,
+  });
+
+  final CookingHistoryEntry entry;
+  final String recipeSource;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: AppColors.wash,
+        borderRadius: BorderRadius.circular(AppShape.container),
+        border: Border.all(color: AppColors.line),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 54,
+            height: 54,
+            decoration: BoxDecoration(
+              color: AppColors.accentSoft,
+              borderRadius: BorderRadius.circular(AppShape.inner),
+            ),
+            child: const Icon(
+              Icons.restaurant_rounded,
+              color: AppColors.accent,
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  recipeSource,
+                  style: const TextStyle(
+                    color: AppColors.slate,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  _ratingLabel(entry.rating),
+                  style: const TextStyle(
+                    color: AppColors.ink,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MemoryNoteCard extends StatelessWidget {
+  const _MemoryNoteCard({required this.icon, required this.text});
+
+  final IconData icon;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(17),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(AppShape.inner),
+        border: Border.all(color: AppColors.line),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, color: AppColors.accent, size: 22),
+          const SizedBox(width: 11),
+          Expanded(
+            child: Text(
+              text,
+              style: const TextStyle(
+                color: AppColors.ink,
+                height: 1.5,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CookingHistoryTimelineItem extends StatelessWidget {
+  const _CookingHistoryTimelineItem({
+    required this.entry,
+    required this.isLast,
+  });
+
+  final CookingHistoryEntry entry;
+  final bool isLast;
+
+  @override
+  Widget build(BuildContext context) {
+    final version = entry.createdPersonalVersionNumber;
+    return IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          SizedBox(
+            width: 22,
+            child: Column(
+              children: [
+                Container(
+                  width: 10,
+                  height: 10,
+                  decoration: const BoxDecoration(
+                    color: AppColors.accent,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                if (!isLast)
+                  Expanded(child: Container(width: 2, color: AppColors.line)),
+              ],
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: 18),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    _fullDateLabel(entry.cookedAt),
+                    style: const TextStyle(
+                      color: AppColors.ink,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '${_ratingLabel(entry.rating)}'
+                    '${version == null ? '' : ' · 개인 v$version 생성'}',
+                    style: const TextStyle(
+                      color: AppColors.slate,
+                      fontSize: 13,
+                    ),
+                  ),
+                  if (entry.comment case final String comment
+                      when comment.isNotEmpty) ...[
+                    const SizedBox(height: 5),
+                    Text(
+                      comment,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(color: AppColors.slate),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+String _fullDateLabel(DateTime date) {
+  return '${date.year}년 ${date.month}월 ${date.day}일';
+}
+
+String _ratingLabel(int? rating) {
+  if (rating == null) return '평점 없음';
+  final safeRating = rating.clamp(0, 5);
+  return '${'★' * safeRating}${'☆' * (5 - safeRating)}  $safeRating.0';
+}
+
+class _MemoryCalendarDay extends StatelessWidget {
+  const _MemoryCalendarDay({
+    required this.day,
+    required this.count,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final int day;
+  final int count;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(12),
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: AppMotion.fast,
+        decoration: BoxDecoration(
+          color: selected ? AppColors.accentSoft : Colors.transparent,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: selected ? AppColors.accent : AppColors.line,
+          ),
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(
+              '$day',
+              style: TextStyle(
+                color: selected ? AppColors.accent : AppColors.ink,
+                fontWeight: selected ? FontWeight.w900 : FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 3),
+            if (count > 0)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                decoration: BoxDecoration(
+                  color: AppColors.accent,
+                  borderRadius: BorderRadius.circular(99),
+                ),
+                child: Text(
+                  '$count',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 9,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              )
+            else
+              const SizedBox(height: 13),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+bool _isSameDate(DateTime left, DateTime right) {
+  return left.year == right.year &&
+      left.month == right.month &&
+      left.day == right.day;
 }
 
 class _ResumeCookingCard extends StatelessWidget {

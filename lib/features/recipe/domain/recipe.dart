@@ -39,12 +39,14 @@ class Recipe {
 
 class Ingredient {
   const Ingredient({
+    this.originalIngredientId,
     required this.name,
     required this.amount,
     required this.unit,
     required this.isRequired,
   });
 
+  final String? originalIngredientId;
   final String name;
   final double? amount;
   final String unit;
@@ -63,6 +65,7 @@ class Ingredient {
 
 class CookStep {
   const CookStep({
+    this.originalStepId,
     required this.stepIndex,
     required this.instruction,
     required this.timerSeconds,
@@ -70,6 +73,7 @@ class CookStep {
     required this.imageUrl,
   });
 
+  final String? originalStepId;
   final int stepIndex;
   final String instruction;
   final int? timerSeconds;

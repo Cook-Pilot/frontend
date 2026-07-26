@@ -15,6 +15,7 @@ import 'timer_controller.dart';
 @immutable
 final class PersistedCookingSession {
   const PersistedCookingSession({
+    this.sessionId,
     this.recipeId,
     required this.recipeTitle,
     required this.servings,
@@ -26,8 +27,10 @@ final class PersistedCookingSession {
     required this.timerRemainingMs,
     required this.timerStatus,
     required this.savedAtEpochMs,
+    this.timerSecondsByStep = const {},
   });
 
+  final String? sessionId;
   final String? recipeId;
   final String recipeTitle;
   final int servings;
@@ -39,6 +42,7 @@ final class PersistedCookingSession {
   final int timerRemainingMs;
   final String timerStatus;
   final int savedAtEpochMs;
+  final Map<int, int> timerSecondsByStep;
 
   /// 조리 중이거나 일시정지 상태만 복원 대상이다.
   bool get isResumable =>
@@ -69,6 +73,7 @@ final class PersistedCookingSession {
 
   PersistedCookingSession copyWith({String? recipeId, String? recipeTitle}) {
     return PersistedCookingSession(
+      sessionId: sessionId,
       recipeId: recipeId ?? this.recipeId,
       recipeTitle: recipeTitle ?? this.recipeTitle,
       servings: servings,
@@ -80,6 +85,7 @@ final class PersistedCookingSession {
       timerRemainingMs: timerRemainingMs,
       timerStatus: timerStatus,
       savedAtEpochMs: savedAtEpochMs,
+      timerSecondsByStep: timerSecondsByStep,
     );
   }
 
@@ -94,7 +100,13 @@ final class PersistedCookingSession {
       'timerRemainingMs': timerRemainingMs,
       'timerStatus': timerStatus,
       'savedAtEpochMs': savedAtEpochMs,
+      'timerSecondsByStep': timerSecondsByStep.map(
+        (stepIndex, seconds) => MapEntry(stepIndex.toString(), seconds),
+      ),
     };
+    if (sessionId != null) {
+      json['sessionId'] = sessionId!;
+    }
     if (recipeId != null) {
       json['recipeId'] = recipeId!;
     }
@@ -105,6 +117,10 @@ final class PersistedCookingSession {
   }
 
   static PersistedCookingSession? fromJson(Map<String, Object?> json) {
+    final sessionId = json['sessionId'];
+    if (sessionId != null && sessionId is! String) {
+      return null;
+    }
     final recipeId = json['recipeId'];
     if (recipeId != null && recipeId is! String) {
       return null;
@@ -118,6 +134,16 @@ final class PersistedCookingSession {
     }
     // 실행 설정만 손상된 경우 단계·타이머 세션은 유지한다.
     // 홈에서 recipeId 기반 기본 레시피로 다시 조회할 수 있다.
+    final timerSecondsByStep = <int, int>{};
+    final timerValues = json['timerSecondsByStep'];
+    if (timerValues != null) {
+      if (timerValues is! Map) return null;
+      for (final MapEntry(key: key, value: value) in timerValues.entries) {
+        final stepIndex = int.tryParse(key.toString());
+        if (stepIndex == null || value is! int || value < 0) return null;
+        timerSecondsByStep[stepIndex] = value;
+      }
+    }
     if (json case {
       'recipeTitle': final String recipeTitle,
       'servings': final int servings,
@@ -130,6 +156,7 @@ final class PersistedCookingSession {
       'savedAtEpochMs': final int savedAtEpochMs,
     }) {
       return PersistedCookingSession(
+        sessionId: sessionId as String?,
         recipeId: recipeId as String?,
         recipeTitle: recipeTitle,
         servings: servings,
@@ -141,6 +168,7 @@ final class PersistedCookingSession {
         timerRemainingMs: timerRemainingMs,
         timerStatus: timerStatus,
         savedAtEpochMs: savedAtEpochMs,
+        timerSecondsByStep: Map.unmodifiable(timerSecondsByStep),
       );
     }
     return null;

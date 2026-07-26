@@ -1,7 +1,9 @@
 import 'package:cookpilot/features/cooking/application/cooking_ports.dart';
 import 'package:cookpilot/features/cooking/application/cooking_session_store.dart';
+import 'package:cookpilot/features/cooking/domain/cooking_setup_snapshot.dart';
 import 'package:cookpilot/features/mvp/cook_flow_screens.dart';
 import 'package:cookpilot/features/recipe/domain/recipe.dart';
+import 'package:cookpilot/features/review/data/review_api.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -58,6 +60,29 @@ void main() {
       timerRemainingMs: timerRemainingMs,
       timerStatus: timerStatus,
       savedAtEpochMs: DateTime.now().millisecondsSinceEpoch,
+    );
+  }
+
+  CookingSetupSnapshot buildSnapshot() {
+    return CookingSetupSnapshot(
+      recipeId: recipe.id,
+      title: recipe.title,
+      description: recipe.description,
+      imageUrl: recipe.imageUrl,
+      baseServings: recipe.baseServings,
+      targetServings: 2,
+      source: CookingRecipeSource.base,
+      personalVersionId: null,
+      ingredients: const [],
+      steps: const [
+        CookingSetupStep(
+          stepIndex: 0,
+          instruction: '첫 번째 단계를 진행하세요.',
+          timerSeconds: 180,
+          cautionNote: null,
+          imageUrl: '',
+        ),
+      ],
     );
   }
 
@@ -167,7 +192,7 @@ void main() {
       expect(saved!.stepIndex, 1);
     });
 
-    testWidgets('조리를 완료하면 저장본을 정리한다', (tester) async {
+    testWidgets('조리를 완료해도 후기 저장 전까지 저장본을 유지한다', (tester) async {
       await pumpSession(
         tester,
         restoredSession: buildSession(stepIndex: recipe.steps.length - 1),
@@ -176,18 +201,17 @@ void main() {
       await tester.tap(find.text('조리 완료'));
       await tester.pumpAndSettle();
 
-      expect(await store.load(), isNull);
+      expect(await store.load(), isNotNull);
     });
 
-    testWidgets('완료 후 전환 중 타이머가 만료돼도 저장본을 되살리지 않는다', (tester) async {
-      await pumpSession(
-        tester,
-        restoredSession: buildSession(
-          stepIndex: recipe.steps.length - 1,
-          timerStatus: 'running',
-          timerRemainingMs: 400,
-        ),
+    testWidgets('완료 후 전환 중 타이머가 만료돼도 저장본을 덮어쓰지 않는다', (tester) async {
+      final restored = buildSession(
+        stepIndex: recipe.steps.length - 1,
+        timerStatus: 'running',
+        timerRemainingMs: 400,
       );
+      await pumpSession(tester, restoredSession: restored);
+      final sessionIdBeforeCompletion = (await store.load())!.sessionId;
 
       await tester.tap(find.text('조리 완료'));
       // 전환 애니메이션 중에는 이전 화면 State와 타이머 콜백이 살아 있다.
@@ -199,7 +223,77 @@ void main() {
       await tester.pump(const Duration(milliseconds: 250));
       await tester.pumpAndSettle();
 
-      expect(await store.load(), isNull);
+      final saved = await store.load();
+      expect(saved, isNotNull);
+      expect(saved!.sessionId, sessionIdBeforeCompletion);
     });
   });
+
+  group('ReviewScreen 저장', () {
+    testWidgets('후기 저장이 성공한 뒤에만 조리 세션을 정리한다', (tester) async {
+      await store.save(buildSession());
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ReviewScreen(
+            setupSnapshot: buildSnapshot(),
+            clientSessionId: '40000000-0000-0000-0000-000000000001',
+            cookedAt: DateTime(2026, 7, 26),
+            timerSecondsByStep: const {},
+            reviewRepository: _FakeReviewRepository(),
+          ),
+        ),
+      );
+
+      await tester.tap(find.text('조리 기록 저장'));
+      await tester.pumpAndSettle();
+
+      expect(await store.load(), isNull);
+    });
+
+    testWidgets('후기 저장에 실패하면 재시도할 조리 세션을 유지한다', (tester) async {
+      await store.save(buildSession());
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ReviewScreen(
+            setupSnapshot: buildSnapshot(),
+            clientSessionId: '40000000-0000-0000-0000-000000000001',
+            cookedAt: DateTime(2026, 7, 26),
+            timerSecondsByStep: const {},
+            reviewRepository: _FakeReviewRepository(shouldFail: true),
+          ),
+        ),
+      );
+
+      await tester.tap(find.text('조리 기록 저장'));
+      await tester.pumpAndSettle();
+
+      expect(await store.load(), isNotNull);
+    });
+  });
+}
+
+final class _FakeReviewRepository extends ReviewRepository {
+  _FakeReviewRepository({this.shouldFail = false})
+    : super(baseUrl: 'http://example.test');
+
+  final bool shouldFail;
+
+  @override
+  Future<ReviewSaveResult> submit({
+    required String clientSessionId,
+    required DateTime cookedAt,
+    required CookingSetupSnapshot snapshot,
+    required Map<int, int> timerSecondsByStep,
+    required int rating,
+    required String comment,
+    required String nextTimeNote,
+  }) async {
+    if (shouldFail) {
+      throw const ReviewApiException('저장 실패');
+    }
+    return const ReviewSaveResult(
+      id: '50000000-0000-0000-0000-000000000001',
+      createdPersonalVersionId: null,
+    );
+  }
 }

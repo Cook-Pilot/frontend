@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../app/app_theme.dart';
+import '../../core/identity/uuid_v4.dart';
 import '../cooking/application/cooking_ports.dart';
 import '../cooking/application/cooking_session_store.dart';
 import '../cooking/application/timer_controller.dart';
@@ -12,6 +13,7 @@ import '../cooking/presentation/timer_alarm_provider.dart';
 import '../cooking/presentation/widgets/help_question_sheet.dart';
 import '../recipe/data/recipe_api.dart';
 import '../recipe/domain/recipe.dart';
+import '../review/data/review_api.dart';
 import 'main_shell.dart';
 import 'mvp_widgets.dart';
 
@@ -411,6 +413,7 @@ class _CookSetupScreenState extends State<CookSetupScreen> {
   late final RecipeRepository _recipeRepository;
   late List<_IngredientSetupDraft> _ingredients;
   late List<CookStep> _steps;
+  List<PersonalRecipeVersionSummary> _personalVersions = const [];
   PersonalRecipeVersionDetail? _personalVersion;
   bool _loadingPersonalVersion = false;
   bool _usePersonalVersion = false;
@@ -422,14 +425,11 @@ class _CookSetupScreenState extends State<CookSetupScreen> {
     _recipeRepository = widget.recipeRepository ?? RecipeRepository();
     servings = widget.recipe.baseServings.round().clamp(1, 99);
     _applySelectedRecipe();
-    unawaited(_loadPersonalVersion());
+    unawaited(_loadPersonalVersions());
   }
 
-  Future<void> _loadPersonalVersion() async {
-    final versionId = widget.recipe.latestPersonalVersionId;
-    if (!widget.recipe.hasPersonalVersion ||
-        versionId == null ||
-        versionId.isEmpty) {
+  Future<void> _loadPersonalVersions() async {
+    if (!widget.recipe.hasPersonalVersion) {
       return;
     }
     setState(() {
@@ -437,8 +437,44 @@ class _CookSetupScreenState extends State<CookSetupScreen> {
       _personalVersionError = null;
     });
     try {
+      final versions = await _recipeRepository.findPersonalVersions(
+        widget.recipe.id,
+      );
+      if (!mounted) return;
+      setState(() {
+        _personalVersions = versions;
+        _loadingPersonalVersion = false;
+      });
+    } on Object {
+      if (!mounted) return;
+      setState(() {
+        _loadingPersonalVersion = false;
+        _personalVersionError = '나 맞춤 버전을 불러오지 못해 기본 레시피로 진행해요.';
+      });
+    }
+  }
+
+  Future<void> _selectPersonalVersion(
+    PersonalRecipeVersionSummary? selected,
+  ) async {
+    if (selected == null) {
+      if (!_usePersonalVersion) return;
+      setState(() {
+        _usePersonalVersion = false;
+        _personalVersion = null;
+        _personalVersionError = null;
+        _applySelectedRecipe();
+      });
+      return;
+    }
+    if (_personalVersion?.id == selected.id) return;
+    setState(() {
+      _loadingPersonalVersion = true;
+      _personalVersionError = null;
+    });
+    try {
       final version = await _recipeRepository.findPersonalVersionDetail(
-        versionId,
+        selected.id,
       );
       if (version.steps.isEmpty) {
         throw const RecipeApiException('나 맞춤 버전에 조리 단계가 없습니다.');
@@ -453,21 +489,13 @@ class _CookSetupScreenState extends State<CookSetupScreen> {
     } on Object {
       if (!mounted) return;
       setState(() {
+        _usePersonalVersion = false;
+        _personalVersion = null;
         _loadingPersonalVersion = false;
-        _personalVersionError = '나 맞춤 버전을 불러오지 못해 기본 레시피로 진행해요.';
+        _personalVersionError = '이 버전을 불러오지 못했어요. 기본 레시피를 이용해주세요.';
+        _applySelectedRecipe();
       });
     }
-  }
-
-  void _selectPersonalVersion(bool selected) {
-    if (selected == _usePersonalVersion ||
-        (selected && _personalVersion == null)) {
-      return;
-    }
-    setState(() {
-      _usePersonalVersion = selected;
-      _applySelectedRecipe();
-    });
   }
 
   void _applySelectedRecipe() {
@@ -479,6 +507,7 @@ class _CookSetupScreenState extends State<CookSetupScreen> {
     _ingredients = sourceIngredients
         .map(
           (ingredient) => _IngredientSetupDraft(
+            originalIngredientId: ingredient.originalIngredientId,
             originalName: ingredient.name,
             name: ingredient.name,
             amount: ingredient.amount == null
@@ -527,6 +556,7 @@ class _CookSetupScreenState extends State<CookSetupScreen> {
       steps: _steps
           .map(
             (step) => CookingSetupStep(
+              originalStepId: step.originalStepId,
               stepIndex: step.stepIndex,
               instruction: step.instruction,
               timerSeconds: step.timerSeconds,
@@ -563,27 +593,31 @@ class _CookSetupScreenState extends State<CookSetupScreen> {
               selected: !_usePersonalVersion,
               onSelected: setupLocked
                   ? null
-                  : (_) => _selectPersonalVersion(false),
+                  : (_) => unawaited(_selectPersonalVersion(null)),
             ),
-            if (widget.recipe.hasPersonalVersion)
+            for (final version in _personalVersions)
               ChoiceChip(
-                label: Text(
-                  _loadingPersonalVersion ? '나 맞춤 불러오는 중' : '나 맞춤 버전',
-                ),
-                selected: _usePersonalVersion,
-                onSelected: setupLocked || _personalVersion == null
+                label: Text('v${version.versionNumber}'),
+                selected: _personalVersion?.id == version.id,
+                onSelected: setupLocked
                     ? null
-                    : (_) => _selectPersonalVersion(true),
+                    : (_) => unawaited(_selectPersonalVersion(version)),
               ),
           ],
         ),
         const SizedBox(height: 12),
         InfoStrip(
           icon: Icons.auto_awesome_rounded,
-          title: _usePersonalVersion ? _personalVersion!.title : '기본 레시피',
+          title: _loadingPersonalVersion
+              ? '개인 버전을 불러오는 중'
+              : _usePersonalVersion
+              ? _personalVersion!.title
+              : '기본 레시피',
           body:
               _personalVersionError ??
-              (_usePersonalVersion
+              (_loadingPersonalVersion
+                  ? '최근 개인 레시피 버전을 확인하고 있어요.'
+                  : _usePersonalVersion
                   ? (_personalVersion!.summary.isEmpty
                         ? '저장된 나 맞춤 재료와 조리 단계를 적용했어요.'
                         : _personalVersion!.summary)
@@ -930,6 +964,7 @@ final class _IngredientEditResult {
 
 final class _IngredientSetupDraft {
   const _IngredientSetupDraft({
+    required this.originalIngredientId,
     required this.originalName,
     required this.name,
     required this.amount,
@@ -941,6 +976,7 @@ final class _IngredientSetupDraft {
 
   static const _unset = Object();
 
+  final String? originalIngredientId;
   final String originalName;
   final String name;
   final double? amount;
@@ -953,6 +989,7 @@ final class _IngredientSetupDraft {
   String get amountLabel => _formatAmount(amount, unit);
 
   _IngredientSetupDraft scaled(double scale) => _IngredientSetupDraft(
+    originalIngredientId: originalIngredientId,
     originalName: originalName,
     name: name,
     amount: amount == null ? null : amount! * scale,
@@ -968,6 +1005,7 @@ final class _IngredientSetupDraft {
     bool? omitted,
   }) {
     return _IngredientSetupDraft(
+      originalIngredientId: originalIngredientId,
       originalName: originalName,
       name: name ?? this.name,
       amount: identical(amount, _unset) ? this.amount : amount as double?,
@@ -979,9 +1017,11 @@ final class _IngredientSetupDraft {
   }
 
   CookingSetupIngredient toSnapshot() => CookingSetupIngredient(
+    originalIngredientId: originalIngredientId,
     originalName: originalName,
     name: name,
     amount: amount,
+    baselineAmount: baselineAmount,
     unit: unit,
     isRequired: isRequired,
     omitted: omitted,
@@ -1038,6 +1078,8 @@ class _CookSessionScreenState extends State<CookSessionScreen>
   final CookingSessionStore _store = const CookingSessionStore();
 
   int step = 1;
+  late final String _sessionId;
+  final Map<int, int> _timerSecondsByStep = <int, int>{};
 
   // 도움 질문(음성 폴백) 상태. 답변은 현재 단계에 묶이므로 단계가 바뀌면 버린다.
   late final ExceptionAdvicePort _advice =
@@ -1069,6 +1111,10 @@ class _CookSessionScreenState extends State<CookSessionScreen>
     WidgetsBinding.instance.addObserver(this);
     _timer.addListener(_onTimerChanged);
     final restored = widget.restoredSession;
+    _sessionId = restored?.sessionId ?? generateUuidV4();
+    _timerSecondsByStep.addAll(
+      restored?.timerSecondsByStep ?? const <int, int>{},
+    );
     if (restored == null) {
       _resetTimerForStep();
     } else {
@@ -1140,6 +1186,7 @@ class _CookSessionScreenState extends State<CookSessionScreen>
     unawaited(
       _store.save(
         PersistedCookingSession(
+          sessionId: _sessionId,
           recipeId: widget.recipe.id,
           recipeTitle: widget.recipe.title,
           servings: widget.servings,
@@ -1151,12 +1198,14 @@ class _CookSessionScreenState extends State<CookSessionScreen>
           timerRemainingMs: snapshot.remaining.inMilliseconds,
           timerStatus: snapshot.status.name,
           savedAtEpochMs: DateTime.now().millisecondsSinceEpoch,
+          timerSecondsByStep: Map.unmodifiable(_timerSecondsByStep),
         ),
       ),
     );
   }
 
   void _resetTimerForStep() {
+    _timerSecondsByStep.remove(step - 1);
     final duration = widget.recipe.steps[step - 1].timerDuration;
     _timer.reset(duration, autoStart: false);
     _lastStatus = _timer.status;
@@ -1191,6 +1240,9 @@ class _CookSessionScreenState extends State<CookSessionScreen>
 
   void _addMinute() {
     // add()는 정지/종료 상태여도 타이머를 다시 진행시킨다.
+    _timerSecondsByStep[step - 1] =
+        _timer.effectiveDuration.inSeconds +
+        const Duration(minutes: 1).inSeconds;
     _timer.add(const Duration(minutes: 1));
     _scheduleAlarm();
   }
@@ -1469,12 +1521,16 @@ class _CookSessionScreenState extends State<CookSessionScreen>
           child: FilledButton(
             onPressed: () {
               if (isLast) {
-                // 완료된 세션은 복원 대상이 아니므로 저장본을 정리한다.
+                // 후기 저장이 성공하기 전까지 동일 세션으로 재시도할 수 있게 보존한다.
                 _completed = true;
-                unawaited(_store.clear());
                 Navigator.of(context).pushReplacement(
                   MaterialPageRoute<void>(
-                    builder: (_) => ReviewScreen(recipe: widget.recipe),
+                    builder: (_) => ReviewScreen(
+                      setupSnapshot: _reviewSnapshot(),
+                      clientSessionId: _sessionId,
+                      cookedAt: DateTime.now(),
+                      timerSecondsByStep: Map.unmodifiable(_timerSecondsByStep),
+                    ),
                   ),
                 );
               } else {
@@ -1494,12 +1550,63 @@ class _CookSessionScreenState extends State<CookSessionScreen>
       ),
     );
   }
+
+  CookingSetupSnapshot _reviewSnapshot() {
+    final snapshot = widget.setupSnapshot;
+    if (snapshot != null) return snapshot;
+    return CookingSetupSnapshot(
+      recipeId: widget.recipe.id,
+      title: widget.recipe.title,
+      description: widget.recipe.description,
+      imageUrl: widget.recipe.imageUrl,
+      baseServings: widget.recipe.baseServings > 0
+          ? widget.recipe.baseServings
+          : 1,
+      targetServings: widget.servings,
+      source: CookingRecipeSource.base,
+      personalVersionId: null,
+      ingredients: [
+        for (final ingredient in widget.recipe.ingredients)
+          CookingSetupIngredient(
+            originalIngredientId: ingredient.originalIngredientId,
+            originalName: ingredient.name,
+            name: ingredient.name,
+            amount: ingredient.amount,
+            baselineAmount: ingredient.amount,
+            unit: ingredient.unit,
+            isRequired: ingredient.isRequired,
+          ),
+      ],
+      steps: [
+        for (final step in widget.recipe.steps)
+          CookingSetupStep(
+            originalStepId: step.originalStepId,
+            stepIndex: step.stepIndex,
+            instruction: step.instruction,
+            timerSeconds: step.timerSeconds,
+            cautionNote: step.cautionNote,
+            imageUrl: step.imageUrl,
+          ),
+      ],
+    );
+  }
 }
 
 class ReviewScreen extends StatefulWidget {
-  const ReviewScreen({super.key, required this.recipe});
+  const ReviewScreen({
+    super.key,
+    required this.setupSnapshot,
+    required this.clientSessionId,
+    required this.cookedAt,
+    required this.timerSecondsByStep,
+    this.reviewRepository,
+  });
 
-  final Recipe recipe;
+  final CookingSetupSnapshot setupSnapshot;
+  final String clientSessionId;
+  final DateTime cookedAt;
+  final Map<int, int> timerSecondsByStep;
+  final ReviewRepository? reviewRepository;
 
   @override
   State<ReviewScreen> createState() => _ReviewScreenState();
@@ -1507,17 +1614,105 @@ class ReviewScreen extends StatefulWidget {
 
 class _ReviewScreenState extends State<ReviewScreen> {
   int rating = 5;
+  late final ReviewRepository _reviewRepository;
+  final TextEditingController _commentController = TextEditingController();
+  final TextEditingController _nextTimeController = TextEditingController();
+  bool _saving = false;
+  ReviewSaveResult? _saved;
+  String? _saveError;
+
+  @override
+  void initState() {
+    super.initState();
+    _reviewRepository = widget.reviewRepository ?? ReviewRepository();
+  }
+
+  @override
+  void dispose() {
+    _commentController.dispose();
+    _nextTimeController.dispose();
+    super.dispose();
+  }
+
+  List<String> get _changeLabels {
+    final changes = <String>[];
+    for (final ingredient in widget.setupSnapshot.ingredients) {
+      if (ingredient.omitted) {
+        changes.add('${ingredient.originalName} 생략');
+      } else if (ingredient.isSubstituted) {
+        changes.add('${ingredient.originalName} → ${ingredient.name}');
+      } else if (!_sameAmount(ingredient.amount, ingredient.baselineAmount)) {
+        changes.add(
+          '${ingredient.name} '
+          '${_formatAmount(ingredient.baselineAmount, ingredient.unit)} → '
+          '${_formatAmount(ingredient.amount, ingredient.unit)}',
+        );
+      }
+    }
+    for (final MapEntry(key: index, value: seconds)
+        in widget.timerSecondsByStep.entries) {
+      if (index < 0 || index >= widget.setupSnapshot.steps.length) continue;
+      final original = widget.setupSnapshot.steps[index].timerSeconds;
+      if (original != seconds) {
+        changes.add('${index + 1}단계 타이머 ${_secondsLabel(seconds)}');
+      }
+    }
+    return changes;
+  }
+
+  Future<void> _save() async {
+    if (_saving || _saved != null) return;
+    setState(() {
+      _saving = true;
+      _saveError = null;
+    });
+    try {
+      final result = await _reviewRepository.submit(
+        clientSessionId: widget.clientSessionId,
+        cookedAt: widget.cookedAt,
+        snapshot: widget.setupSnapshot,
+        timerSecondsByStep: widget.timerSecondsByStep,
+        rating: rating,
+        comment: _commentController.text,
+        nextTimeNote: _nextTimeController.text,
+      );
+      await const CookingSessionStore().clear();
+      if (!mounted) return;
+      setState(() {
+        _saved = result;
+        _saving = false;
+      });
+    } on ReviewApiException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _saving = false;
+        _saveError = error.message;
+      });
+    } on Object {
+      if (!mounted) return;
+      setState(() {
+        _saving = false;
+        _saveError = '후기를 저장하지 못했습니다. 잠시 후 다시 시도해주세요.';
+      });
+    }
+  }
+
+  void _goHome() {
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute<void>(builder: (_) => const MainShell()),
+      (route) => false,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
+    final changes = _changeLabels;
+    final sourceLabel =
+        widget.setupSnapshot.source == CookingRecipeSource.personal
+        ? '개인 버전 기반'
+        : '원본 기반';
     return PageShell(
       title: '조리 후 리뷰',
-      actions: [
-        IconButton(
-          onPressed: () {},
-          icon: const Icon(Icons.more_horiz_rounded),
-        ),
-      ],
       children: [
         Text(
           '조리 완료! 어땠나요?',
@@ -1564,161 +1759,78 @@ class _ReviewScreenState extends State<ReviewScreen> {
           ],
         ),
         const SectionTitle('이번 조리 요약'),
-        const InfoStrip(
+        InfoStrip(
           icon: Icons.summarize_rounded,
-          title: '2인분 · 나 맞춤 기반 · 25분 소요',
-          body: '설탕 생략 · 간장 3큰술 → 2.5큰술 · 조리 시간 4분 → 5분',
+          title: '${widget.setupSnapshot.targetServings}인분 · $sourceLabel',
+          body: changes.isEmpty
+              ? '선택한 레시피 그대로 조리했어요. 후기는 조리 기록에 저장돼요.'
+              : changes.join(' · '),
         ),
-        const SectionTitle('한 줄 메모'),
-        const TextField(
+        const SectionTitle('이번 요리 메모'),
+        TextField(
+          controller: _commentController,
+          enabled: !_saving && _saved == null,
           minLines: 3,
           maxLines: 5,
-          decoration: InputDecoration(hintText: '텍스트 입력 또는 음성 메모'),
+          decoration: const InputDecoration(hintText: '맛과 조리 결과를 기록해보세요.'),
         ),
-        const SectionTitle('자동으로 기록한 변경'),
-        const Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [Pill('설탕 생략'), Pill('간장 50%'), Pill('2분 추가')],
+        const SectionTitle('다음에는'),
+        TextField(
+          controller: _nextTimeController,
+          enabled: !_saving && _saved == null,
+          minLines: 2,
+          maxLines: 4,
+          decoration: const InputDecoration(hintText: '다음 조리에 기억할 점을 남겨주세요.'),
         ),
-      ],
-      bottom: PressableScale(
-        child: FilledButton(
-          onPressed: () {
-            Navigator.of(context).push(
-              MaterialPageRoute<void>(
-                builder: (_) => SaveChoiceScreen(recipe: widget.recipe),
-              ),
-            );
-          },
-          child: const Text('레시피 메모리에 저장'),
-        ),
-      ),
-    );
-  }
-}
-
-class SaveChoiceScreen extends StatefulWidget {
-  const SaveChoiceScreen({super.key, required this.recipe});
-
-  final Recipe recipe;
-
-  @override
-  State<SaveChoiceScreen> createState() => _SaveChoiceScreenState();
-}
-
-class _SaveChoiceScreenState extends State<SaveChoiceScreen> {
-  int choice = 0;
-
-  @override
-  Widget build(BuildContext context) {
-    return PageShell(
-      title: '어떻게 저장할까요?',
-      leading: IconButton(
-        onPressed: () => Navigator.of(context).pop(),
-        icon: const Icon(Icons.chevron_left_rounded),
-      ),
-      children: [
-        const Text(
-          '이번 변경을 다음 조리에 어떻게 반영할지 선택하세요.',
-          style: TextStyle(color: AppColors.slate),
-        ),
-        const SizedBox(height: 18),
-        _SaveOption(
-          icon: Icons.check_circle_rounded,
-          title: '나 맞춤 업데이트',
-          subtitle: '다음 조리의 기본값으로 사용',
-          selected: choice == 0,
-          onTap: () => setState(() => choice = 0),
-        ),
-        _SaveOption(
-          icon: Icons.add_circle_outline_rounded,
-          title: '새 변형으로 저장',
-          subtitle: '현재 나 맞춤은 유지하고 별도 버전 생성',
-          selected: choice == 1,
-          onTap: () => setState(() => choice = 1),
-        ),
-        const SectionTitle('저장되는 정보'),
-        const Text(
-          '날짜 · 인분 · 변경사항 · 만족도 · 코멘트 · 완성 사진',
-          style: TextStyle(color: AppColors.slate),
-        ),
-      ],
-      bottom: PressableScale(
-        child: FilledButton(
-          onPressed: () {
-            Navigator.of(context).pushAndRemoveUntil(
-              MaterialPageRoute<void>(builder: (_) => const MainShell()),
-              (route) => false,
-            );
-          },
-          child: const Text('선택한 방식으로 저장'),
-        ),
-      ),
-    );
-  }
-}
-
-class _SaveOption extends StatelessWidget {
-  const _SaveOption({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return PressableScale(
-      child: InkWell(
-        borderRadius: BorderRadius.circular(AppShape.inner),
-        onTap: onTap,
-        child: AnimatedContainer(
-          duration: AppMotion.short,
-          curve: AppMotion.easeInOut,
-          margin: const EdgeInsets.symmetric(vertical: 5),
-          decoration: BoxDecoration(
-            color: selected ? AppColors.accentSoft : AppColors.card,
-            borderRadius: BorderRadius.circular(AppShape.inner),
-            border: Border.all(
-              color: selected ? AppColors.accent : AppColors.line,
-              width: selected ? 1.4 : 1,
-            ),
+        if (changes.isNotEmpty) ...[
+          const SectionTitle('자동으로 기록한 변경'),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [for (final change in changes) Pill(change)],
           ),
-          child: ListTile(
-            leading: Icon(
-              icon,
-              color: selected ? AppColors.accent : AppColors.slate,
-            ),
-            title: Text(
-              title,
-              style: const TextStyle(fontWeight: FontWeight.w800),
-            ),
-            subtitle: Text(subtitle),
-            trailing: AnimatedSwitcher(
-              duration: AppMotion.fast,
-              transitionBuilder: (child, animation) => ScaleTransition(
-                scale: animation,
-                child: FadeTransition(opacity: animation, child: child),
-              ),
-              child: selected
-                  ? const Icon(
-                      Icons.check_rounded,
-                      key: ValueKey('checked'),
-                      color: AppColors.accent,
-                    )
-                  : const SizedBox.shrink(key: ValueKey('unchecked')),
-            ),
+        ],
+        if (_saveError case final String error) ...[
+          const SizedBox(height: 16),
+          InfoStrip(
+            icon: Icons.error_outline_rounded,
+            title: '저장하지 못했어요',
+            body: error,
+          ),
+        ],
+        if (_saved case final ReviewSaveResult saved) ...[
+          const SizedBox(height: 16),
+          InfoStrip(
+            icon: Icons.check_circle_rounded,
+            title: '조리 기록을 저장했어요',
+            body: saved.createdPersonalVersionId == null
+                ? '실행 변경이 없어 후기에만 기록했어요.'
+                : '실행한 변경을 새 개인 레시피 버전으로 함께 저장했어요.',
+          ),
+        ],
+      ],
+      bottom: PressableScale(
+        child: FilledButton(
+          onPressed: _saving ? null : (_saved == null ? _save : _goHome),
+          child: Text(
+            _saving
+                ? '저장 중'
+                : _saved == null
+                ? '조리 기록 저장'
+                : '홈으로',
           ),
         ),
       ),
     );
   }
+}
+
+bool _sameAmount(double? left, double? right) {
+  if (left == null || right == null) return left == right;
+  return (left - right).abs() < 0.0001;
+}
+
+String _secondsLabel(int seconds) {
+  if (seconds % 60 == 0) return '${seconds ~/ 60}분';
+  return '${seconds ~/ 60}분 ${seconds % 60}초';
 }

@@ -7,17 +7,21 @@ enum CookingRecipeSource { base, personal }
 @immutable
 final class CookingSetupIngredient {
   const CookingSetupIngredient({
+    this.originalIngredientId,
     required this.originalName,
     required this.name,
     required this.amount,
+    this.baselineAmount,
     required this.unit,
     required this.isRequired,
     this.omitted = false,
   });
 
+  final String? originalIngredientId;
   final String originalName;
   final String name;
   final double? amount;
+  final double? baselineAmount;
   final String unit;
   final bool isRequired;
   final bool omitted;
@@ -25,9 +29,11 @@ final class CookingSetupIngredient {
   bool get isSubstituted => originalName != name;
 
   Map<String, Object?> toJson() => {
+    'originalIngredientId': originalIngredientId,
     'originalName': originalName,
     'name': name,
     'amount': amount,
+    'baselineAmount': baselineAmount,
     'unit': unit,
     'isRequired': isRequired,
     'omitted': omitted,
@@ -41,13 +47,25 @@ final class CookingSetupIngredient {
       'isRequired': final bool isRequired,
     }) {
       final amountValue = json['amount'];
+      final baselineAmountValue = json['baselineAmount'];
+      final originalIngredientId = json['originalIngredientId'];
       final omittedValue = json['omitted'];
       if (amountValue != null && amountValue is! num) return null;
+      if (baselineAmountValue != null && baselineAmountValue is! num) {
+        return null;
+      }
+      if (originalIngredientId != null && originalIngredientId is! String) {
+        return null;
+      }
       if (omittedValue != null && omittedValue is! bool) return null;
       return CookingSetupIngredient(
+        originalIngredientId: originalIngredientId as String?,
         originalName: originalName,
         name: name,
         amount: (amountValue as num?)?.toDouble(),
+        baselineAmount:
+            (baselineAmountValue as num?)?.toDouble() ??
+            amountValue?.toDouble(),
         unit: unit,
         isRequired: isRequired,
         omitted: omittedValue as bool? ?? false,
@@ -60,6 +78,7 @@ final class CookingSetupIngredient {
 @immutable
 final class CookingSetupStep {
   const CookingSetupStep({
+    this.originalStepId,
     required this.stepIndex,
     required this.instruction,
     required this.timerSeconds,
@@ -67,6 +86,7 @@ final class CookingSetupStep {
     required this.imageUrl,
   });
 
+  final String? originalStepId;
   final int stepIndex;
   final String instruction;
   final int? timerSeconds;
@@ -74,6 +94,7 @@ final class CookingSetupStep {
   final String imageUrl;
 
   Map<String, Object?> toJson() => {
+    'originalStepId': originalStepId,
     'stepIndex': stepIndex,
     'instruction': instruction,
     'timerSeconds': timerSeconds,
@@ -89,9 +110,12 @@ final class CookingSetupStep {
     }) {
       final timerSeconds = json['timerSeconds'];
       final cautionNote = json['cautionNote'];
+      final originalStepId = json['originalStepId'];
       if (timerSeconds != null && timerSeconds is! int) return null;
       if (cautionNote != null && cautionNote is! String) return null;
+      if (originalStepId != null && originalStepId is! String) return null;
       return CookingSetupStep(
+        originalStepId: originalStepId as String?,
         stepIndex: stepIndex,
         instruction: instruction,
         timerSeconds: timerSeconds as int?,
@@ -149,6 +173,7 @@ final class CookingSetupSnapshot {
           .where((ingredient) => !ingredient.omitted)
           .map(
             (ingredient) => Ingredient(
+              originalIngredientId: ingredient.originalIngredientId,
               name: ingredient.name,
               amount: ingredient.amount,
               unit: ingredient.unit,
@@ -159,6 +184,7 @@ final class CookingSetupSnapshot {
       steps: steps
           .map(
             (step) => CookStep(
+              originalStepId: step.originalStepId,
               stepIndex: step.stepIndex,
               instruction: step.instruction,
               timerSeconds: step.timerSeconds,
