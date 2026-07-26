@@ -10,14 +10,17 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   PersistedCookingSession buildSession({
+    String sessionId = '40000000-0000-0000-0000-000000000001',
     String? recipeId = '10000000-0000-0000-0000-000000000001',
     String sessionStatus = 'cooking',
     String timerStatus = 'running',
     int timerRemainingMs = 3 * 60 * 1000,
     int savedAtEpochMs = 1000000,
     CookingSetupSnapshot? setupSnapshot,
+    Map<int, int> timerSecondsByStep = const {1: 240},
   }) {
     return PersistedCookingSession(
+      sessionId: sessionId,
       recipeId: recipeId,
       recipeTitle: '두부 조림',
       servings: 2,
@@ -29,6 +32,7 @@ void main() {
       timerRemainingMs: timerRemainingMs,
       timerStatus: timerStatus,
       savedAtEpochMs: savedAtEpochMs,
+      timerSecondsByStep: timerSecondsByStep,
     );
   }
 
@@ -45,12 +49,14 @@ void main() {
       final loaded = await store.load();
 
       expect(loaded, isNotNull);
-      expect(loaded!.recipeId, '10000000-0000-0000-0000-000000000001');
+      expect(loaded!.sessionId, '40000000-0000-0000-0000-000000000001');
+      expect(loaded.recipeId, '10000000-0000-0000-0000-000000000001');
       expect(loaded.recipeTitle, '두부 조림');
       expect(loaded.servings, 2);
       expect(loaded.stepIndex, 2);
       expect(loaded.sessionStatus, 'cooking');
       expect(loaded.timerRemainingMs, 3 * 60 * 1000);
+      expect(loaded.timerSecondsByStep, {1: 240});
       expect(loaded.isResumable, isTrue);
     });
 

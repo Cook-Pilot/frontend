@@ -20,18 +20,36 @@ void main() {
 
   tearDown(BetaUserSession.clear);
 
-  testWidgets('최신 개인 버전을 불러와 이번 조리의 기본 선택으로 사용한다', (tester) async {
+  testWidgets('최근 개인 버전을 보여주고 사용자가 선택한 뒤 적용한다', (tester) async {
     final repository = RecipeRepository(
       baseUrl: 'http://example.test',
       client: MockClient((request) async {
+        if (request.url.path.endsWith('/personal-versions')) {
+          return http.Response(
+            '''
+            [{
+              "id": "$versionId",
+              "recipeId": "10000000-0000-0000-0000-000000000001",
+              "versionNumber": 1,
+              "title": "간장을 줄인 계란볶음밥 v1",
+              "summary": "간장 20% 감소",
+              "createdAt": "2026-07-26T01:00:00Z"
+            }]
+            ''',
+            200,
+            headers: {'content-type': 'application/json; charset=utf-8'},
+          );
+        }
         expect(request.url.path, '/api/v1/personal-versions/$versionId');
         return http.Response(
           '''
           {
             "version": {
               "id": "$versionId",
+              "versionNumber": 1,
               "title": "간장을 줄인 계란볶음밥 v1",
-              "summary": "간장 20% 감소"
+              "summary": "간장 20% 감소",
+              "createdAt": "2026-07-26T01:00:00Z"
             },
             "ingredients": [
               {
@@ -74,6 +92,13 @@ void main() {
         ),
       ),
     );
+    await tester.pumpAndSettle();
+
+    expect(find.text('기본 레시피'), findsOneWidget);
+    expect(find.text('1공기'), findsOneWidget);
+    expect(find.text('v1'), findsOneWidget);
+
+    await tester.tap(find.text('v1'));
     await tester.pumpAndSettle();
 
     expect(find.text('간장을 줄인 계란볶음밥 v1'), findsOneWidget);

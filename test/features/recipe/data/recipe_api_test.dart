@@ -135,8 +135,10 @@ void main() {
           {
             "version": {
               "id": "$versionId",
+              "versionNumber": 2,
               "title": "덜 짠 라면 v2",
-              "summary": "스프를 줄인 버전"
+              "summary": "스프를 줄인 버전",
+              "createdAt": "2026-07-26T01:00:00Z"
             },
             "ingredients": [
               {
@@ -168,10 +170,44 @@ void main() {
     final version = await repository.findPersonalVersionDetail(versionId);
 
     expect(version.id, versionId);
+    expect(version.versionNumber, 2);
     expect(version.title, '덜 짠 라면 v2');
     expect(version.summary, '스프를 줄인 버전');
     expect(version.ingredients.single.amountLabel, '550ml');
     expect(version.steps.single.timerSeconds, 90);
+  });
+
+  test('레시피의 최근 개인 버전 목록을 읽는다', () async {
+    const versionId = '20000000-0000-0000-0000-000000000001';
+    final repository = RecipeRepository(
+      baseUrl: baseUrl,
+      client: MockClient((request) async {
+        expect(
+          request.url.toString(),
+          '$baseUrl/api/v1/recipes/$recipeId/personal-versions',
+        );
+        expect(request.headers[cookPilotUserIdHeader], userId);
+        return _jsonResponse('''
+          [
+            {
+              "id": "$versionId",
+              "recipeId": "$recipeId",
+              "versionNumber": 3,
+              "title": "덜 짠 라면 v3",
+              "summary": "스프 20% 감소",
+              "createdAt": "2026-07-26T01:00:00Z"
+            }
+          ]
+        ''');
+      }),
+    );
+
+    final versions = await repository.findPersonalVersions(recipeId);
+
+    expect(versions, hasLength(1));
+    expect(versions.single.id, versionId);
+    expect(versions.single.versionNumber, 3);
+    expect(versions.single.summary, '스프 20% 감소');
   });
 
   test('개인 버전 배열의 항목 형식이 잘못되면 API 예외로 변환한다', () async {
