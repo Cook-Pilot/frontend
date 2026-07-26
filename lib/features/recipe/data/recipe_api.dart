@@ -66,6 +66,10 @@ class PersonalRecipeVersionDetail {
         stepsJson is! List) {
       throw const RecipeApiException('개인 레시피 응답 형식이 올바르지 않습니다.');
     }
+    if (ingredientsJson.any((item) => item is! Map<String, dynamic>) ||
+        stepsJson.any((item) => item is! Map<String, dynamic>)) {
+      throw const RecipeApiException('개인 레시피 항목 형식이 올바르지 않습니다.');
+    }
 
     return PersonalRecipeVersionDetail(
       id: _requiredString(version, 'id'),
@@ -75,7 +79,7 @@ class PersonalRecipeVersionDetail {
           .map((item) => _ingredientFromJson(item as Map<String, dynamic>))
           .toList(growable: false),
       steps: stepsJson
-          .map((item) => _personalStepFromJson(item as Map<String, dynamic>))
+          .map((item) => _stepFromJson(item as Map<String, dynamic>))
           .toList(growable: false),
     );
   }
@@ -271,18 +275,6 @@ CookStep _stepFromJson(Map<String, dynamic> json) {
     timerSeconds: json['timerSeconds'] == null ? null : seconds,
     cautionNote: caution,
     imageUrl: json['imageUrl'] as String? ?? '',
-  );
-}
-
-CookStep _personalStepFromJson(Map<String, dynamic> json) {
-  final stepIndex = (json['stepIndex'] as num?)?.toInt() ?? 0;
-  final timerSeconds = (json['timerSeconds'] as num?)?.toInt();
-  return CookStep(
-    stepIndex: stepIndex,
-    instruction: _requiredString(json, 'instruction'),
-    timerSeconds: timerSeconds,
-    cautionNote: json['cautionNote'] as String?,
-    imageUrl: '',
   );
 }
 

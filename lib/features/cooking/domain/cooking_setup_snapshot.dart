@@ -24,14 +24,6 @@ final class CookingSetupIngredient {
 
   bool get isSubstituted => originalName != name;
 
-  String get amountLabel {
-    if (amount == null) return unit;
-    final number = amount == amount!.roundToDouble()
-        ? amount!.toInt().toString()
-        : amount!.toStringAsFixed(2).replaceFirst(RegExp(r'\.?0+$'), '');
-    return '$number$unit';
-  }
-
   Map<String, Object?> toJson() => {
     'originalName': originalName,
     'name': name,
@@ -129,49 +121,6 @@ final class CookingSetupSnapshot {
   }) : ingredients = List.unmodifiable(ingredients),
        steps = List.unmodifiable(steps);
 
-  factory CookingSetupSnapshot.fromRecipe(
-    Recipe recipe, {
-    required int targetServings,
-    CookingRecipeSource source = CookingRecipeSource.base,
-    String? personalVersionId,
-    List<CookingSetupIngredient>? ingredients,
-  }) {
-    return CookingSetupSnapshot(
-      recipeId: recipe.id,
-      title: recipe.title,
-      description: recipe.description,
-      imageUrl: recipe.imageUrl,
-      baseServings: recipe.baseServings,
-      targetServings: targetServings,
-      source: source,
-      personalVersionId: personalVersionId,
-      ingredients:
-          ingredients ??
-          recipe.ingredients
-              .map(
-                (ingredient) => CookingSetupIngredient(
-                  originalName: ingredient.name,
-                  name: ingredient.name,
-                  amount: ingredient.amount,
-                  unit: ingredient.unit,
-                  isRequired: ingredient.isRequired,
-                ),
-              )
-              .toList(growable: false),
-      steps: recipe.steps
-          .map(
-            (step) => CookingSetupStep(
-              stepIndex: step.stepIndex,
-              instruction: step.instruction,
-              timerSeconds: step.timerSeconds,
-              cautionNote: step.cautionNote,
-              imageUrl: step.imageUrl,
-            ),
-          )
-          .toList(growable: false),
-    );
-  }
-
   final String recipeId;
   final String title;
   final String description;
@@ -246,6 +195,8 @@ final class CookingSetupSnapshot {
       final baseServingsValue = json['baseServings'];
       final personalVersionId = json['personalVersionId'];
       if (baseServingsValue is! num ||
+          baseServingsValue <= 0 ||
+          targetServings < 1 ||
           (personalVersionId != null && personalVersionId is! String)) {
         return null;
       }
@@ -271,6 +222,7 @@ final class CookingSetupSnapshot {
         if (step == null) return null;
         steps.add(step);
       }
+      if (steps.isEmpty) return null;
 
       return CookingSetupSnapshot(
         recipeId: recipeId,

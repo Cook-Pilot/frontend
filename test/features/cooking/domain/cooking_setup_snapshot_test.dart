@@ -95,4 +95,24 @@ void main() {
     expect(recipe.ingredients.single.name, '밥');
     expect(recipe.ingredients.single.amount, 2);
   });
+
+  test('잘못된 인분이나 조리 단계가 없는 저장값은 복원하지 않는다', () {
+    final json = <String, Object?>{
+      'recipeId': 'recipe-id',
+      'title': '계란볶음밥',
+      'description': '',
+      'imageUrl': '',
+      'baseServings': 1,
+      'targetServings': 0,
+      'source': CookingRecipeSource.base.name,
+      'personalVersionId': null,
+      'ingredients': <Object?>[],
+      'steps': <Object?>[],
+    };
+
+    expect(CookingSetupSnapshot.fromJson(json), isNull);
+
+    json['targetServings'] = 1;
+    expect(CookingSetupSnapshot.fromJson(json), isNull);
+  });
 }

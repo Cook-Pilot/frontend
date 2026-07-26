@@ -174,6 +174,31 @@ void main() {
     expect(version.steps.single.timerSeconds, 90);
   });
 
+  test('개인 버전 배열의 항목 형식이 잘못되면 API 예외로 변환한다', () async {
+    const versionId = '20000000-0000-0000-0000-000000000001';
+    final repository = RecipeRepository(
+      baseUrl: baseUrl,
+      client: MockClient(
+        (_) async => _jsonResponse('''
+          {
+            "version": {
+              "id": "$versionId",
+              "title": "잘못된 개인 버전",
+              "summary": ""
+            },
+            "ingredients": ["잘못된 항목"],
+            "steps": []
+          }
+        '''),
+      ),
+    );
+
+    await expectLater(
+      repository.findPersonalVersionDetail(versionId),
+      throwsA(isA<RecipeApiException>()),
+    );
+  });
+
   test('상세 응답 ID가 요청한 레시피와 다르면 거부한다', () async {
     const summary = RecipeSummary(
       id: recipeId,
