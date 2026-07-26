@@ -39,17 +39,18 @@ final class CookingSetupIngredient {
       'name': final String name,
       'unit': final String unit,
       'isRequired': final bool isRequired,
-      'omitted': final bool omitted,
     }) {
       final amountValue = json['amount'];
+      final omittedValue = json['omitted'];
       if (amountValue != null && amountValue is! num) return null;
+      if (omittedValue != null && omittedValue is! bool) return null;
       return CookingSetupIngredient(
         originalName: originalName,
         name: name,
         amount: (amountValue as num?)?.toDouble(),
         unit: unit,
         isRequired: isRequired,
-        omitted: omitted,
+        omitted: omittedValue as bool? ?? false,
       );
     }
     return null;
@@ -107,6 +108,8 @@ final class CookingSetupStep {
 /// 원본 레시피나 개인 버전이 이후 변경돼도 진행 중인 조리는 이 값을 사용한다.
 @immutable
 final class CookingSetupSnapshot {
+  static const currentSchemaVersion = 1;
+
   CookingSetupSnapshot({
     required this.recipeId,
     required this.title,
@@ -132,7 +135,10 @@ final class CookingSetupSnapshot {
   final List<CookingSetupIngredient> ingredients;
   final List<CookingSetupStep> steps;
 
-  Recipe toRecipe() {
+  /// 이미 [targetServings] 기준으로 수량 조정이 끝난 조리 실행용 레시피를 만든다.
+  ///
+  /// 카탈로그의 개인 버전 보유 여부는 실행 정보가 아니므로 포함하지 않는다.
+  Recipe toExecutionRecipe() {
     return Recipe(
       id: recipeId,
       title: title,
@@ -161,12 +167,13 @@ final class CookingSetupSnapshot {
             ),
           )
           .toList(growable: false),
-      hasPersonalVersion: personalVersionId != null,
-      latestPersonalVersionId: personalVersionId,
+      hasPersonalVersion: false,
+      latestPersonalVersionId: null,
     );
   }
 
   Map<String, Object?> toJson() => {
+    'schemaVersion': currentSchemaVersion,
     'recipeId': recipeId,
     'title': title,
     'description': description,
@@ -182,6 +189,13 @@ final class CookingSetupSnapshot {
   };
 
   static CookingSetupSnapshot? fromJson(Map<String, Object?> json) {
+    final schemaVersion = json['schemaVersion'];
+    if (schemaVersion != null &&
+        (schemaVersion is! int ||
+            schemaVersion < 1 ||
+            schemaVersion > currentSchemaVersion)) {
+      return null;
+    }
     if (json case {
       'recipeId': final String recipeId,
       'title': final String title,

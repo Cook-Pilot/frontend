@@ -42,6 +42,10 @@ void main() {
 
     final restored = CookingSetupSnapshot.fromJson(snapshot.toJson());
 
+    expect(
+      snapshot.toJson()['schemaVersion'],
+      CookingSetupSnapshot.currentSchemaVersion,
+    );
     expect(restored, isNotNull);
     expect(restored!.source, CookingRecipeSource.personal);
     expect(restored.personalVersionId, 'personal-version-id');
@@ -88,9 +92,11 @@ void main() {
       ],
     );
 
-    final recipe = snapshot.toRecipe();
+    final recipe = snapshot.toExecutionRecipe();
 
     expect(recipe.baseServings, 2);
+    expect(recipe.hasPersonalVersion, isFalse);
+    expect(recipe.latestPersonalVersionId, isNull);
     expect(recipe.ingredients, hasLength(1));
     expect(recipe.ingredients.single.name, '밥');
     expect(recipe.ingredients.single.amount, 2);
@@ -113,6 +119,69 @@ void main() {
     expect(CookingSetupSnapshot.fromJson(json), isNull);
 
     json['targetServings'] = 1;
+    expect(CookingSetupSnapshot.fromJson(json), isNull);
+  });
+
+  test('기존 스냅샷은 버전과 omitted 필드가 없어도 복원한다', () {
+    final json = <String, Object?>{
+      'recipeId': 'recipe-id',
+      'title': '계란볶음밥',
+      'description': '',
+      'imageUrl': '',
+      'baseServings': 1,
+      'targetServings': 1,
+      'source': CookingRecipeSource.base.name,
+      'personalVersionId': null,
+      'ingredients': <Object?>[
+        <String, Object?>{
+          'originalName': '밥',
+          'name': '밥',
+          'amount': 1,
+          'unit': '공기',
+          'isRequired': true,
+        },
+      ],
+      'steps': <Object?>[
+        <String, Object?>{
+          'stepIndex': 0,
+          'instruction': '볶으세요.',
+          'timerSeconds': 60,
+          'cautionNote': null,
+          'imageUrl': '',
+        },
+      ],
+    };
+
+    final restored = CookingSetupSnapshot.fromJson(json);
+
+    expect(restored, isNotNull);
+    expect(restored!.ingredients.single.omitted, isFalse);
+  });
+
+  test('지원하지 않는 미래 스냅샷 버전은 복원하지 않는다', () {
+    final snapshot = CookingSetupSnapshot(
+      recipeId: 'recipe-id',
+      title: '계란볶음밥',
+      description: '',
+      imageUrl: '',
+      baseServings: 1,
+      targetServings: 1,
+      source: CookingRecipeSource.base,
+      personalVersionId: null,
+      ingredients: const [],
+      steps: const [
+        CookingSetupStep(
+          stepIndex: 0,
+          instruction: '볶으세요.',
+          timerSeconds: 60,
+          cautionNote: null,
+          imageUrl: '',
+        ),
+      ],
+    );
+    final json = snapshot.toJson()
+      ..['schemaVersion'] = CookingSetupSnapshot.currentSchemaVersion + 1;
+
     expect(CookingSetupSnapshot.fromJson(json), isNull);
   });
 }

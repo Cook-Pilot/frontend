@@ -141,7 +141,7 @@ class _HomeScreenState extends State<HomeScreen> {
       final Recipe recipe;
       final setupSnapshot = session.setupSnapshot;
       if (setupSnapshot != null) {
-        recipe = setupSnapshot.toRecipe();
+        recipe = setupSnapshot.toExecutionRecipe();
       } else {
         final recipeId = storedRecipeId;
         if (recipeId != null && recipeId.isNotEmpty) {

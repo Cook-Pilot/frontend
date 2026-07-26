@@ -175,6 +175,7 @@ void main() {
 
     await tester.tap(find.text('수정').at(1));
     await tester.pumpAndSettle();
+    await tester.tap(find.byIcon(Icons.add_rounded).last);
     await tester.tap(find.text('대체'));
     await tester.pump();
     await tester.enterText(find.byType(TextField), '두부');
@@ -198,7 +199,29 @@ void main() {
     );
     final restoredIngredient = session.setupSnapshot!.ingredients[1];
     expect(restoredIngredient.name, '계란');
+    expect(restoredIngredient.amount, 2);
     expect(restoredIngredient.isSubstituted, isFalse);
+  });
+
+  testWidgets('기준 인분이 잘못된 레시피도 유효한 실행 스냅샷으로 보정한다', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: CookSetupScreen(
+          recipe: _recipe(baseServings: 0),
+          sessionAlarm: const SilentTimerAlarm(),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('이 설정으로 조리 시작'));
+    await tester.pumpAndSettle();
+
+    final session = tester.widget<CookSessionScreen>(
+      find.byType(CookSessionScreen),
+    );
+    expect(session.setupSnapshot, isNotNull);
+    expect(session.setupSnapshot!.baseServings, 1);
+    expect(session.setupSnapshot!.targetServings, 1);
   });
 
   testWidgets('필수 재료도 경고를 확인한 뒤 이번 조리에서 생략할 수 있다', (tester) async {
@@ -227,12 +250,13 @@ void main() {
 Recipe _recipe({
   bool hasPersonalVersion = false,
   String? latestPersonalVersionId,
+  double baseServings = 1,
 }) {
   return Recipe(
     id: '10000000-0000-0000-0000-000000000001',
     title: '계란볶음밥',
     description: '기본 레시피',
-    baseServings: 1,
+    baseServings: baseServings,
     imageUrl: '',
     ingredients: const [
       Ingredient(name: '밥', amount: 1, unit: '공기', isRequired: true),

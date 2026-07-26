@@ -484,6 +484,9 @@ class _CookSetupScreenState extends State<CookSetupScreen> {
             amount: ingredient.amount == null
                 ? null
                 : ingredient.amount! * scale,
+            baselineAmount: ingredient.amount == null
+                ? null
+                : ingredient.amount! * scale,
             unit: ingredient.unit,
             isRequired: ingredient.isRequired,
           ),
@@ -512,7 +515,7 @@ class _CookSetupScreenState extends State<CookSetupScreen> {
       title: widget.recipe.title,
       description: widget.recipe.description,
       imageUrl: widget.recipe.imageUrl,
-      baseServings: widget.recipe.baseServings,
+      baseServings: _safeBaseServings,
       targetServings: servings,
       source: _usePersonalVersion
           ? CookingRecipeSource.personal
@@ -669,7 +672,7 @@ class _CookSetupScreenState extends State<CookSetupScreen> {
                   Navigator.of(context).push(
                     MaterialPageRoute<void>(
                       builder: (_) => CookSessionScreen(
-                        recipe: snapshot.toRecipe(),
+                        recipe: snapshot.toExecutionRecipe(),
                         servings: servings,
                         setupSnapshot: snapshot,
                         alarm: widget.sessionAlarm,
@@ -903,7 +906,7 @@ class _CookSetupScreenState extends State<CookSetupScreen> {
         _IngredientEditMode.omit => ingredient.copyWith(omitted: true),
         _IngredientEditMode.restoreOriginal => ingredient.copyWith(
           name: ingredient.originalName,
-          amount: result.amount,
+          amount: ingredient.baselineAmount,
           omitted: false,
         ),
       };
@@ -930,6 +933,7 @@ final class _IngredientSetupDraft {
     required this.originalName,
     required this.name,
     required this.amount,
+    required this.baselineAmount,
     required this.unit,
     required this.isRequired,
     this.omitted = false,
@@ -940,6 +944,7 @@ final class _IngredientSetupDraft {
   final String originalName;
   final String name;
   final double? amount;
+  final double? baselineAmount;
   final String unit;
   final bool isRequired;
   final bool omitted;
@@ -947,8 +952,15 @@ final class _IngredientSetupDraft {
   bool get isSubstituted => originalName != name;
   String get amountLabel => _formatAmount(amount, unit);
 
-  _IngredientSetupDraft scaled(double scale) =>
-      copyWith(amount: amount == null ? null : amount! * scale);
+  _IngredientSetupDraft scaled(double scale) => _IngredientSetupDraft(
+    originalName: originalName,
+    name: name,
+    amount: amount == null ? null : amount! * scale,
+    baselineAmount: baselineAmount == null ? null : baselineAmount! * scale,
+    unit: unit,
+    isRequired: isRequired,
+    omitted: omitted,
+  );
 
   _IngredientSetupDraft copyWith({
     String? name,
@@ -959,6 +971,7 @@ final class _IngredientSetupDraft {
       originalName: originalName,
       name: name ?? this.name,
       amount: identical(amount, _unset) ? this.amount : amount as double?,
+      baselineAmount: baselineAmount,
       unit: unit,
       isRequired: isRequired,
       omitted: omitted ?? this.omitted,
