@@ -163,6 +163,44 @@ void main() {
     expect(find.text('대체'), findsOneWidget);
   });
 
+  testWidgets('대체한 재료를 기본 재료로 되돌릴 수 있다', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: CookSetupScreen(
+          recipe: _recipe(),
+          sessionAlarm: const SilentTimerAlarm(),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('수정').at(1));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('대체'));
+    await tester.pump();
+    await tester.enterText(find.byType(TextField), '두부');
+    await tester.ensureVisible(find.text('적용'));
+    await tester.tap(find.text('적용'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('수정').at(1));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('기본 재료(계란)로 되돌리기'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('계란'), findsOneWidget);
+    expect(find.text('대체'), findsNothing);
+
+    await tester.tap(find.text('이 설정으로 조리 시작'));
+    await tester.pumpAndSettle();
+
+    final session = tester.widget<CookSessionScreen>(
+      find.byType(CookSessionScreen),
+    );
+    final restoredIngredient = session.setupSnapshot!.ingredients[1];
+    expect(restoredIngredient.name, '계란');
+    expect(restoredIngredient.isSubstituted, isFalse);
+  });
+
   testWidgets('필수 재료도 경고를 확인한 뒤 이번 조리에서 생략할 수 있다', (tester) async {
     await tester.pumpWidget(
       MaterialApp(home: CookSetupScreen(recipe: _recipe())),

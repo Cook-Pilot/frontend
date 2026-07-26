@@ -747,6 +747,27 @@ class _CookSetupScreenState extends State<CookSetupScreen> {
                         ),
                       ],
                     ),
+                    if (ingredient.isSubstituted) ...[
+                      const SizedBox(height: 12),
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          onPressed: () {
+                            Navigator.of(context).pop(
+                              _IngredientEditResult(
+                                mode: _IngredientEditMode.restoreOriginal,
+                                amount: amount,
+                                replacementName: '',
+                              ),
+                            );
+                          },
+                          icon: const Icon(Icons.restart_alt_rounded),
+                          label: Text(
+                            '기본 재료(${ingredient.originalName})로 되돌리기',
+                          ),
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 18),
                     if (mode == _IngredientEditMode.substitute) ...[
                       TextFormField(
@@ -880,12 +901,17 @@ class _CookSetupScreenState extends State<CookSetupScreen> {
           omitted: false,
         ),
         _IngredientEditMode.omit => ingredient.copyWith(omitted: true),
+        _IngredientEditMode.restoreOriginal => ingredient.copyWith(
+          name: ingredient.originalName,
+          amount: result.amount,
+          omitted: false,
+        ),
       };
     });
   }
 }
 
-enum _IngredientEditMode { amount, substitute, omit }
+enum _IngredientEditMode { amount, substitute, omit, restoreOriginal }
 
 final class _IngredientEditResult {
   const _IngredientEditResult({
