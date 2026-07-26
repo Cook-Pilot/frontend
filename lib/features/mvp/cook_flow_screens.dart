@@ -13,6 +13,7 @@ import '../cooking/presentation/timer_alarm_provider.dart';
 import '../cooking/presentation/widgets/help_question_sheet.dart';
 import '../recipe/data/recipe_api.dart';
 import '../recipe/domain/recipe.dart';
+import '../recommendation/data/recommendation_api.dart';
 import '../review/data/review_api.dart';
 import 'main_shell.dart';
 import 'mvp_widgets.dart';
@@ -252,7 +253,11 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
                   ? () {
                       Navigator.of(context).push(
                         MaterialPageRoute<void>(
-                          builder: (_) => CookSetupScreen(recipe: recipe),
+                          builder: (_) => CookSetupScreen(
+                            recipe: recipe,
+                            recommendationDataSource:
+                                RecommendationRepository(),
+                          ),
                         ),
                       );
                     }
@@ -397,11 +402,13 @@ class CookSetupScreen extends StatefulWidget {
     super.key,
     required this.recipe,
     this.recipeRepository,
+    this.recommendationDataSource,
     this.sessionAlarm,
   });
 
   final Recipe recipe;
   final RecipeRepository? recipeRepository;
+  final RecommendationDataSource? recommendationDataSource;
   final TimerAlarmPort? sessionAlarm;
 
   @override
@@ -411,6 +418,7 @@ class CookSetupScreen extends StatefulWidget {
 class _CookSetupScreenState extends State<CookSetupScreen> {
   late int servings;
   late final RecipeRepository _recipeRepository;
+  late final RecommendationDataSource? _recommendationDataSource;
   late List<_IngredientSetupDraft> _ingredients;
   late List<CookStep> _steps;
   List<PersonalRecipeVersionSummary> _personalVersions = const [];
@@ -418,14 +426,52 @@ class _CookSetupScreenState extends State<CookSetupScreen> {
   bool _loadingPersonalVersion = false;
   bool _usePersonalVersion = false;
   String? _personalVersionError;
+  List<NextCookRecommendation> _recommendations = const [];
+  final Set<String> _handledRecommendationIds = {};
+  final Set<String> _savingRecommendationIds = {};
+  final Map<String, _AppliedRecommendation> _appliedRecommendations = {};
+  bool _loadingRecommendations = false;
+  String? _recommendationError;
 
   @override
   void initState() {
     super.initState();
     _recipeRepository = widget.recipeRepository ?? RecipeRepository();
+    _recommendationDataSource = widget.recommendationDataSource;
     servings = widget.recipe.baseServings.round().clamp(1, 99);
     _applySelectedRecipe();
     unawaited(_loadPersonalVersions());
+    if (_recommendationDataSource != null) {
+      unawaited(_loadRecommendations());
+    }
+  }
+
+  Future<void> _loadRecommendations() async {
+    setState(() {
+      _loadingRecommendations = true;
+      _recommendationError = null;
+    });
+    try {
+      final result = await _recommendationDataSource!.findForRecipe(
+        widget.recipe.id,
+      );
+      if (!mounted) return;
+      setState(() {
+        _recommendations = result.recommendations
+            .where(
+              (item) =>
+                  item.type == 'INGREDIENT_AMOUNT' && item.suggestedAmount >= 0,
+            )
+            .toList(growable: false);
+        _loadingRecommendations = false;
+      });
+    } on Object {
+      if (!mounted) return;
+      setState(() {
+        _loadingRecommendations = false;
+        _recommendationError = '추천을 불러오지 못했지만 기존 설정으로 조리할 수 있어요.';
+      });
+    }
   }
 
   Future<void> _loadPersonalVersions() async {
@@ -521,6 +567,25 @@ class _CookSetupScreenState extends State<CookSetupScreen> {
           ),
         )
         .toList(growable: false);
+    _ingredients = _ingredients
+        .map((ingredient) {
+          final originalIngredientId = ingredient.originalIngredientId;
+          final appliedRecommendation = originalIngredientId == null
+              ? null
+              : _appliedRecommendations[originalIngredientId];
+          if (appliedRecommendation == null ||
+              ingredient.omitted ||
+              !_sameIngredientName(
+                ingredient.name,
+                appliedRecommendation.ingredientName,
+              )) {
+            return ingredient;
+          }
+          return ingredient.copyWith(
+            amount: appliedRecommendation.amount * scale,
+          );
+        })
+        .toList(growable: false);
   }
 
   double get _safeBaseServings =>
@@ -571,6 +636,11 @@ class _CookSetupScreenState extends State<CookSetupScreen> {
   @override
   Widget build(BuildContext context) {
     final setupLocked = _loadingPersonalVersion;
+    final visibleRecommendations = _recommendations
+        .where(
+          (item) => !_handledRecommendationIds.contains(item.recommendationId),
+        )
+        .toList(growable: false);
 
     return PageShell(
       title: '조리 설정',
@@ -623,6 +693,36 @@ class _CookSetupScreenState extends State<CookSetupScreen> {
                         : _personalVersion!.summary)
                   : widget.recipe.memorySummary),
         ),
+        if (_recommendationDataSource != null) ...[
+          const SectionTitle('내 기록에서 찾은 추천'),
+          if (_loadingRecommendations)
+            const InfoStrip(
+              icon: Icons.auto_awesome_rounded,
+              title: '내 조리 기록을 확인하고 있어요',
+              body: '반복해서 만족했던 변경만 골라볼게요.',
+            )
+          else if (_recommendationError != null)
+            InfoStrip(
+              icon: Icons.info_outline_rounded,
+              title: '추천 없이 진행해요',
+              body: _recommendationError!,
+            )
+          else if (_recommendations.isEmpty)
+            const InfoStrip(
+              icon: Icons.history_rounded,
+              title: '아직 확실한 추천이 없어요',
+              body: '비슷한 요리를 만족스럽게 두 번 이상 기록하면 변경안을 제안해요.',
+            )
+          else if (visibleRecommendations.isEmpty)
+            const InfoStrip(
+              icon: Icons.check_circle_outline_rounded,
+              title: '추천 선택을 반영했어요',
+              body: '최종 재료 설정을 확인한 뒤 조리를 시작해주세요.',
+            )
+          else
+            for (final recommendation in visibleRecommendations)
+              _buildRecommendationCard(context, recommendation),
+        ],
         const SectionTitle('몇 인분인가요?'),
         Row(
           children: [
@@ -718,6 +818,290 @@ class _CookSetupScreenState extends State<CookSetupScreen> {
         ),
       ),
     );
+  }
+
+  Widget _buildRecommendationCard(
+    BuildContext context,
+    NextCookRecommendation recommendation,
+  ) {
+    final scale = servings / _safeBaseServings;
+    final originalLabel = _formatAmount(
+      recommendation.originalAmount * scale,
+      recommendation.unit,
+    );
+    final suggestedLabel = _formatAmount(
+      recommendation.suggestedAmount * scale,
+      recommendation.unit,
+    );
+    final saving = _savingRecommendationIds.contains(
+      recommendation.recommendationId,
+    );
+    final percent = recommendation.changePercent.abs();
+    final direction = recommendation.changePercent < 0 ? '감소' : '증가';
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(18, 16, 18, 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.auto_awesome_rounded, color: AppColors.accent),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    '${recommendation.ingredientName} $percent% $direction',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+                Text(
+                  '$originalLabel → $suggestedLabel',
+                  style: const TextStyle(
+                    color: AppColors.slate,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              recommendation.reason,
+              style: const TextStyle(color: AppColors.slate, height: 1.45),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              '근거 ${recommendation.evidence.length}회',
+              style: const TextStyle(
+                color: AppColors.muted,
+                fontWeight: FontWeight.w700,
+                fontSize: 12,
+              ),
+            ),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                TextButton(
+                  onPressed: saving
+                      ? null
+                      : () => unawaited(_rejectRecommendation(recommendation)),
+                  child: const Text('사용 안 함'),
+                ),
+                OutlinedButton(
+                  onPressed: saving
+                      ? null
+                      : () => unawaited(
+                          _modifyRecommendation(context, recommendation),
+                        ),
+                  child: const Text('수정'),
+                ),
+                FilledButton(
+                  onPressed: saving
+                      ? null
+                      : () => unawaited(
+                          _applyRecommendation(
+                            recommendation,
+                            recommendation.suggestedAmount * scale,
+                            RecommendationDecision.accepted,
+                          ),
+                        ),
+                  child: Text(saving ? '저장 중' : '이번 조리에 적용'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _rejectRecommendation(
+    NextCookRecommendation recommendation,
+  ) async {
+    if (_savingRecommendationIds.contains(recommendation.recommendationId)) {
+      return;
+    }
+    setState(() {
+      _savingRecommendationIds.add(recommendation.recommendationId);
+      _handledRecommendationIds.add(recommendation.recommendationId);
+    });
+    try {
+      await _recommendationDataSource!.recordFeedback(
+        recipeId: widget.recipe.id,
+        recommendation: recommendation,
+        decision: RecommendationDecision.rejected,
+      );
+    } on Object {
+      _showRecommendationFeedbackWarning();
+    } finally {
+      if (mounted) {
+        setState(
+          () =>
+              _savingRecommendationIds.remove(recommendation.recommendationId),
+        );
+      }
+    }
+  }
+
+  Future<void> _applyRecommendation(
+    NextCookRecommendation recommendation,
+    double appliedAmount,
+    RecommendationDecision decision,
+  ) async {
+    if (_savingRecommendationIds.contains(recommendation.recommendationId)) {
+      return;
+    }
+    final ingredientIndex = _ingredients.indexWhere(
+      (item) =>
+          item.originalIngredientId == recommendation.originalIngredientId,
+    );
+    if (ingredientIndex < 0) {
+      _showRecommendationMessage('현재 재료 목록에서 추천 대상을 찾지 못했어요.');
+      return;
+    }
+    final ingredient = _ingredients[ingredientIndex];
+    if (ingredient.omitted ||
+        !_sameIngredientName(ingredient.name, recommendation.ingredientName)) {
+      _showRecommendationMessage('이 재료가 생략되거나 대체되어 있어 기본 재료로 되돌린 뒤 적용해주세요.');
+      return;
+    }
+
+    final scale = servings / _safeBaseServings;
+    final normalizedAppliedAmount = appliedAmount / scale;
+    setState(() {
+      _ingredients[ingredientIndex] = ingredient.copyWith(
+        amount: appliedAmount,
+        omitted: false,
+      );
+      _appliedRecommendations[recommendation.originalIngredientId] =
+          _AppliedRecommendation(
+            ingredientName: recommendation.ingredientName,
+            amount: normalizedAppliedAmount,
+          );
+      _savingRecommendationIds.add(recommendation.recommendationId);
+      _handledRecommendationIds.add(recommendation.recommendationId);
+    });
+    try {
+      await _recommendationDataSource!.recordFeedback(
+        recipeId: widget.recipe.id,
+        recommendation: recommendation,
+        decision: decision,
+        appliedAmount: normalizedAppliedAmount,
+      );
+    } on Object {
+      _showRecommendationFeedbackWarning();
+    } finally {
+      if (mounted) {
+        setState(
+          () =>
+              _savingRecommendationIds.remove(recommendation.recommendationId),
+        );
+      }
+    }
+  }
+
+  Future<void> _modifyRecommendation(
+    BuildContext context,
+    NextCookRecommendation recommendation,
+  ) async {
+    final scale = servings / _safeBaseServings;
+    var amount = recommendation.suggestedAmount * scale;
+    final selectedAmount = await showModalBottomSheet<double>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            return Padding(
+              padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '${recommendation.ingredientName} 추천 수정',
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    recommendation.reason,
+                    style: const TextStyle(color: AppColors.slate, height: 1.4),
+                  ),
+                  const SizedBox(height: 20),
+                  Row(
+                    children: [
+                      IconButton.filledTonal(
+                        onPressed: amount <= 0
+                            ? null
+                            : () => setSheetState(
+                                () => amount = _adjustAmount(
+                                  amount,
+                                  recommendation.unit,
+                                  -1,
+                                ),
+                              ),
+                        icon: const Icon(Icons.remove_rounded),
+                      ),
+                      Expanded(
+                        child: Text(
+                          _formatAmount(amount, recommendation.unit),
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w900,
+                            fontSize: 20,
+                          ),
+                        ),
+                      ),
+                      IconButton.filled(
+                        onPressed: () => setSheetState(
+                          () => amount = _adjustAmount(
+                            amount,
+                            recommendation.unit,
+                            1,
+                          ),
+                        ),
+                        icon: const Icon(Icons.add_rounded),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 20),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton(
+                      onPressed: () => Navigator.of(context).pop(amount),
+                      child: const Text('수정한 양으로 적용'),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+    if (!mounted || selectedAmount == null) return;
+    await _applyRecommendation(
+      recommendation,
+      selectedAmount,
+      RecommendationDecision.modified,
+    );
+  }
+
+  void _showRecommendationFeedbackWarning() {
+    _showRecommendationMessage('설정은 반영했지만 추천 선택 기록은 저장하지 못했어요.');
+  }
+
+  void _showRecommendationMessage(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   Future<void> _openIngredientSheet(BuildContext context, int index) async {
@@ -926,6 +1310,10 @@ class _CookSetupScreenState extends State<CookSetupScreen> {
 
     if (!mounted || result == null) return;
     setState(() {
+      final originalIngredientId = ingredient.originalIngredientId;
+      if (originalIngredientId != null) {
+        _appliedRecommendations.remove(originalIngredientId);
+      }
       _ingredients[index] = switch (result.mode) {
         _IngredientEditMode.amount => ingredient.copyWith(
           name: ingredient.name,
@@ -949,6 +1337,16 @@ class _CookSetupScreenState extends State<CookSetupScreen> {
 }
 
 enum _IngredientEditMode { amount, substitute, omit, restoreOriginal }
+
+final class _AppliedRecommendation {
+  const _AppliedRecommendation({
+    required this.ingredientName,
+    required this.amount,
+  });
+
+  final String ingredientName;
+  final double amount;
+}
 
 final class _IngredientEditResult {
   const _IngredientEditResult({
@@ -1043,6 +1441,12 @@ double _adjustAmount(double amount, String unit, int direction) {
   };
   final adjusted = amount + step * direction;
   return adjusted < 0 ? 0 : adjusted;
+}
+
+bool _sameIngredientName(String left, String right) {
+  String normalize(String value) =>
+      value.replaceAll(RegExp(r'\s+'), '').toLowerCase();
+  return normalize(left) == normalize(right);
 }
 
 class CookSessionScreen extends StatefulWidget {
