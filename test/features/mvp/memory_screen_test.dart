@@ -50,6 +50,13 @@ void main() {
         comment: '조금 짰다.',
         nextTimeNote: '',
       ),
+      history(
+        reviewId: '50000000-0000-0000-0000-000000000003',
+        cookedAt: DateTime(2026, 7, 30, 12),
+        rating: 3,
+        comment: '선택한 기록보다 나중 조리했다.',
+        nextTimeNote: '',
+      ),
     ]);
 
     await tester.pumpWidget(
@@ -84,6 +91,7 @@ void main() {
       scrollable: find.byType(Scrollable).last,
     );
     expect(find.text('2026년 7월 12일'), findsOneWidget);
+    expect(find.text('2026년 7월 30일'), findsNothing);
   });
 }
 

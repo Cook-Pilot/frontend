@@ -510,9 +510,15 @@ class _MemoryScreenState extends State<MemoryScreen> {
     CookingHistoryEntry selected,
     List<CookingHistoryEntry> monthEntries,
   ) {
-    final sameRecipe = monthEntries
-        .where((entry) => entry.recipeId == selected.recipeId)
-        .toList(growable: false);
+    final sameRecipe =
+        monthEntries
+            .where(
+              (entry) =>
+                  entry.recipeId == selected.recipeId &&
+                  entry.cookedAt.isBefore(selected.cookedAt),
+            )
+            .toList(growable: false)
+          ..sort((left, right) => right.cookedAt.compareTo(left.cookedAt));
     Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => CookingHistoryDetailScreen(

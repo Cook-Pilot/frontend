@@ -489,8 +489,11 @@ class _CookSetupScreenState extends State<CookSetupScreen> {
     } on Object {
       if (!mounted) return;
       setState(() {
+        _usePersonalVersion = false;
+        _personalVersion = null;
         _loadingPersonalVersion = false;
         _personalVersionError = '이 버전을 불러오지 못했어요. 기본 레시피를 이용해주세요.';
+        _applySelectedRecipe();
       });
     }
   }
@@ -1518,9 +1521,8 @@ class _CookSessionScreenState extends State<CookSessionScreen>
           child: FilledButton(
             onPressed: () {
               if (isLast) {
-                // 완료된 세션은 복원 대상이 아니므로 저장본을 정리한다.
+                // 후기 저장이 성공하기 전까지 동일 세션으로 재시도할 수 있게 보존한다.
                 _completed = true;
-                unawaited(_store.clear());
                 Navigator.of(context).pushReplacement(
                   MaterialPageRoute<void>(
                     builder: (_) => ReviewScreen(
@@ -1672,6 +1674,7 @@ class _ReviewScreenState extends State<ReviewScreen> {
         comment: _commentController.text,
         nextTimeNote: _nextTimeController.text,
       );
+      await const CookingSessionStore().clear();
       if (!mounted) return;
       setState(() {
         _saved = result;
