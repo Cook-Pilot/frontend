@@ -127,13 +127,13 @@ final class PersistedCookingSession {
     }
     final setupSnapshotValue = json['setupSnapshot'];
     CookingSetupSnapshot? setupSnapshot;
-    if (setupSnapshotValue != null) {
-      if (setupSnapshotValue is! Map) return null;
+    if (setupSnapshotValue is Map) {
       setupSnapshot = CookingSetupSnapshot.fromJson(
         Map<String, Object?>.from(setupSnapshotValue),
       );
-      if (setupSnapshot == null) return null;
     }
+    // 실행 설정만 손상된 경우 단계·타이머 세션은 유지한다.
+    // 홈에서 recipeId 기반 기본 레시피로 다시 조회할 수 있다.
     final timerSecondsByStep = <int, int>{};
     final timerValues = json['timerSecondsByStep'];
     if (timerValues != null) {

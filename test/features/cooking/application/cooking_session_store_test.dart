@@ -110,6 +110,27 @@ void main() {
       expect(loaded.setupSnapshot!.steps.single.timerSeconds, 120);
     });
 
+    test('실행 스냅샷만 손상되면 단계와 타이머 세션은 유지한다', () async {
+      final json = buildSession().toJson();
+      json['setupSnapshot'] = <String, Object?>{
+        'schemaVersion': CookingSetupSnapshot.currentSchemaVersion + 1,
+      };
+      SharedPreferences.setMockInitialValues(<String, Object>{
+        'cookpilot.active_cooking_session.v1': jsonEncode(json),
+      });
+
+      final loaded = await store.load();
+
+      expect(loaded, isNotNull);
+      expect(loaded!.setupSnapshot, isNull);
+      expect(loaded.recipeId, '10000000-0000-0000-0000-000000000001');
+      expect(loaded.stepIndex, 2);
+      expect(loaded.timerRemainingMs, 3 * 60 * 1000);
+
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getString('cookpilot.active_cooking_session.v1'), isNotNull);
+    });
+
     test('recipeId 타입이 손상된 저장값은 정리한다', () async {
       final json = buildSession().toJson();
       json['recipeId'] = 1234;

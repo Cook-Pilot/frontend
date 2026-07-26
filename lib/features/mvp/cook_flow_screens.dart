@@ -544,7 +544,7 @@ class _CookSetupScreenState extends State<CookSetupScreen> {
       title: widget.recipe.title,
       description: widget.recipe.description,
       imageUrl: widget.recipe.imageUrl,
-      baseServings: widget.recipe.baseServings,
+      baseServings: _safeBaseServings,
       targetServings: servings,
       source: _usePersonalVersion
           ? CookingRecipeSource.personal
@@ -706,7 +706,7 @@ class _CookSetupScreenState extends State<CookSetupScreen> {
                   Navigator.of(context).push(
                     MaterialPageRoute<void>(
                       builder: (_) => CookSessionScreen(
-                        recipe: snapshot.toRecipe(),
+                        recipe: snapshot.toExecutionRecipe(),
                         servings: servings,
                         setupSnapshot: snapshot,
                         alarm: widget.sessionAlarm,
@@ -940,7 +940,7 @@ class _CookSetupScreenState extends State<CookSetupScreen> {
         _IngredientEditMode.omit => ingredient.copyWith(omitted: true),
         _IngredientEditMode.restoreOriginal => ingredient.copyWith(
           name: ingredient.originalName,
-          amount: result.amount,
+          amount: ingredient.baselineAmount,
           omitted: false,
         ),
       };
@@ -1559,7 +1559,9 @@ class _CookSessionScreenState extends State<CookSessionScreen>
       title: widget.recipe.title,
       description: widget.recipe.description,
       imageUrl: widget.recipe.imageUrl,
-      baseServings: widget.recipe.baseServings,
+      baseServings: widget.recipe.baseServings > 0
+          ? widget.recipe.baseServings
+          : 1,
       targetServings: widget.servings,
       source: CookingRecipeSource.base,
       personalVersionId: null,
