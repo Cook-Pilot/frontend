@@ -48,11 +48,42 @@ class RecipeSummary {
   final DateTime? favoritedAt;
 }
 
+class PersonalRecipeVersionSummary {
+  const PersonalRecipeVersionSummary({
+    required this.id,
+    required this.recipeId,
+    required this.versionNumber,
+    required this.title,
+    required this.summary,
+    required this.createdAt,
+  });
+
+  factory PersonalRecipeVersionSummary.fromJson(Map<String, dynamic> json) {
+    return PersonalRecipeVersionSummary(
+      id: _requiredString(json, 'id'),
+      recipeId: _requiredString(json, 'recipeId'),
+      versionNumber: _requiredInt(json, 'versionNumber'),
+      title: _requiredString(json, 'title'),
+      summary: _optionalString(json, 'summary'),
+      createdAt: _requiredDateTime(json, 'createdAt'),
+    );
+  }
+
+  final String id;
+  final String recipeId;
+  final int versionNumber;
+  final String title;
+  final String summary;
+  final DateTime createdAt;
+}
+
 class PersonalRecipeVersionDetail {
   const PersonalRecipeVersionDetail({
     required this.id,
+    required this.versionNumber,
     required this.title,
     required this.summary,
+    required this.createdAt,
     required this.ingredients,
     required this.steps,
   });
@@ -73,8 +104,10 @@ class PersonalRecipeVersionDetail {
 
     return PersonalRecipeVersionDetail(
       id: _requiredString(version, 'id'),
+      versionNumber: _requiredInt(version, 'versionNumber'),
       title: _requiredString(version, 'title'),
-      summary: version['summary'] as String? ?? '',
+      summary: _optionalString(version, 'summary'),
+      createdAt: _requiredDateTime(version, 'createdAt'),
       ingredients: ingredientsJson
           .map((item) => _ingredientFromJson(item as Map<String, dynamic>))
           .toList(growable: false),
@@ -85,8 +118,10 @@ class PersonalRecipeVersionDetail {
   }
 
   final String id;
+  final int versionNumber;
   final String title;
   final String summary;
+  final DateTime createdAt;
   final List<Ingredient> ingredients;
   final List<CookStep> steps;
 }
@@ -130,6 +165,24 @@ class RecipeRepository {
       throw const RecipeApiException('개인 레시피 응답 형식이 올바르지 않습니다.');
     }
     return PersonalRecipeVersionDetail.fromJson(decoded);
+  }
+
+  Future<List<PersonalRecipeVersionSummary>> findPersonalVersions(
+    String recipeId,
+  ) async {
+    final response = await _get('/api/v1/recipes/$recipeId/personal-versions');
+    final decoded = jsonDecode(response.body);
+    if (decoded is! List ||
+        decoded.any((item) => item is! Map<String, dynamic>)) {
+      throw const RecipeApiException('개인 레시피 목록 응답 형식이 올바르지 않습니다.');
+    }
+    return decoded
+        .map(
+          (item) => PersonalRecipeVersionSummary.fromJson(
+            item as Map<String, dynamic>,
+          ),
+        )
+        .toList(growable: false);
   }
 
   Future<void> addFavorite(String recipeId) async {
@@ -257,6 +310,8 @@ Ingredient _ingredientFromJson(Map<String, dynamic> json) {
   final amount = json['amount'];
   final unit = json['unit'] as String? ?? '';
   return Ingredient(
+    originalIngredientId:
+        json['id'] as String? ?? json['originalIngredientId'] as String?,
     name: _requiredString(json, 'name'),
     amount: (amount as num?)?.toDouble(),
     unit: unit,
@@ -270,6 +325,7 @@ CookStep _stepFromJson(Map<String, dynamic> json) {
   final caution = json['cautionNote'] as String?;
   final instruction = _requiredString(json, 'instruction');
   return CookStep(
+    originalStepId: json['id'] as String? ?? json['originalStepId'] as String?,
     stepIndex: stepIndex,
     instruction: instruction,
     timerSeconds: json['timerSeconds'] == null ? null : seconds,
@@ -286,7 +342,32 @@ String _requiredString(Map<String, dynamic> json, String key) {
   return value;
 }
 
+String _optionalString(Map<String, dynamic> json, String key) {
+  final value = json[key];
+  if (value == null) return '';
+  if (value is! String) {
+    throw RecipeApiException('$key 형식이 올바르지 않습니다.');
+  }
+  return value;
+}
+
+int _requiredInt(Map<String, dynamic> json, String key) {
+  final value = json[key];
+  if (value is! num) {
+    throw RecipeApiException('$key 값이 없습니다.');
+  }
+  return value.toInt();
+}
+
 DateTime? _optionalDateTime(Object? value) {
   if (value is! String) return null;
   return DateTime.tryParse(value);
+}
+
+DateTime _requiredDateTime(Map<String, dynamic> json, String key) {
+  final value = _optionalDateTime(json[key]);
+  if (value == null) {
+    throw RecipeApiException('$key 값이 없습니다.');
+  }
+  return value;
 }
