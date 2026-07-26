@@ -84,14 +84,19 @@ void main() {
     expect(find.text('개인 레시피 v1 생성'), findsOneWidget);
     expect(find.text('간을 줄이니 딱 좋았다.'), findsOneWidget);
     expect(find.text('대파를 조금 더 넣어보기'), findsOneWidget);
-    expect(find.text('이전 조리 기록'), findsOneWidget);
+    expect(find.text('같은 요리의 다른 기록'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text('2026년 7월 30일'),
+      180,
+      scrollable: find.byType(Scrollable).last,
+    );
+    expect(find.text('2026년 7월 30일'), findsOneWidget);
     await tester.scrollUntilVisible(
       find.text('2026년 7월 12일'),
       180,
       scrollable: find.byType(Scrollable).last,
     );
     expect(find.text('2026년 7월 12일'), findsOneWidget);
-    expect(find.text('2026년 7월 30일'), findsNothing);
   });
 }
 

@@ -512,11 +512,7 @@ class _MemoryScreenState extends State<MemoryScreen> {
   ) {
     final sameRecipe =
         monthEntries
-            .where(
-              (entry) =>
-                  entry.recipeId == selected.recipeId &&
-                  entry.cookedAt.isBefore(selected.cookedAt),
-            )
+            .where((entry) => entry.recipeId == selected.recipeId)
             .toList(growable: false)
           ..sort((left, right) => right.cookedAt.compareTo(left.cookedAt));
     Navigator.of(context).push(
@@ -720,7 +716,7 @@ class CookingHistoryDetailScreen extends StatelessWidget {
           _MemoryNoteCard(icon: Icons.next_plan_outlined, text: note),
         ],
         if (otherEntries.isNotEmpty) ...[
-          const SectionTitle('이전 조리 기록'),
+          const SectionTitle('같은 요리의 다른 기록'),
           for (var index = 0; index < otherEntries.length; index++)
             _CookingHistoryTimelineItem(
               entry: otherEntries[index],
