@@ -2,6 +2,7 @@ import 'package:cookpilot/features/cooking/application/cooking_ports.dart';
 import 'package:cookpilot/features/mvp/cook_flow_screens.dart';
 import 'package:cookpilot/features/recipe/data/recipe_api.dart';
 import 'package:cookpilot/features/recipe/domain/recipe.dart';
+import 'package:cookpilot/features/recommendation/data/recommendation_api.dart';
 import 'package:cookpilot/features/user/data/beta_user_repository.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -369,12 +370,66 @@ void main() {
     await tester.pump();
     expect(find.textContaining('생략 1개'), findsOneWidget);
   });
+
+  testWidgets('개인화 추천은 사용자가 적용한 경우에만 실행 스냅샷을 바꾼다', (tester) async {
+    final recommendations = _FakeRecommendationDataSource();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: CookSetupScreen(
+          recipe: _recipe(),
+          recommendationDataSource: recommendations,
+          sessionAlarm: const SilentTimerAlarm(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('계란 25% 감소'), findsOneWidget);
+    expect(find.text('2개 → 1.5개'), findsOneWidget);
+
+    await tester.tap(find.text('이번 조리에 적용'));
+    await tester.pumpAndSettle();
+
+    expect(recommendations.lastDecision, RecommendationDecision.accepted);
+    expect(recommendations.lastAppliedAmount, 1.5);
+
+    await tester.ensureVisible(find.text('이 설정으로 조리 시작'));
+    await tester.tap(find.text('이 설정으로 조리 시작'));
+    await tester.pumpAndSettle();
+
+    final session = tester.widget<CookSessionScreen>(
+      find.byType(CookSessionScreen),
+    );
+    expect(session.setupSnapshot!.ingredients[1].amount, 1.5);
+  });
+
+  testWidgets('추천 대상 원본 재료가 다른 재료로 대체된 경우 적용하지 않는다', (tester) async {
+    final recommendations = _FakeRecommendationDataSource();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: CookSetupScreen(
+          recipe: _recipe(eggName: '메추리알'),
+          recommendationDataSource: recommendations,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('이번 조리에 적용'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('생략되거나 대체되어'), findsOneWidget);
+    expect(recommendations.lastDecision, isNull);
+  });
 }
 
 Recipe _recipe({
   bool hasPersonalVersion = false,
   String? latestPersonalVersionId,
   double baseServings = 1,
+  String eggName = '계란',
 }) {
   return Recipe(
     id: '10000000-0000-0000-0000-000000000001',
@@ -382,9 +437,21 @@ Recipe _recipe({
     description: '기본 레시피',
     baseServings: baseServings,
     imageUrl: '',
-    ingredients: const [
-      Ingredient(name: '밥', amount: 1, unit: '공기', isRequired: true),
-      Ingredient(name: '계란', amount: 2, unit: '개', isRequired: true),
+    ingredients: [
+      const Ingredient(
+        originalIngredientId: '20000000-0000-0000-0000-000000000501',
+        name: '밥',
+        amount: 1,
+        unit: '공기',
+        isRequired: true,
+      ),
+      Ingredient(
+        originalIngredientId: '20000000-0000-0000-0000-000000000502',
+        name: eggName,
+        amount: 2,
+        unit: '개',
+        isRequired: true,
+      ),
     ],
     steps: const [
       CookStep(
@@ -398,4 +465,61 @@ Recipe _recipe({
     hasPersonalVersion: hasPersonalVersion,
     latestPersonalVersionId: latestPersonalVersionId,
   );
+}
+
+final class _FakeRecommendationDataSource implements RecommendationDataSource {
+  RecommendationDecision? lastDecision;
+  double? lastAppliedAmount;
+
+  @override
+  Future<NextCookRecommendationResponse> findForRecipe(String recipeId) async {
+    return NextCookRecommendationResponse(
+      recipeId: recipeId,
+      generatedAt: DateTime.utc(2026, 7, 26),
+      recommendations: [
+        NextCookRecommendation(
+          recommendationId: '70000000-0000-0000-0000-000000000001',
+          type: 'INGREDIENT_AMOUNT',
+          originalIngredientId: '20000000-0000-0000-0000-000000000502',
+          ingredientName: '계란',
+          originalAmount: 2,
+          suggestedAmount: 1.5,
+          unit: '개',
+          changePercent: -25,
+          confidence: 0.8,
+          reason: '최근 만족도 높은 기록에서 계란을 적게 사용했어요.',
+          explanationSource: 'FALLBACK',
+          model: null,
+          promptVersion: 'f11-reason-v1',
+          evidence: [
+            RecommendationEvidence(
+              reviewId: '60000000-0000-0000-0000-000000000001',
+              recipeId: '10000000-0000-0000-0000-000000000002',
+              recipeTitle: '김치볶음밥',
+              cookedAt: DateTime.utc(2026, 7, 25),
+              rating: 5,
+            ),
+            RecommendationEvidence(
+              reviewId: '60000000-0000-0000-0000-000000000002',
+              recipeId: '10000000-0000-0000-0000-000000000003',
+              recipeTitle: '두부조림',
+              cookedAt: DateTime.utc(2026, 7, 24),
+              rating: 4,
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  @override
+  Future<void> recordFeedback({
+    required String recipeId,
+    required NextCookRecommendation recommendation,
+    required RecommendationDecision decision,
+    double? appliedAmount,
+  }) async {
+    lastDecision = decision;
+    lastAppliedAmount = appliedAmount;
+  }
 }
