@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 
@@ -181,12 +182,14 @@ class BetaUserRepository {
   }
 
   Future<BetaUser?> _findSavedUser(String userId) async {
-    final response = await _client
-        .get(
-          Uri.parse('$_baseUrl/api/v1/users/me'),
-          headers: {cookPilotUserIdHeader: userId},
-        )
-        .timeout(requestTimeout);
+    final response = await _send(
+      () => _client
+          .get(
+            Uri.parse('$_baseUrl/api/v1/users/me'),
+            headers: {cookPilotUserIdHeader: userId},
+          )
+          .timeout(requestTimeout),
+    );
 
     if (_isUserNotFoundResponse(response)) return null;
     if (response.statusCode != 200) {
@@ -198,12 +201,14 @@ class BetaUserRepository {
   }
 
   Future<BetaUser> _createAnonymousUser(String installationId) async {
-    final response = await _client
-        .post(
-          Uri.parse('$_baseUrl/api/v1/users/anonymous'),
-          headers: {anonymousUserIdempotencyHeader: installationId},
-        )
-        .timeout(requestTimeout);
+    final response = await _send(
+      () => _client
+          .post(
+            Uri.parse('$_baseUrl/api/v1/users/anonymous'),
+            headers: {anonymousUserIdempotencyHeader: installationId},
+          )
+          .timeout(requestTimeout),
+    );
 
     if (response.statusCode != 201) {
       throw BetaUserException('베타 사용자 발급에 실패했습니다. (${response.statusCode})');
@@ -211,8 +216,25 @@ class BetaUserRepository {
     return _decodeUser(response.body);
   }
 
+  /// 네트워크 계층 예외를 사용자에게 보여줄 수 있는 [BetaUserException]으로
+  /// 번역한다. AuthScreen이 예외 메시지를 스낵바에 그대로 노출하기 때문이다.
+  Future<http.Response> _send(Future<http.Response> Function() request) async {
+    try {
+      return await request();
+    } on TimeoutException {
+      throw const BetaUserException('서버 응답이 늦어지고 있습니다. 잠시 후 다시 시도해주세요.');
+    } on http.ClientException {
+      throw const BetaUserException('서버에 연결하지 못했습니다. 네트워크 상태를 확인해주세요.');
+    }
+  }
+
   BetaUser _decodeUser(String body) {
-    final decoded = jsonDecode(body);
+    final Object? decoded;
+    try {
+      decoded = jsonDecode(body);
+    } on FormatException {
+      throw const BetaUserException('사용자 발급 응답 형식이 올바르지 않습니다.');
+    }
     if (decoded is! Map<String, dynamic>) {
       throw const BetaUserException('사용자 발급 응답 형식이 올바르지 않습니다.');
     }

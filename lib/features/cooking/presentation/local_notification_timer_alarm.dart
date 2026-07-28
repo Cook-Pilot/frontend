@@ -51,7 +51,7 @@ final class LocalNotificationTimerAlarm implements TimerAlarmPort {
           AndroidFlutterLocalNotificationsPlugin
         >();
     await android?.requestNotificationsPermission();
-    // 정확한 시각 알람(Android 12+). 거부되면 inexact로 대체된다.
+    // 정확한 시각 알람(Android 12+). 거부돼도 scheduleTimerElapsed가 inexact로 대체한다.
     await android?.requestExactAlarmsPermission();
     return LocalNotificationTimerAlarm(plugin);
   }
@@ -68,14 +68,27 @@ final class LocalNotificationTimerAlarm implements TimerAlarmPort {
     final when = tz.TZDateTime.from(at, tz.local);
     // 과거 시각이면 즉시(1초 뒤)로 보정한다.
     final target = when.isAfter(now) ? when : now.add(const Duration(seconds: 1));
-    await _plugin.zonedSchedule(
-      _notificationId,
-      '조리 타이머 완료',
-      '설정한 시간이 끝났어요. 다음 단계를 확인하세요.',
-      target,
-      _details,
-      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-    );
+    try {
+      await _plugin.zonedSchedule(
+        _notificationId,
+        '조리 타이머 완료',
+        '설정한 시간이 끝났어요. 다음 단계를 확인하세요.',
+        target,
+        _details,
+        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+      );
+    } on PlatformException {
+      // "알람 및 리마인더" 권한이 거부되면 exact 예약이 던진다(플러그인은
+      // inexact로 자동 대체하지 않는다). 알람을 포기하는 대신 inexact로 예약한다.
+      await _plugin.zonedSchedule(
+        _notificationId,
+        '조리 타이머 완료',
+        '설정한 시간이 끝났어요. 다음 단계를 확인하세요.',
+        target,
+        _details,
+        androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+      );
+    }
   }
 
   @override

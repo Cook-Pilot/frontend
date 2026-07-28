@@ -1135,7 +1135,14 @@ class _CookSessionScreenState extends State<CookSessionScreen>
 
   Future<void> _initAlarm() async {
     // 백그라운드 알림용 로컬 알림을 한 번 초기화(권한 요청 포함)한다.
-    final alarm = widget.alarm ?? await resolveTimerAlarm();
+    // 실패해도 조리 진행은 막지 않는다. resolveTimerAlarm이 실패 시 캐시를
+    // 비워두므로 다음 조리 화면 진입 때 다시 시도한다.
+    final TimerAlarmPort alarm;
+    try {
+      alarm = widget.alarm ?? await resolveTimerAlarm();
+    } on Object {
+      return;
+    }
     if (mounted) {
       _alarm = alarm;
       // 복원된 타이머가 이미 실행 중이면 종료 알림을 다시 예약한다.
@@ -1155,7 +1162,7 @@ class _CookSessionScreenState extends State<CookSessionScreen>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _timer.removeListener(_onTimerChanged);
-    unawaited(_alarm?.cancelScheduledAlarm() ?? Future<void>.value());
+    _cancelAlarmSafely();
     _timer.dispose();
     super.dispose();
   }
@@ -1164,7 +1171,7 @@ class _CookSessionScreenState extends State<CookSessionScreen>
     final status = _timer.status;
     if (status == TimerStatus.elapsed && _lastStatus != TimerStatus.elapsed) {
       _alarm?.signalTimerElapsed();
-      unawaited(_alarm?.cancelScheduledAlarm() ?? Future<void>.value());
+      _cancelAlarmSafely();
     }
     _lastStatus = status;
     _persist();
@@ -1209,17 +1216,31 @@ class _CookSessionScreenState extends State<CookSessionScreen>
     final duration = widget.recipe.steps[step - 1].timerDuration;
     _timer.reset(duration, autoStart: false);
     _lastStatus = _timer.status;
-    unawaited(_alarm?.cancelScheduledAlarm() ?? Future<void>.value());
+    _cancelAlarmSafely();
   }
 
   void _scheduleAlarm() {
+    final alarm = _alarm;
+    if (alarm == null) {
+      return;
+    }
     if (_timer.status == TimerStatus.running &&
         _timer.remaining > Duration.zero) {
+      // 예약 실패(권한·플러그인 오류)는 조리를 막을 이유가 아니므로 삼킨다.
       unawaited(
-        _alarm?.scheduleTimerElapsed(DateTime.now().add(_timer.remaining)) ??
-            Future<void>.value(),
+        alarm
+            .scheduleTimerElapsed(DateTime.now().add(_timer.remaining))
+            .catchError((Object _) {}),
       );
     }
+  }
+
+  void _cancelAlarmSafely() {
+    final alarm = _alarm;
+    if (alarm == null) {
+      return;
+    }
+    unawaited(alarm.cancelScheduledAlarm().catchError((Object _) {}));
   }
 
   void _toggleTimer() {
@@ -1232,7 +1253,7 @@ class _CookSessionScreenState extends State<CookSessionScreen>
         _scheduleAlarm();
       case TimerStatus.running:
         _timer.pause();
-        unawaited(_alarm?.cancelScheduledAlarm() ?? Future<void>.value());
+        _cancelAlarmSafely();
       case TimerStatus.elapsed:
         break;
     }
@@ -1676,7 +1697,9 @@ class _ReviewScreenState extends State<ReviewScreen> {
         comment: _commentController.text,
         nextTimeNote: _nextTimeController.text,
       );
-      await const CookingSessionStore().clear();
+      // 제출이 성공한 뒤의 세션 정리 실패가 "저장 실패"로 표시되면
+      // 사용자가 같은 후기를 다시 제출하게 되므로 성공 처리와 분리한다.
+      unawaited(const CookingSessionStore().clear());
       if (!mounted) return;
       setState(() {
         _saved = result;

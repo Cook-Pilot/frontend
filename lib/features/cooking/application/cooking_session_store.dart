@@ -181,9 +181,14 @@ final class CookingSessionStore {
 
   static const _key = 'cookpilot.active_cooking_session.v1';
 
+  /// 자동 저장은 조리 진행을 방해하면 안 되므로 저장 실패는 조용히 무시한다.
   Future<void> save(PersistedCookingSession session) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_key, jsonEncode(session.toJson()));
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_key, jsonEncode(session.toJson()));
+    } catch (_) {
+      // 다음 상태 변화 때 다시 시도된다.
+    }
   }
 
   /// 저장된 세션이 없거나 값이 손상됐으면 null. 손상값은 함께 정리한다.
@@ -209,17 +214,20 @@ final class CookingSessionStore {
     } catch (_) {
       // 손상된 JSON은 아래에서 제거한다.
     }
-    await prefs.remove(_key);
+    try {
+      await prefs.remove(_key);
+    } catch (_) {
+      // 제거 실패는 다음 load에서 다시 시도된다.
+    }
     return null;
   }
 
   Future<void> clear() async {
-    final SharedPreferences prefs;
     try {
-      prefs = await SharedPreferences.getInstance();
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_key);
     } catch (_) {
-      return;
+      // 세션 정리 실패가 호출부 흐름(리뷰 저장 등)을 깨면 안 된다.
     }
-    await prefs.remove(_key);
   }
 }

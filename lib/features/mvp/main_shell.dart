@@ -115,7 +115,10 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _retry() {
-    setState(() => _catalog = _loadCatalog());
+    final next = _loadCatalog();
+    setState(() {
+      _catalog = next;
+    });
     unawaited(_loadResumableSession());
   }
 
@@ -238,8 +241,14 @@ class _HomeScreenState extends State<HomeScreen> {
         child: RefreshIndicator(
           onRefresh: () async {
             final next = _loadCatalog();
-            setState(() => _catalog = next);
-            await next;
+            setState(() {
+              _catalog = next;
+            });
+            try {
+              await next;
+            } on Object {
+              // 에러 표시는 같은 Future를 구독하는 FutureBuilder가 담당한다.
+            }
           },
           child: ListView(
             padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
@@ -401,7 +410,10 @@ class _SearchScreenState extends State<SearchScreen> {
   }
 
   void _retry() {
-    setState(() => _recipes = _recipeRepository.findAll());
+    final next = _recipeRepository.findAll();
+    setState(() {
+      _recipes = next;
+    });
   }
 
   @override
@@ -503,7 +515,10 @@ class _MemoryScreenState extends State<MemoryScreen> {
   }
 
   void _retry() {
-    setState(() => _history = _loadMonth());
+    final next = _loadMonth();
+    setState(() {
+      _history = next;
+    });
   }
 
   void _openHistoryDetail(
@@ -1112,7 +1127,10 @@ class _RecipeDetailLoaderState extends State<_RecipeDetailLoader> {
   }
 
   void _retry() {
-    setState(() => _recipe = _recipeRepository.findById(widget.summary));
+    final next = _recipeRepository.findById(widget.summary);
+    setState(() {
+      _recipe = next;
+    });
   }
 
   @override

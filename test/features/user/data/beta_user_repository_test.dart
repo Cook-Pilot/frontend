@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:cookpilot/features/user/data/beta_user_repository.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -268,7 +266,7 @@ void main() {
 
     await expectLater(
       repository.ensureUser(),
-      throwsA(isA<TimeoutException>()),
+      throwsA(isA<BetaUserException>()),
     );
     final user = await repository.ensureUser();
 
