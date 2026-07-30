@@ -175,18 +175,31 @@ final class PersistedCookingSession {
   }
 }
 
+abstract interface class CookingSessionGateway {
+  Future<void> save(PersistedCookingSession session);
+
+  Future<PersistedCookingSession?> load();
+
+  Future<void> clear();
+}
+
 /// 진행 중 조리 세션을 shared_preferences에 하나만 보관한다.
-final class CookingSessionStore {
+final class CookingSessionStore implements CookingSessionGateway {
   const CookingSessionStore();
 
   static const _key = 'cookpilot.active_cooking_session.v1';
 
+  @override
   Future<void> save(PersistedCookingSession session) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_key, jsonEncode(session.toJson()));
+    final saved = await prefs.setString(_key, jsonEncode(session.toJson()));
+    if (!saved) {
+      throw StateError('진행 중 조리 세션을 로컬에 저장하지 못했습니다.');
+    }
   }
 
   /// 저장된 세션이 없거나 값이 손상됐으면 null. 손상값은 함께 정리한다.
+  @override
   Future<PersistedCookingSession?> load() async {
     final SharedPreferences prefs;
     try {
@@ -213,13 +226,12 @@ final class CookingSessionStore {
     return null;
   }
 
+  @override
   Future<void> clear() async {
-    final SharedPreferences prefs;
-    try {
-      prefs = await SharedPreferences.getInstance();
-    } catch (_) {
-      return;
+    final prefs = await SharedPreferences.getInstance();
+    final removed = await prefs.remove(_key);
+    if (!removed) {
+      throw StateError('진행 중 조리 세션을 로컬에서 정리하지 못했습니다.');
     }
-    await prefs.remove(_key);
   }
 }

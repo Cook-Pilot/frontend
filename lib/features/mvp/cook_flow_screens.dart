@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../app/app_theme.dart';
 import '../../core/identity/uuid_v4.dart';
@@ -18,6 +19,8 @@ import '../cooking/presentation/widgets/help_question_sheet.dart';
 import '../recipe/data/recipe_api.dart';
 import '../recipe/domain/recipe.dart';
 import '../recommendation/data/recommendation_api.dart';
+import '../review/application/pending_review_draft_store.dart';
+import '../review/data/personal_version_approval_api.dart';
 import '../review/data/review_api.dart';
 import 'main_shell.dart';
 import 'mvp_widgets.dart';
@@ -1549,6 +1552,8 @@ class CookSessionScreen extends StatefulWidget {
     this.advicePort,
     this.speechInput,
     this.handsFreeVoiceEnabled = false,
+    this.pendingReviewDraftStore,
+    this.cookingSessionStore,
   });
 
   final Recipe recipe;
@@ -1575,13 +1580,22 @@ class CookSessionScreen extends StatefulWidget {
   /// false이면 마이크를 자동으로 열지 않고 기존 말하기 버튼으로만 시작한다.
   final bool handsFreeVoiceEnabled;
 
+  /// 테스트에서 완료 draft 저장의 성공·실패·지연을 제어하기 위한 주입 지점.
+  final PendingReviewDraftGateway? pendingReviewDraftStore;
+
+  /// 테스트에서 active-session 저장·정리 실패를 제어하기 위한 주입 지점.
+  final CookingSessionGateway? cookingSessionStore;
+
   @override
   State<CookSessionScreen> createState() => _CookSessionScreenState();
 }
 
 class _CookSessionScreenState extends State<CookSessionScreen>
     with WidgetsBindingObserver {
-  final CookingSessionStore _store = const CookingSessionStore();
+  late final CookingSessionGateway _store =
+      widget.cookingSessionStore ?? const CookingSessionStore();
+  late final PendingReviewDraftGateway _pendingReviewDraftStore =
+      widget.pendingReviewDraftStore ?? PendingReviewDraftStore();
 
   int step = 1;
   late final String _sessionId;
@@ -1623,6 +1637,13 @@ class _CookSessionScreenState extends State<CookSessionScreen>
   bool _completed = false;
   bool _closingSession = false;
   bool _allowSessionPop = false;
+  bool _finishing = false;
+  String? _finishError;
+  PendingReviewDraft? _completionDraft;
+  Future<void> _persistTail = Future<void>.value();
+  int _persistVersion = 0;
+
+  bool get _completionLocked => _completionDraft != null;
 
   @override
   void initState() {
@@ -1751,7 +1772,7 @@ class _CookSessionScreenState extends State<CookSessionScreen>
   }
 
   void _applyVoiceIntent(VoiceIntent intent, {required String transcript}) {
-    if (_disposed || _completed || !mounted) {
+    if (_disposed || _completed || _completionLocked || !mounted) {
       return;
     }
     switch (intent.type) {
@@ -1778,7 +1799,7 @@ class _CookSessionScreenState extends State<CookSessionScreen>
       case VoiceIntentType.resumeTimer:
         _resumeTimerFromVoice();
       case VoiceIntentType.finish:
-        _finishCooking();
+        unawaited(_finishCooking());
       case VoiceIntentType.exceptionQuestion:
         unawaited(_requestAdvice(transcript));
       case VoiceIntentType.ignore:
@@ -1787,14 +1808,14 @@ class _CookSessionScreenState extends State<CookSessionScreen>
   }
 
   void _setVoiceMessage(String message) {
-    if (_disposed || _completed || !mounted) {
+    if (_disposed || _completed || _completionLocked || !mounted) {
       return;
     }
     setState(() => _voiceMessage = message);
   }
 
   void _moveCookingStep(int delta, {required bool fromVoice}) {
-    if (_completed) {
+    if (_completed || _completionLocked) {
       return;
     }
     final target = step + delta;
@@ -1900,20 +1921,75 @@ class _CookSessionScreenState extends State<CookSessionScreen>
     _setVoiceMessage('타이머를 다시 시작했어요.');
   }
 
-  void _finishCooking() {
-    if (_completed || !mounted) {
+  Future<void> _finishCooking() async {
+    if (_completed || _finishing || !mounted) {
       return;
     }
+    PendingReviewDraft draft;
+    try {
+      draft = _completionDraft ??= PendingReviewDraft(
+        clientSessionId: _sessionId,
+        cookedAt: DateTime.now(),
+        setupSnapshot: _reviewSnapshot(),
+        timerSecondsByStep: Map<int, int>.unmodifiable(_timerSecondsByStep),
+        rating: 5,
+        comment: '',
+        nextTimeNote: '',
+        approvedPersonalVersionCreation: false,
+      );
+    } on Object {
+      setState(() {
+        _finishError = '조리 완료 정보를 준비하지 못했습니다. 잠시 후 다시 시도해주세요.';
+      });
+      return;
+    }
+
+    setState(() {
+      _finishing = true;
+      _finishError = null;
+    });
     _completed = true;
+    // 저장을 기다리는 동안 늦은 음성·도움 응답이 frozen draft의 문맥을
+    // 바꾸지 못하게 최초 완료 요청 시점에 즉시 무효화한다.
     _helpRequestVersion++;
     _voiceSession.complete();
-    Navigator.of(context).pushReplacement(
+    try {
+      // 후기 화면으로 넘어가기 전에 완료 사실과 실행 snapshot을 먼저
+      // 보존한다. 실패하면 진행 중 세션을 그대로 둔 채 같은 draft로 재시도한다.
+      await _pendingReviewDraftStore.save(draft);
+    } on Object {
+      if (!mounted) {
+        return;
+      }
+      _completed = false;
+      setState(() {
+        _finishing = false;
+        _finishError = '조리 완료 정보를 저장하지 못했습니다. 다시 시도해주세요.';
+      });
+      _persist(force: true);
+      return;
+    }
+
+    // pending review가 이제 완료 이후의 canonical 복구 단위다. 이 시점부터
+    // 타이머 callback이 active cooking session을 다시 쓰지 못하게 막는다.
+    try {
+      // init/timer callback에서 이미 시작된 active-session 저장이 clear 뒤
+      // 늦게 끝나 세션을 되살리지 않도록, 이 화면의 저장 큐를 먼저 비운다.
+      await _persistTail;
+      await _store.clear();
+    } on Object {
+      // pending draft 저장이 성공했으므로 active session 정리 실패는 전환을
+      // 막지 않는다. Home은 pending review를 항상 우선한다.
+    }
+    if (!mounted) {
+      return;
+    }
+    await Navigator.of(context).pushReplacement(
       MaterialPageRoute<void>(
         builder: (_) => ReviewScreen(
-          setupSnapshot: _reviewSnapshot(),
-          clientSessionId: _sessionId,
-          cookedAt: DateTime.now(),
-          timerSecondsByStep: Map.unmodifiable(_timerSecondsByStep),
+          initialDraft: draft,
+          pendingReviewDraftStore: _pendingReviewDraftStore,
+          cookingSessionStore: _store,
         ),
       ),
     );
@@ -1945,11 +2021,12 @@ class _CookSessionScreenState extends State<CookSessionScreen>
     _persist();
   }
 
-  void _persist() {
+  void _persist({bool force = false}) {
     if (_completed) {
       return;
     }
-    if (step == _persistedStep &&
+    if (!force &&
+        step == _persistedStep &&
         _timer.status == _persistedTimerStatus &&
         _timer.effectiveDuration == _persistedTimerEffective) {
       return;
@@ -1958,28 +2035,43 @@ class _CookSessionScreenState extends State<CookSessionScreen>
     _persistedTimerStatus = _timer.status;
     _persistedTimerEffective = _timer.effectiveDuration;
     final snapshot = _timer.snapshot();
-    unawaited(
-      _store.save(
-        PersistedCookingSession(
-          sessionId: _sessionId,
-          recipeId: widget.recipe.id,
-          recipeTitle: widget.recipe.title,
-          servings: widget.servings,
-          setupSnapshot: widget.setupSnapshot,
-          stepIndex: step - 1,
-          sessionStatus: CookingSessionStatus.cooking.name,
-          timerOriginalMs: snapshot.originalDuration.inMilliseconds,
-          timerEffectiveMs: snapshot.effectiveDuration.inMilliseconds,
-          timerRemainingMs: snapshot.remaining.inMilliseconds,
-          timerStatus: snapshot.status.name,
-          savedAtEpochMs: DateTime.now().millisecondsSinceEpoch,
-          timerSecondsByStep: Map.unmodifiable(_timerSecondsByStep),
-        ),
-      ),
+    final persistedSession = PersistedCookingSession(
+      sessionId: _sessionId,
+      recipeId: widget.recipe.id,
+      recipeTitle: widget.recipe.title,
+      servings: widget.servings,
+      setupSnapshot: widget.setupSnapshot,
+      stepIndex: step - 1,
+      sessionStatus: CookingSessionStatus.cooking.name,
+      timerOriginalMs: snapshot.originalDuration.inMilliseconds,
+      timerEffectiveMs: snapshot.effectiveDuration.inMilliseconds,
+      timerRemainingMs: snapshot.remaining.inMilliseconds,
+      timerStatus: snapshot.status.name,
+      savedAtEpochMs: DateTime.now().millisecondsSinceEpoch,
+      timerSecondsByStep: Map.unmodifiable(_timerSecondsByStep),
     );
+    final persistVersion = ++_persistVersion;
+    final previousPersist = _persistTail;
+    _persistTail = (() async {
+      await previousPersist;
+      try {
+        await _store.save(persistedSession);
+      } on Object {
+        // 최신 저장도 실패한 경우 dedupe 표식을 되돌려 같은 상태를 다시
+        // 저장할 수 있게 한다. 더 최신 요청의 표식은 건드리지 않는다.
+        if (_persistVersion == persistVersion) {
+          _persistedStep = null;
+          _persistedTimerStatus = null;
+          _persistedTimerEffective = null;
+        }
+      }
+    })();
   }
 
   void _resetTimerForStep({bool keepRecordedDuration = false}) {
+    if (_completionLocked) {
+      return;
+    }
     final recordedSeconds = keepRecordedDuration
         ? _timerSecondsByStep[step - 1]
         : null;
@@ -2005,6 +2097,9 @@ class _CookSessionScreenState extends State<CookSessionScreen>
   }
 
   void _toggleTimer() {
+    if (_completionLocked) {
+      return;
+    }
     switch (_timer.status) {
       case TimerStatus.idle:
         _timer.start();
@@ -2021,11 +2116,17 @@ class _CookSessionScreenState extends State<CookSessionScreen>
   }
 
   void _addMinute() {
+    if (_completionLocked) {
+      return;
+    }
     // add()는 정지/종료 상태여도 타이머를 다시 진행시킨다.
     _extendCurrentTimer(const Duration(minutes: 1));
   }
 
   void _extendCurrentTimer(Duration extension) {
+    if (_completionLocked) {
+      return;
+    }
     _timerSecondsByStep[step - 1] =
         _timer.effectiveDuration.inSeconds + extension.inSeconds;
     _timer.add(extension);
@@ -2033,6 +2134,9 @@ class _CookSessionScreenState extends State<CookSessionScreen>
   }
 
   Future<void> _openHelpSheet() async {
+    if (_completionLocked) {
+      return;
+    }
     _voiceSession.disableAutomaticRearm();
     if (_speechIsActive) {
       unawaited(_deactivateSpeechInput(message: '음성 입력을 멈췄어요. 질문을 직접 입력해주세요.'));
@@ -2048,6 +2152,7 @@ class _CookSessionScreenState extends State<CookSessionScreen>
     final normalizedQuestion = question.trim();
     if (_disposed ||
         _completed ||
+        _completionLocked ||
         !mounted ||
         _helpRequestInFlight ||
         normalizedQuestion.isEmpty) {
@@ -2144,7 +2249,11 @@ class _CookSessionScreenState extends State<CookSessionScreen>
 
   void _applySuggestedAction() {
     final action = _helpSuggestedAction;
-    if (action == null || _disposed || _completed || !mounted) {
+    if (action == null ||
+        _disposed ||
+        _completed ||
+        _completionLocked ||
+        !mounted) {
       return;
     }
     setState(() => _helpSuggestedAction = null);
@@ -2222,7 +2331,7 @@ class _CookSessionScreenState extends State<CookSessionScreen>
     final screen = Scaffold(
       appBar: AppBar(
         leading: IconButton(
-          onPressed: _closeCookingSession,
+          onPressed: _finishing ? null : _closeCookingSession,
           icon: const Icon(Icons.close_rounded),
         ),
         title: Text(
@@ -2231,7 +2340,10 @@ class _CookSessionScreenState extends State<CookSessionScreen>
           overflow: TextOverflow.ellipsis,
         ),
         actions: [
-          IconButton(onPressed: () {}, icon: const Icon(Icons.pause_rounded)),
+          IconButton(
+            onPressed: _completionLocked ? null : () {},
+            icon: const Icon(Icons.pause_rounded),
+          ),
         ],
       ),
       body: SafeArea(
@@ -2328,7 +2440,9 @@ class _CookSessionScreenState extends State<CookSessionScreen>
                     builder: (context, _) => PressableScale(
                       child: FilledButton(
                         onPressed:
-                            hasTimer && _timer.status != TimerStatus.elapsed
+                            !_completionLocked &&
+                                hasTimer &&
+                                _timer.status != TimerStatus.elapsed
                             ? _toggleTimer
                             : null,
                         style: FilledButton.styleFrom(
@@ -2353,7 +2467,9 @@ class _CookSessionScreenState extends State<CookSessionScreen>
                         children: [
                           Expanded(
                             child: OutlinedButton.icon(
-                              onPressed: hasTimer ? _addMinute : null,
+                              onPressed: !_completionLocked && hasTimer
+                                  ? _addMinute
+                                  : null,
                               icon: const Icon(Icons.add_rounded, size: 18),
                               label: const Text('1분 추가'),
                               style: style,
@@ -2363,7 +2479,9 @@ class _CookSessionScreenState extends State<CookSessionScreen>
                           Expanded(
                             child: OutlinedButton.icon(
                               onPressed:
-                                  hasTimer && _timer.status != TimerStatus.idle
+                                  !_completionLocked &&
+                                      hasTimer &&
+                                      _timer.status != TimerStatus.idle
                                   ? _resetTimerForStep
                                   : null,
                               icon: const Icon(Icons.refresh_rounded, size: 18),
@@ -2391,7 +2509,9 @@ class _CookSessionScreenState extends State<CookSessionScreen>
                 Expanded(
                   child: FilledButton.icon(
                     key: const Key('voice-input-toggle'),
-                    onPressed: _speechPhase == _CookSpeechPhase.stopping
+                    onPressed:
+                        _completionLocked ||
+                            _speechPhase == _CookSpeechPhase.stopping
                         ? null
                         : _toggleSpeechInput,
                     icon: Icon(
@@ -2408,7 +2528,9 @@ class _CookSessionScreenState extends State<CookSessionScreen>
                 Expanded(
                   child: OutlinedButton.icon(
                     key: const Key('help-request'),
-                    onPressed: _helpRequestInFlight ? null : _openHelpSheet,
+                    onPressed: _completionLocked || _helpRequestInFlight
+                        ? null
+                        : _openHelpSheet,
                     icon: const Icon(Icons.keyboard_rounded, size: 20),
                     label: const Text('직접 입력'),
                   ),
@@ -2443,7 +2565,7 @@ class _CookSessionScreenState extends State<CookSessionScreen>
                 const SizedBox(height: 8),
                 OutlinedButton.icon(
                   key: const Key('help-suggested-action'),
-                  onPressed: _applySuggestedAction,
+                  onPressed: _completionLocked ? null : _applySuggestedAction,
                   icon: const Icon(Icons.timer_outlined, size: 18),
                   label: Text(
                     '제안 적용 · '
@@ -2452,6 +2574,15 @@ class _CookSessionScreenState extends State<CookSessionScreen>
                 ),
               ],
             ],
+            if (_finishError case final String error) ...[
+              const SizedBox(height: 12),
+              InfoStrip(
+                key: const Key('cooking-completion-error'),
+                icon: Icons.error_outline_rounded,
+                title: '완료 정보를 저장하지 못했어요',
+                body: error,
+              ),
+            ],
           ],
         ),
       ),
@@ -2459,23 +2590,31 @@ class _CookSessionScreenState extends State<CookSessionScreen>
         minimum: const EdgeInsets.fromLTRB(20, 8, 20, 20),
         child: PressableScale(
           child: FilledButton(
-            onPressed: () {
-              if (isLast) {
-                // 후기 저장이 성공하기 전까지 동일 세션으로 재시도할 수 있게 보존한다.
-                _finishCooking();
-              } else {
-                _moveCookingStep(1, fromVoice: false);
-              }
-            },
-            child: Text(isLast ? '조리 완료' : '다음 단계'),
+            onPressed: _finishing
+                ? null
+                : () {
+                    if (isLast) {
+                      unawaited(_finishCooking());
+                    } else {
+                      _moveCookingStep(1, fromVoice: false);
+                    }
+                  },
+            child: Text(
+              isLast && _finishing
+                  ? '완료 저장 중'
+                  : isLast
+                  ? '조리 완료'
+                  : '다음 단계',
+            ),
           ),
         ),
       ),
     );
     return PopScope(
+      key: const Key('cooking-completion-pop-scope'),
       canPop: _allowSessionPop,
       onPopInvokedWithResult: (didPop, _) {
-        if (!didPop) {
+        if (!didPop && !_finishing) {
           _closeCookingSession();
         }
       },
@@ -2529,48 +2668,183 @@ class _CookSessionScreenState extends State<CookSessionScreen>
 class ReviewScreen extends StatefulWidget {
   const ReviewScreen({
     super.key,
-    required this.setupSnapshot,
-    required this.clientSessionId,
-    required this.cookedAt,
-    required this.timerSecondsByStep,
+    required this.initialDraft,
+    this.pendingReviewDraftStore,
     this.reviewRepository,
+    this.personalVersionApprovalGateway,
+    this.cookingSessionStore,
   });
 
-  final CookingSetupSnapshot setupSnapshot;
-  final String clientSessionId;
-  final DateTime cookedAt;
-  final Map<int, int> timerSecondsByStep;
+  final PendingReviewDraft initialDraft;
+  final PendingReviewDraftGateway? pendingReviewDraftStore;
   final ReviewRepository? reviewRepository;
+  final PersonalVersionApprovalGateway? personalVersionApprovalGateway;
+  final CookingSessionGateway? cookingSessionStore;
+
+  CookingSetupSnapshot get setupSnapshot => initialDraft.setupSnapshot;
+  String get clientSessionId => initialDraft.clientSessionId;
+  DateTime get cookedAt => initialDraft.cookedAt;
+  Map<int, int> get timerSecondsByStep => initialDraft.timerSecondsByStep;
 
   @override
   State<ReviewScreen> createState() => _ReviewScreenState();
 }
 
-class _ReviewScreenState extends State<ReviewScreen> {
-  int rating = 5;
+class _ReviewScreenState extends State<ReviewScreen>
+    with WidgetsBindingObserver {
+  static const _autosaveDelay = Duration(milliseconds: 300);
+
+  late PendingReviewDraft _draft;
+  late int rating;
+  late bool _approvedPersonalVersionCreation;
+  late final PendingReviewDraftGateway _pendingReviewDraftStore;
   late final ReviewRepository _reviewRepository;
-  final TextEditingController _commentController = TextEditingController();
-  final TextEditingController _nextTimeController = TextEditingController();
+  late final PersonalVersionApprovalGateway _personalVersionApprovalGateway;
+  late final CookingSessionGateway _cookingSessionStore;
+  late final TextEditingController _commentController;
+  late final TextEditingController _nextTimeController;
+  Timer? _autosaveTimer;
   bool _saving = false;
+  bool _finalized = false;
+  ReviewSaveResult? _submittedReview;
   ReviewSaveResult? _saved;
+  PersonalVersionApprovalResult? _personalVersionResult;
+  String? _draftSaveError;
   String? _saveError;
+  String? _cleanupWarning;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _draft = widget.initialDraft;
+    rating = _draft.rating;
+    _approvedPersonalVersionCreation = _draft.approvedPersonalVersionCreation;
+    _commentController = TextEditingController(text: _draft.comment);
+    _nextTimeController = TextEditingController(text: _draft.nextTimeNote);
+    _pendingReviewDraftStore =
+        widget.pendingReviewDraftStore ?? PendingReviewDraftStore();
     _reviewRepository = widget.reviewRepository ?? ReviewRepository();
+    _personalVersionApprovalGateway =
+        widget.personalVersionApprovalGateway ?? PersonalVersionApprovalApi();
+    _cookingSessionStore =
+        widget.cookingSessionStore ?? const CookingSessionStore();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed && !_finalized) {
+      unawaited(_flushDraft(surfaceError: false));
+    }
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _autosaveTimer?.cancel();
+    if (!_finalized) {
+      try {
+        final latest = _currentDraft();
+        unawaited(
+          _pendingReviewDraftStore
+              .save(latest)
+              .onError((Object _, StackTrace _) {}),
+        );
+      } on Object {
+        // 입력 검증 오류는 화면에서 이미 안내한다. dispose 중에는 UI를
+        // 갱신할 수 없으므로 기존에 저장된 마지막 정상 draft를 유지한다.
+      }
+    }
     _commentController.dispose();
     _nextTimeController.dispose();
     super.dispose();
   }
 
+  PendingReviewDraft _currentDraft() {
+    return _draft.copyWith(
+      rating: rating,
+      comment: _commentController.text,
+      nextTimeNote: _nextTimeController.text,
+      approvedPersonalVersionCreation: _approvedPersonalVersionCreation,
+    );
+  }
+
+  void _scheduleAutosave() {
+    if (_finalized || _saving || _submittedReview != null || _saved != null) {
+      return;
+    }
+    _autosaveTimer?.cancel();
+    _autosaveTimer = Timer(_autosaveDelay, () => unawaited(_flushDraft()));
+  }
+
+  void _onTextChanged(String _) {
+    if (!mounted || _saving || _submittedReview != null || _saved != null) {
+      return;
+    }
+    setState(() {
+      _draftSaveError = null;
+      _saveError = null;
+    });
+    _scheduleAutosave();
+  }
+
+  void _setRating(int value) {
+    if (_saving ||
+        _submittedReview != null ||
+        _saved != null ||
+        rating == value) {
+      return;
+    }
+    setState(() {
+      rating = value;
+      _draftSaveError = null;
+      _saveError = null;
+    });
+    _scheduleAutosave();
+  }
+
+  void _setPersonalVersionApproval(bool value) {
+    if (_saving ||
+        _submittedReview != null ||
+        _saved != null ||
+        _approvedPersonalVersionCreation == value) {
+      return;
+    }
+    setState(() {
+      _approvedPersonalVersionCreation = value;
+      _draftSaveError = null;
+      _saveError = null;
+    });
+    _scheduleAutosave();
+  }
+
+  Future<bool> _flushDraft({bool surfaceError = true}) async {
+    if (_finalized) {
+      return true;
+    }
+    _autosaveTimer?.cancel();
+    _autosaveTimer = null;
+    try {
+      final latest = _currentDraft();
+      await _pendingReviewDraftStore.save(latest);
+      _draft = latest;
+      if (surfaceError && mounted && _draftSaveError != null) {
+        setState(() => _draftSaveError = null);
+      }
+      return true;
+    } on Object {
+      if (surfaceError && mounted) {
+        setState(() {
+          _draftSaveError = '작성 중인 후기를 기기에 저장하지 못했습니다. 다시 시도해주세요.';
+        });
+      }
+      return false;
+    }
+  }
+
   List<String> get _changeLabels {
     final changes = <String>[];
-    for (final ingredient in widget.setupSnapshot.ingredients) {
+    for (final ingredient in _draft.setupSnapshot.ingredients) {
       if (ingredient.omitted) {
         changes.add('${ingredient.originalName} 생략');
       } else if (ingredient.isSubstituted) {
@@ -2584,9 +2858,9 @@ class _ReviewScreenState extends State<ReviewScreen> {
       }
     }
     for (final MapEntry(key: index, value: seconds)
-        in widget.timerSecondsByStep.entries) {
-      if (index < 0 || index >= widget.setupSnapshot.steps.length) continue;
-      final original = widget.setupSnapshot.steps[index].timerSeconds;
+        in _draft.timerSecondsByStep.entries) {
+      if (index < 0 || index >= _draft.setupSnapshot.steps.length) continue;
+      final original = _draft.setupSnapshot.steps[index].timerSeconds;
       if (original != seconds) {
         changes.add('${index + 1}단계 타이머 ${_secondsLabel(seconds)}');
       }
@@ -2599,21 +2873,63 @@ class _ReviewScreenState extends State<ReviewScreen> {
     setState(() {
       _saving = true;
       _saveError = null;
+      _draftSaveError = null;
     });
+    if (!await _flushDraft()) {
+      if (mounted) {
+        setState(() => _saving = false);
+      }
+      return;
+    }
+    final submittedDraft = _draft;
+    var reviewAccepted = _submittedReview != null;
     try {
-      final result = await _reviewRepository.submit(
-        clientSessionId: widget.clientSessionId,
-        cookedAt: widget.cookedAt,
-        snapshot: widget.setupSnapshot,
-        rating: rating,
-        comment: _commentController.text,
-        nextTimeNote: _nextTimeController.text,
-      );
-      await const CookingSessionStore().clear();
+      final result =
+          _submittedReview ??
+          await _reviewRepository.submit(
+            clientSessionId: submittedDraft.clientSessionId,
+            cookedAt: submittedDraft.cookedAt,
+            snapshot: submittedDraft.setupSnapshot,
+            rating: submittedDraft.rating,
+            comment: submittedDraft.comment,
+            nextTimeNote: submittedDraft.nextTimeNote,
+          );
+      _submittedReview = result;
+      reviewAccepted = true;
+      PersonalVersionApprovalResult? personalVersionResult;
+      if (submittedDraft.approvedPersonalVersionCreation) {
+        personalVersionResult = await _personalVersionApprovalGateway
+            .createFromApprovedReview(
+              reviewId: result.id,
+              snapshot: submittedDraft.setupSnapshot,
+            );
+      }
+
+      // 늦게 끝난 autosave가 clear 뒤 draft를 되살리지 못하게 먼저 막는다.
+      _autosaveTimer?.cancel();
+      _autosaveTimer = null;
+      _finalized = true;
+
+      final cleanupErrors = <String>[];
+      try {
+        await _pendingReviewDraftStore.clear();
+      } on Object {
+        cleanupErrors.add('후기 임시 저장');
+      }
+      try {
+        await _cookingSessionStore.clear();
+      } on Object {
+        cleanupErrors.add('조리 세션');
+      }
       if (!mounted) return;
       setState(() {
         _saved = result;
+        _personalVersionResult = personalVersionResult;
         _saving = false;
+        _cleanupWarning = cleanupErrors.isEmpty
+            ? null
+            : '${cleanupErrors.join('·')} 정리를 완료하지 못해 '
+                  '홈에 다시 표시될 수 있어요.';
       });
     } on ReviewApiException catch (error) {
       if (!mounted) return;
@@ -2621,11 +2937,22 @@ class _ReviewScreenState extends State<ReviewScreen> {
         _saving = false;
         _saveError = error.message;
       });
+    } on PersonalVersionApprovalApiException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _saving = false;
+        _saveError =
+            '후기는 저장했지만 개인 버전을 만들지 못했습니다. '
+            '${error.message} 같은 내용으로 다시 시도할 수 있어요.';
+      });
     } on Object {
       if (!mounted) return;
       setState(() {
         _saving = false;
-        _saveError = '후기를 저장하지 못했습니다. 잠시 후 다시 시도해주세요.';
+        _saveError = reviewAccepted
+            ? '후기는 저장했지만 개인 버전을 만들지 못했습니다. '
+                  '같은 내용으로 다시 시도할 수 있어요.'
+            : '후기를 저장하지 못했습니다. 잠시 후 다시 시도해주세요.';
       });
     }
   }
@@ -2637,11 +2964,22 @@ class _ReviewScreenState extends State<ReviewScreen> {
     );
   }
 
+  String get _successMessage {
+    if (!_draft.approvedPersonalVersionCreation) {
+      return '후기만 저장했어요. 개인 버전은 만들지 않았어요.';
+    }
+    return switch (_personalVersionResult) {
+      PersonalVersionCreated() => '후기와 개인 버전을 저장했어요.',
+      PersonalVersionNoChange() => '적용할 변경이 없어 개인 버전은 만들지 않았어요.',
+      null => '후기를 저장했어요.',
+    };
+  }
+
   @override
   Widget build(BuildContext context) {
     final changes = _changeLabels;
     final sourceLabel =
-        widget.setupSnapshot.source == CookingRecipeSource.personal
+        _draft.setupSnapshot.source == CookingRecipeSource.personal
         ? '개인 버전 기반'
         : '원본 기반';
     return PageShell(
@@ -2665,7 +3003,12 @@ class _ReviewScreenState extends State<ReviewScreen> {
                     PressableScale(
                       scale: 0.8,
                       child: IconButton(
-                        onPressed: () => setState(() => rating = i),
+                        onPressed:
+                            _saving ||
+                                _submittedReview != null ||
+                                _saved != null
+                            ? null
+                            : () => _setRating(i),
                         icon: AnimatedSwitcher(
                           duration: AppMotion.fast,
                           transitionBuilder: (child, animation) =>
@@ -2694,26 +3037,64 @@ class _ReviewScreenState extends State<ReviewScreen> {
         const SectionTitle('이번 조리 요약'),
         InfoStrip(
           icon: Icons.summarize_rounded,
-          title: '${widget.setupSnapshot.targetServings}인분 · $sourceLabel',
+          title: '${_draft.setupSnapshot.targetServings}인분 · $sourceLabel',
           body: changes.isEmpty
               ? '선택한 레시피 그대로 조리했어요. 후기는 조리 기록에 저장돼요.'
               : changes.join(' · '),
         ),
         const SectionTitle('이번 요리 메모'),
         TextField(
+          key: const Key('review-comment-field'),
           controller: _commentController,
-          enabled: !_saving && _saved == null,
+          enabled: !_saving && _submittedReview == null && _saved == null,
           minLines: 3,
           maxLines: 5,
-          decoration: const InputDecoration(hintText: '맛과 조리 결과를 기록해보세요.'),
+          inputFormatters: const [
+            _CodePointLengthLimitingTextInputFormatter(
+              PendingReviewDraft.maximumCommentCodePoints,
+            ),
+          ],
+          onChanged: _onTextChanged,
+          decoration: InputDecoration(
+            hintText: '맛과 조리 결과를 기록해보세요.',
+            helperText:
+                '${_commentController.text.runes.length}/'
+                '${PendingReviewDraft.maximumCommentCodePoints}',
+          ),
         ),
         const SectionTitle('다음에는'),
         TextField(
+          key: const Key('review-next-time-field'),
           controller: _nextTimeController,
-          enabled: !_saving && _saved == null,
+          enabled: !_saving && _submittedReview == null && _saved == null,
           minLines: 2,
           maxLines: 4,
-          decoration: const InputDecoration(hintText: '다음 조리에 기억할 점을 남겨주세요.'),
+          inputFormatters: const [
+            _CodePointLengthLimitingTextInputFormatter(
+              PendingReviewDraft.maximumNextTimeNoteCodePoints,
+            ),
+          ],
+          onChanged: _onTextChanged,
+          decoration: InputDecoration(
+            hintText: '다음 조리에 기억할 점을 남겨주세요.',
+            helperText:
+                '${_nextTimeController.text.runes.length}/'
+                '${PendingReviewDraft.maximumNextTimeNoteCodePoints}',
+          ),
+        ),
+        const SizedBox(height: 16),
+        SwitchListTile.adaptive(
+          key: const Key('personal-version-opt-in'),
+          contentPadding: EdgeInsets.zero,
+          title: const Text(
+            '이번 변경을 개인 버전으로 저장',
+            style: TextStyle(fontWeight: FontWeight.w800),
+          ),
+          subtitle: const Text('승인한 경우에만 다음 조리에 사용할 개인 레시피를 만들어요.'),
+          value: _approvedPersonalVersionCreation,
+          onChanged: _saving || _submittedReview != null || _saved != null
+              ? null
+              : _setPersonalVersionApproval,
         ),
         if (changes.isNotEmpty) ...[
           const SectionTitle('자동으로 기록한 변경'),
@@ -2721,6 +3102,15 @@ class _ReviewScreenState extends State<ReviewScreen> {
             spacing: 8,
             runSpacing: 8,
             children: [for (final change in changes) Pill(change)],
+          ),
+        ],
+        if (_draftSaveError case final String error) ...[
+          const SizedBox(height: 16),
+          InfoStrip(
+            key: const Key('review-draft-save-error'),
+            icon: Icons.save_outlined,
+            title: '임시 저장이 필요해요',
+            body: error,
           ),
         ],
         if (_saveError case final String error) ...[
@@ -2731,14 +3121,20 @@ class _ReviewScreenState extends State<ReviewScreen> {
             body: error,
           ),
         ],
-        if (_saved case final ReviewSaveResult saved) ...[
+        if (_saved != null) ...[
           const SizedBox(height: 16),
           InfoStrip(
             icon: Icons.check_circle_rounded,
             title: '조리 기록을 저장했어요',
-            body: saved.createdPersonalVersionId == null
-                ? '후기를 조리 기록에 저장했어요.'
-                : '실행한 변경을 새 개인 레시피 버전으로 함께 저장했어요.',
+            body: _successMessage,
+          ),
+        ],
+        if (_cleanupWarning case final String warning) ...[
+          const SizedBox(height: 8),
+          InfoStrip(
+            icon: Icons.info_outline_rounded,
+            title: '기록 저장은 완료됐어요',
+            body: warning,
           ),
         ],
       ],
@@ -2754,6 +3150,54 @@ class _ReviewScreenState extends State<ReviewScreen> {
           ),
         ),
       ),
+    );
+  }
+}
+
+final class _CodePointLengthLimitingTextInputFormatter
+    extends TextInputFormatter {
+  const _CodePointLengthLimitingTextInputFormatter(this.maximumCodePoints);
+
+  final int maximumCodePoints;
+
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
+    if (newValue.text.runes.length <= maximumCodePoints) {
+      return newValue;
+    }
+    // 이미 입력한 내용이 있으면 초과 편집 전체를 거절한다. 새 문자열의 앞부분을
+    // 잘라 쓰면 최대 길이에서 중간 삽입할 때 사용자가 건드리지 않은 마지막
+    // 글자가 사라지고 IME composing 범위도 깨질 수 있다.
+    if (oldValue.text.isNotEmpty &&
+        oldValue.text.runes.length <= maximumCodePoints) {
+      return oldValue;
+    }
+    final truncated = String.fromCharCodes(
+      newValue.text.runes.take(maximumCodePoints),
+    );
+    final baseOffset = newValue.selection.baseOffset
+        .clamp(0, truncated.length)
+        .toInt();
+    final extentOffset = newValue.selection.extentOffset
+        .clamp(0, truncated.length)
+        .toInt();
+    final composing = newValue.composing;
+    final truncatedComposing =
+        composing.isValid &&
+            composing.start <= truncated.length &&
+            composing.end <= truncated.length
+        ? composing
+        : TextRange.empty;
+    return TextEditingValue(
+      text: truncated,
+      selection: TextSelection(
+        baseOffset: baseOffset,
+        extentOffset: extentOffset,
+      ),
+      composing: truncatedComposing,
     );
   }
 }

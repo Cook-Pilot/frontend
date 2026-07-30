@@ -268,11 +268,19 @@ final class PendingReviewDraft {
       expectedFields.every(json.containsKey);
 }
 
+abstract interface class PendingReviewDraftGateway {
+  Future<void> save(PendingReviewDraft draft);
+
+  Future<PendingReviewDraft?> load();
+
+  Future<void> clear();
+}
+
 /// 데모에서 작성 중인 후기 한 건만 보관하는 SharedPreferences 저장소.
 ///
 /// 모든 인스턴스가 같은 직렬화 큐를 공유한다. 앞선 저장이 늦게 끝나더라도
 /// 뒤에 요청한 저장보다 나중에 디스크에 반영되어 최신 초안을 덮어쓸 수 없다.
-final class PendingReviewDraftStore {
+final class PendingReviewDraftStore implements PendingReviewDraftGateway {
   PendingReviewDraftStore({PendingReviewPreferencesLoader? preferencesLoader})
     : _preferencesLoader = preferencesLoader ?? SharedPreferences.getInstance;
 
@@ -282,6 +290,7 @@ final class PendingReviewDraftStore {
 
   final PendingReviewPreferencesLoader _preferencesLoader;
 
+  @override
   Future<void> save(PendingReviewDraft draft) {
     return _serialize(() async {
       final preferences = await _preferencesLoader();
@@ -313,6 +322,7 @@ final class PendingReviewDraftStore {
   ///
   /// 손상된 타입·JSON·스키마·도메인 값은 같은 직렬화 큐 안에서 제거해 다음
   /// 실행에서 반복해서 복구를 시도하지 않게 한다.
+  @override
   Future<PendingReviewDraft?> load() {
     return _serialize(() async {
       final preferences = await _preferencesLoader();
@@ -341,6 +351,7 @@ final class PendingReviewDraftStore {
     });
   }
 
+  @override
   Future<void> clear() {
     return _serialize(() async {
       final preferences = await _preferencesLoader();
