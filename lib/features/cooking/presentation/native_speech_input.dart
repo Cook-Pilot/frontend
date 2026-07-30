@@ -438,6 +438,7 @@ final class NativeSpeechInput implements SpeechInputPort {
       value.contains('language_unavailable') ||
       value.contains('recognizer_disabled') ||
       value.contains('recognizer_not_available') ||
+      value.contains('failed to create speech recognizer') ||
       value.contains('assets_not_installed') ||
       value.contains('speech_not_supported') ||
       value.contains('not supported') ||

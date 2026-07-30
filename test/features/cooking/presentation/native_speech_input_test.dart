@@ -202,6 +202,10 @@ void main() {
       );
     final permissionDriver = _FakeSpeechDriver()
       ..listenError = ListenFailedException('error_permission');
+    final recognizerCreationDriver = _FakeSpeechDriver()
+      ..listenError = ListenFailedException(
+        'Failed to create speech recognizer',
+      );
 
     expect(
       await _startAndReadFailure(unavailableDriver),
@@ -210,6 +214,10 @@ void main() {
     expect(
       await _startAndReadFailure(permissionDriver),
       SpeechInputFailure.permissionDenied,
+    );
+    expect(
+      await _startAndReadFailure(recognizerCreationDriver),
+      SpeechInputFailure.unavailable,
     );
   });
 

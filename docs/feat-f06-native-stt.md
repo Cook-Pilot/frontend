@@ -29,7 +29,7 @@ TTS 출력은 후속 작업이다.
 | --- | --- |
 | 마이크·음성 인식 권한 거부 | `permissionDenied` |
 | no-match, 음성 timeout, 네트워크, busy, 일시적 서버 오류 | `retryRequired` |
-| 언어 미지원, recognizer 비활성/미설치, 플러그인 사용 불가 | `unavailable` |
+| 언어 미지원, recognizer 생성 실패·비활성/미설치, 플러그인 사용 불가 | `unavailable` |
 | final transcript 없는 정상 종료 | `retryRequired` |
 
 플러그인이 Android 오류를 대부분 permanent로 표시하므로 permanent 값만
