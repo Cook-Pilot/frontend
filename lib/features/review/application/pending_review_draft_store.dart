@@ -298,6 +298,27 @@ void _requireCanonicalUuid(String value, String field) {
 
 void _validateSetupSnapshot(CookingSetupSnapshot snapshot) {
   _requireCanonicalUuid(snapshot.recipeId, 'setupSnapshot.recipeId');
+  if (!snapshot.baseServings.isFinite || snapshot.baseServings <= 0) {
+    throw ArgumentError.value(
+      snapshot.baseServings,
+      'setupSnapshot.baseServings',
+      'must be a positive finite number',
+    );
+  }
+  if (snapshot.targetServings < 1) {
+    throw ArgumentError.value(
+      snapshot.targetServings,
+      'setupSnapshot.targetServings',
+      'must be at least 1',
+    );
+  }
+  if (snapshot.steps.isEmpty) {
+    throw ArgumentError.value(
+      snapshot.steps,
+      'setupSnapshot.steps',
+      'must contain at least one step',
+    );
+  }
   final personalVersionId = snapshot.personalVersionId;
   if (personalVersionId != null) {
     _requireCanonicalUuid(personalVersionId, 'setupSnapshot.personalVersionId');
