@@ -100,6 +100,21 @@ void main() {
         () => buildDraft(timerSecondsByStep: const {0: -1}),
         throwsArgumentError,
       );
+      expect(
+        () => buildDraft(setupSnapshot: buildSetupSnapshot(baseServings: 0)),
+        throwsArgumentError,
+      );
+      expect(
+        () => buildDraft(setupSnapshot: buildSetupSnapshot(targetServings: 0)),
+        throwsArgumentError,
+      );
+      expect(
+        () => buildDraft(
+          setupSnapshot: buildSetupSnapshot(includeStep: false),
+          timerSecondsByStep: const {},
+        ),
+        throwsArgumentError,
+      );
     });
 
     test('현재 스키마의 필드가 빠지거나 추가된 JSON은 읽지 않는다', () {
@@ -327,14 +342,17 @@ PendingReviewDraft buildDraft({
 CookingSetupSnapshot buildSetupSnapshot({
   String recipeIdValue = recipeId,
   int stepIndex = 0,
+  double baseServings = 2,
+  int targetServings = 2,
+  bool includeStep = true,
 }) {
   return CookingSetupSnapshot(
     recipeId: recipeIdValue,
     title: '두부 조림',
     description: '짭조름한 두부 반찬',
     imageUrl: '',
-    baseServings: 2,
-    targetServings: 2,
+    baseServings: baseServings,
+    targetServings: targetServings,
     source: CookingRecipeSource.base,
     personalVersionId: null,
     ingredients: const [
@@ -348,16 +366,18 @@ CookingSetupSnapshot buildSetupSnapshot({
         isRequired: true,
       ),
     ],
-    steps: [
-      CookingSetupStep(
-        originalStepId: '12000000-0000-0000-0000-000000000001',
-        stepIndex: stepIndex,
-        instruction: '두부를 부친다.',
-        timerSeconds: 120,
-        cautionNote: '기름이 튈 수 있다.',
-        imageUrl: '',
-      ),
-    ],
+    steps: includeStep
+        ? [
+            CookingSetupStep(
+              originalStepId: '12000000-0000-0000-0000-000000000001',
+              stepIndex: stepIndex,
+              instruction: '두부를 부친다.',
+              timerSeconds: 120,
+              cautionNote: '기름이 튈 수 있다.',
+              imageUrl: '',
+            ),
+          ]
+        : const [],
   );
 }
 
