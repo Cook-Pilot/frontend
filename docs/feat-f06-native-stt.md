@@ -1,0 +1,48 @@
+# F-06 네이티브 STT 어댑터
+
+## 범위
+
+`NativeSpeechInput`은 기존 `SpeechInputPort`를 Android/iOS의
+`speech_to_text` 플러그인에 연결한다. 화면과 F-07 Command Router 연결,
+TTS 출력은 후속 작업이다.
+
+## 동작
+
+- 조리 화면에서 전달한 `start` 한 번당 네이티브 인식 세션 하나만 연다.
+- 한국어 locale `ko_KR`과 짧은 명령용 confirmation mode를 사용한다.
+- 중간 인식 결과는 버리고 비어 있지 않은 final transcript만 전달한다.
+- 각 final transcript에는 어댑터가 만든 고유 utterance ID를 붙인다.
+- 중복 `start`는 현재 초기화·인식 세션을 교체하지 않고 무시한다.
+- `stop`은 플랫폼에 final 종료를 요청하고, `cancel`은 final 생성 없이
+  취소한다. 두 경우 모두 먼저 현재 generation을 무효화해 늦은 callback을
+  화면으로 전달하지 않는다.
+- 초기화, listen, stop/cancel은 직렬화되어 이전 세션 종료가 새 세션을
+  취소하지 않는다.
+
+## 실패 매핑
+
+| 네이티브 상태 | `SpeechInputFailure` |
+| --- | --- |
+| 마이크·음성 인식 권한 거부 | `permissionDenied` |
+| no-match, 음성 timeout, 네트워크, busy, 일시적 서버 오류 | `retryRequired` |
+| 언어 미지원, recognizer 비활성/미설치, 플러그인 사용 불가 | `unavailable` |
+| final transcript 없는 정상 종료 | `retryRequired` |
+
+플러그인이 Android 오류를 대부분 permanent로 표시하므로 permanent 값만
+사용하지 않고 알려진 오류 코드를 먼저 분류한다.
+
+## 플랫폼 권한
+
+- Android: `android.permission.RECORD_AUDIO`, Android 11+ 음성 인식 서비스
+  package visibility query
+- iOS: `NSSpeechRecognitionUsageDescription`,
+  `NSMicrophoneUsageDescription`
+
+## 검증
+
+- final-only 전달과 `ko_KR`
+- 중복 start 방지
+- 세 실패 유형 매핑
+- final 없는 종료 재시도
+- stop/cancel 이후 늦은 callback 폐기
+- 초기화와 stop의 비동기 경합

@@ -44,6 +44,9 @@ dependencies:
   # 조리 세션(현재 단계·타이머)을 로컬에 저장해 앱 재시작 후에도 복원한다.
   shared_preferences: ^2.5.3
 
+  # 조리 화면에서 짧은 한국어 음성 명령을 네이티브 STT로 인식한다.
+  speech_to_text: ^7.4.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
