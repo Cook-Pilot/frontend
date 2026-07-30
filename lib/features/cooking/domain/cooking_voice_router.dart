@@ -128,15 +128,19 @@ final class CookingVoiceRouter {
       for (final ingredient in ingredientNames)
         ..._contextTokens(ingredient, allowSingleKorean: true),
     };
+    final hasIngredientContext = _hasIngredientContext(
+      transcript,
+      ingredientTokens,
+    );
     final dynamicContextTokens = <String>{
       ..._contextTokens(recipeTitle),
-      ...ingredientTokens,
       ..._contextTokens(currentStepInstruction),
     };
 
-    if (_isExplicitCookingProblem(text, ingredientTokens) ||
+    if (_isExplicitCookingProblem(text, hasIngredientContext) ||
         (_hasQuestionSignal(text) &&
-            _hasCookingContext(text, dynamicContextTokens))) {
+            (_hasCookingContext(text, dynamicContextTokens) ||
+                hasIngredientContext))) {
       return const VoiceIntent(VoiceIntentType.exceptionQuestion);
     }
 
@@ -205,7 +209,7 @@ final class CookingVoiceRouter {
     return const VoiceIntent(VoiceIntentType.ignore);
   }
 
-  bool _isExplicitCookingProblem(String text, Set<String> ingredientTokens) {
+  bool _isExplicitCookingProblem(String text, bool hasIngredientContext) {
     if (_hasAny(text, const [
       // Fire, gas, burns, and cuts.
       '기름에불',
@@ -253,7 +257,7 @@ final class CookingVoiceRouter {
     }
 
     if (_isSaltyProblem(text)) return true;
-    if (_isMissingIngredientProblem(text, ingredientTokens)) return true;
+    if (_isMissingIngredientProblem(text, hasIngredientContext)) return true;
 
     final describesBurning = _hasAny(text, const [
       '타고있',
@@ -263,7 +267,8 @@ final class CookingVoiceRouter {
       '타버',
       '그을',
     ]);
-    return describesBurning && _hasCookingContext(text, ingredientTokens);
+    return describesBurning &&
+        (_hasCookingContext(text, const <String>[]) || hasIngredientContext);
   }
 
   bool _isSaltyProblem(String text) {
@@ -302,7 +307,7 @@ final class CookingVoiceRouter {
     return false;
   }
 
-  bool _isMissingIngredientProblem(String text, Set<String> ingredientTokens) {
+  bool _isMissingIngredientProblem(String text, bool hasIngredientContext) {
     final hasMissingSignal = _hasAny(text, const [
       '없어',
       '없는데',
@@ -316,7 +321,7 @@ final class CookingVoiceRouter {
     if (_hasAny(text, const ['재료가', '재료는', '재료를', '양념이', '소스가'])) {
       return true;
     }
-    return ingredientTokens.any(text.contains);
+    return hasIngredientContext;
   }
 
   bool _hasQuestionSignal(String text) => _questionSignals.any(text.contains);
@@ -324,6 +329,26 @@ final class CookingVoiceRouter {
   bool _hasCookingContext(String text, Iterable<String> dynamicTokens) {
     return _staticCookingContext.any(text.contains) ||
         dynamicTokens.any(text.contains);
+  }
+
+  bool _hasIngredientContext(String transcript, Iterable<String> tokens) {
+    final normalized = _normalize(transcript);
+    final lower = transcript.toLowerCase();
+    for (final token in tokens) {
+      if (token.runes.length >= 2) {
+        if (normalized.contains(token)) return true;
+        continue;
+      }
+      // A one-letter ingredient must begin a spoken word. This keeps
+      // "물 더 넣어", "물이 없어" and "파를 썰어" while preventing a
+      // recipe containing "파" from treating "파티 어때?" as cooking context.
+      final pattern = RegExp(
+        '(^|[^가-힣a-z0-9])${RegExp.escape(token)}'
+        r'(?=$|[^가-힣a-z0-9]|[이가은는을를도만과와로에의])',
+      );
+      if (pattern.hasMatch(lower)) return true;
+    }
+    return false;
   }
 
   bool _isNextCommand(String text) {
