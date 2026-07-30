@@ -127,6 +127,20 @@ void main() {
       expect(riceProblem, const VoiceIntent(VoiceIntentType.exceptionQuestion));
     });
 
+    test(
+      'does not match a one-character ingredient inside an unrelated word',
+      () {
+        final partyQuestion = router.route(
+          '파티 어때?',
+          recipeTitle: '파전',
+          ingredientNames: const ['파'],
+          currentStepInstruction: '반죽을 섞는다',
+        );
+
+        expect(partyQuestion, const VoiceIntent(VoiceIntentType.ignore));
+      },
+    );
+
     test('does not mistake 진짜 for a salty problem', () {
       expect(
         routeOf('고기 진짜 익었어?'),
