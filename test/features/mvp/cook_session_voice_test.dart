@@ -53,6 +53,11 @@ void main() {
     ExceptionAdvicePort? advicePort,
     Recipe testRecipe = recipe,
   }) async {
+    // The cooking controls live in one scrollable screen. Give the widget test
+    // enough vertical room to build both the timer and voice controls so these
+    // tests exercise state changes instead of depending on ListView laziness.
+    await tester.binding.setSurfaceSize(const Size(800, 1200));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(
       MaterialApp(
         home: CookSessionScreen(
@@ -71,7 +76,8 @@ void main() {
     final button = find.byKey(const Key('voice-input-toggle'));
     await tester.ensureVisible(button);
     await tester.tap(button);
-    await tester.pump();
+    // A new session may wait for the previous asynchronous stop to finish.
+    await tester.pumpAndSettle();
   }
 
   testWidgets('권한 실패 상태를 표시하고 직접 입력 질문은 계속 처리한다', (tester) async {
@@ -97,11 +103,29 @@ void main() {
       find.byKey(const Key('help-question-field')),
       '물이 안 끓어요',
     );
+    await tester.pump();
     await tester.tap(find.byKey(const Key('help-question-submit')));
     await tester.pumpAndSettle();
 
     expect(advice.requests.single.utterance, '물이 안 끓어요');
     expect(find.textContaining('30초'), findsOneWidget);
+  });
+
+  testWidgets('듣는 중 직접 입력을 열면 마이크 상태도 중지 안내로 바뀐다', (tester) async {
+    final speech = FakeSpeechInput();
+    await pumpSession(tester, speechInput: speech);
+
+    await tapVoiceButton(tester);
+    await tester.tap(find.byKey(const Key('help-request')));
+    await tester.pumpAndSettle();
+    expect(speech.stopCount, greaterThanOrEqualTo(1));
+    expect(find.byKey(const Key('help-question-field')), findsOneWidget);
+
+    await tester.tapAt(const Offset(8, 8));
+    await tester.pumpAndSettle();
+    expect(find.text('음성으로 조리하기'), findsOneWidget);
+    expect(find.textContaining('질문을 직접 입력해주세요'), findsOneWidget);
+    expect(find.textContaining('듣고 있어요'), findsNothing);
   });
 
   testWidgets('한 듣기 세션의 첫 문장만 처리하고 stop 뒤 늦은 콜백은 버린다', (tester) async {
@@ -149,6 +173,7 @@ void main() {
     expect(find.text('일시정지'), findsOneWidget);
 
     await tapVoiceButton(tester);
+    expect(speech.startCount, 4);
     speech.emitUtterance('2분 추가', utteranceId: 'timer-extend');
     await tester.pump();
     expect(find.textContaining('타이머에 2분을 추가했어요'), findsOneWidget);
@@ -162,6 +187,15 @@ void main() {
     speech.emitUtterance('타이머 재개', utteranceId: 'timer-resume');
     await tester.pump();
     expect(find.text('일시정지'), findsOneWidget);
+
+    await tapVoiceButton(tester);
+    speech.emitUtterance('다음 단계', utteranceId: 'next-after-extension');
+    await tester.pump();
+    await tapVoiceButton(tester);
+    speech.emitUtterance('이전 단계', utteranceId: 'previous-to-extension');
+    await tester.pump();
+    expect(find.text('2 / 3 단계'), findsOneWidget);
+    expect(find.text('04:00'), findsOneWidget);
   });
 
   testWidgets('조리 예외 질문만 조언 포트로 보내고 일반 문장은 보내지 않는다', (tester) async {
@@ -195,6 +229,46 @@ void main() {
     staleHandler('다음 단계', 'stale-after-pause');
     await tester.pump();
     expect(find.text('1 / 3 단계'), findsOneWidget);
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+  });
+
+  testWidgets('권한 다이얼로그의 inactive 상태는 진행 중인 인식을 유지한다', (tester) async {
+    final speech = FakeSpeechInput()..autoReady = false;
+    await pumpSession(tester, speechInput: speech);
+
+    await tapVoiceButton(tester);
+    final activeHandler = speech.utteranceHandlers.single;
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    await tester.pump();
+
+    expect(speech.stopCount, 0);
+    expect(find.text('마이크 준비 중'), findsOneWidget);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    speech.emitReady();
+    await tester.pump();
+    expect(find.text('듣는 중'), findsOneWidget);
+    activeHandler('다음 단계', 'after-permission-dialog');
+    await tester.pump();
+    expect(find.text('2 / 3 단계'), findsOneWidget);
+  });
+
+  testWidgets('듣는 중 inactive 상태는 마이크를 닫고 idle 백그라운드는 문구를 덮지 않는다', (
+    tester,
+  ) async {
+    final speech = FakeSpeechInput();
+    await pumpSession(tester, speechInput: speech);
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    await tester.pump();
+    expect(find.textContaining('화면을 벗어나 음성 입력을 멈췄어요'), findsNothing);
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tapVoiceButton(tester);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    await tester.pump();
+    expect(speech.stopCount, greaterThanOrEqualTo(2));
+    expect(find.textContaining('화면을 벗어나 음성 입력을 멈췄어요'), findsOneWidget);
 
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
   });
