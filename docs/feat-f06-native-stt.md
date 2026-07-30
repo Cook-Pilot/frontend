@@ -13,11 +13,15 @@ TTS 출력은 후속 작업이다.
 - 중간 인식 결과는 버리고 비어 있지 않은 final transcript만 전달한다.
 - 각 final transcript에는 어댑터가 만든 고유 utterance ID를 붙인다.
 - 중복 `start`는 현재 초기화·인식 세션을 교체하지 않고 무시한다.
-- `stop`은 플랫폼에 final 종료를 요청하고, `cancel`은 final 생성 없이
-  취소한다. 두 경우 모두 먼저 현재 generation을 무효화해 늦은 callback을
-  화면으로 전달하지 않는다.
+- `stop`과 `cancel`은 모두 현재 결과를 폐기하는 네이티브 cancel로 닫는다.
+  화면은 사용자가 중지를 누른 뒤의 final 결과를 사용하지 않으므로, 이전
+  세션의 늦은 final이 빠르게 재시작한 다음 세션에 섞이는 것을 막는 쪽을
+  택했다. 두 경우 모두 먼저 현재 generation을 무효화한다.
 - 초기화, listen, stop/cancel은 직렬화되어 이전 세션 종료가 새 세션을
   취소하지 않는다.
+- `speech_to_text`의 프로세스 singleton과 동일하게 production driver도
+  하나를 공유한다. 재진입 시 전역 플러그인 listener가 현재 조리 화면의
+  handler로 전달되도록 갱신한다.
 
 ## 실패 매핑
 
@@ -46,3 +50,5 @@ TTS 출력은 후속 작업이다.
 - final 없는 종료 재시도
 - stop/cancel 이후 늦은 callback 폐기
 - 초기화와 stop의 비동기 경합
+- 두 번째 조리 화면으로 callback handler 재연결
+- `ListenFailedException`의 message/details 기반 오류 분류

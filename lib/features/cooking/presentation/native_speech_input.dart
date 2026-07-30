@@ -57,10 +57,21 @@ abstract interface class NativeSpeechRecognitionDriver {
 /// Production driver backed by the device speech recognizer.
 final class SpeechToTextRecognitionDriver
     implements NativeSpeechRecognitionDriver {
-  SpeechToTextRecognitionDriver({SpeechToText? speech})
-    : _speech = speech ?? SpeechToText();
+  factory SpeechToTextRecognitionDriver({SpeechToText? speech}) {
+    if (speech != null) {
+      return SpeechToTextRecognitionDriver._(speech);
+    }
+    return _shared;
+  }
+
+  SpeechToTextRecognitionDriver._(this._speech);
+
+  static final SpeechToTextRecognitionDriver _shared =
+      SpeechToTextRecognitionDriver._(SpeechToText());
 
   final SpeechToText _speech;
+  NativeSpeechDriverErrorHandler? _onError;
+  NativeSpeechDriverStatusHandler? _onStatus;
 
   @override
   Future<bool> get hasPermission => _speech.hasPermission;
@@ -70,17 +81,25 @@ final class SpeechToTextRecognitionDriver
     required NativeSpeechDriverErrorHandler onError,
     required NativeSpeechDriverStatusHandler onStatus,
   }) {
+    // SpeechToText() is a process singleton. Once initialization succeeds it
+    // returns early on later initialize calls without replacing its listeners.
+    // Keep one shared driver and let the listener installed by the first call
+    // forward to the handlers owned by the current cooking screen.
+    _onError = onError;
+    _onStatus = onStatus;
     return _speech.initialize(
-      onError: (error) => onError(
-        NativeSpeechDriverError(
-          code: error.errorMsg,
-          permanent: error.permanent,
-        ),
-      ),
+      onError: (error) {
+        _onError?.call(
+          NativeSpeechDriverError(
+            code: error.errorMsg,
+            permanent: error.permanent,
+          ),
+        );
+      },
       onStatus: (status) {
         final mapped = _mapStatus(status);
         if (mapped != null) {
-          onStatus(mapped);
+          _onStatus?.call(mapped);
         }
       },
     );
@@ -334,7 +353,7 @@ final class NativeSpeechInput implements SpeechInputPort {
   }
 
   @override
-  Future<void> stop() => _endRecognition(cancel: false);
+  Future<void> stop() => _endRecognition(cancel: true);
 
   /// Cancels recognition without asking the platform for a final transcript.
   Future<void> cancel() => _endRecognition(cancel: true);
@@ -393,7 +412,11 @@ final class NativeSpeechInput implements SpeechInputPort {
     Object error, {
     bool duringInitialization = false,
   }) {
-    final message = error.toString().toLowerCase();
+    final message = switch (error) {
+      ListenFailedException(:final message, :final details) =>
+        '${message ?? ''} ${details ?? ''}'.toLowerCase(),
+      _ => error.toString().toLowerCase(),
+    };
     if (_looksLikePermissionError(message)) {
       return SpeechInputFailure.permissionDenied;
     }

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:cookpilot/features/cooking/application/cooking_ports.dart';
 import 'package:cookpilot/features/cooking/presentation/native_speech_input.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:speech_to_text/speech_to_text.dart';
 
 void main() {
   test('ko_KR로 시작하고 final transcript만 한 번 전달한다', () async {
@@ -123,7 +124,7 @@ void main() {
     expect(await failure.future, SpeechInputFailure.retryRequired);
   });
 
-  test('stop과 cancel은 플랫폼을 종료하고 늦은 callback을 폐기한다', () async {
+  test('stop과 cancel은 플랫폼 결과를 취소하고 늦은 callback을 폐기한다', () async {
     final driver = _FakeSpeechDriver();
     final input = NativeSpeechInput(driver: driver);
     final utterances = <String>[];
@@ -152,8 +153,8 @@ void main() {
       const NativeSpeechDriverResult(transcript: '늦은 cancel 결과', isFinal: true),
     );
 
-    expect(driver.stopCount, 1);
-    expect(driver.cancelCount, 1);
+    expect(driver.stopCount, 0);
+    expect(driver.cancelCount, 2);
     expect(utterances, isEmpty);
   });
 
@@ -190,6 +191,49 @@ void main() {
     expect(
       await _startAndReadFailure(driver),
       SpeechInputFailure.retryRequired,
+    );
+  });
+
+  test('ListenFailedException의 message와 details로 실패 유형을 구분한다', () async {
+    final unavailableDriver = _FakeSpeechDriver()
+      ..listenError = ListenFailedException(
+        'listen failed',
+        'error_language_not_supported',
+      );
+    final permissionDriver = _FakeSpeechDriver()
+      ..listenError = ListenFailedException('error_permission');
+
+    expect(
+      await _startAndReadFailure(unavailableDriver),
+      SpeechInputFailure.unavailable,
+    );
+    expect(
+      await _startAndReadFailure(permissionDriver),
+      SpeechInputFailure.permissionDenied,
+    );
+  });
+
+  test('production driver는 재초기화 때 현재 화면의 status handler로 교체한다', () async {
+    final speech = _ReinitializeIgnoringSpeechToText();
+    final driver = SpeechToTextRecognitionDriver(speech: speech);
+    final firstStatuses = <NativeSpeechDriverStatus>[];
+    final secondStatuses = <NativeSpeechDriverStatus>[];
+
+    await driver.initialize(onError: (_) {}, onStatus: firstStatuses.add);
+    await driver.initialize(onError: (_) {}, onStatus: secondStatuses.add);
+    speech.emitStatus(SpeechToText.doneStatus);
+
+    expect(firstStatuses, isEmpty);
+    expect(secondStatuses, [NativeSpeechDriverStatus.done]);
+  });
+
+  test('기본 production driver는 SpeechToText singleton에 맞춰 공유된다', () {
+    expect(
+      identical(
+        SpeechToTextRecognitionDriver(),
+        SpeechToTextRecognitionDriver(),
+      ),
+      isTrue,
     );
   });
 }
@@ -272,4 +316,29 @@ final class _FakeSpeechDriver implements NativeSpeechRecognitionDriver {
   void emitStatus(NativeSpeechDriverStatus status) {
     onStatus?.call(status);
   }
+}
+
+final class _ReinitializeIgnoringSpeechToText extends SpeechToText {
+  _ReinitializeIgnoringSpeechToText() : super.withMethodChannel();
+
+  SpeechStatusListener? _installedStatus;
+  bool _initialized = false;
+
+  @override
+  Future<bool> initialize({
+    SpeechErrorListener? onError,
+    SpeechStatusListener? onStatus,
+    debugLogging = false,
+    Duration finalTimeout = SpeechToText.defaultFinalTimeout,
+    List<SpeechConfigOption>? options,
+  }) async {
+    if (_initialized) {
+      return true;
+    }
+    _initialized = true;
+    _installedStatus = onStatus;
+    return true;
+  }
+
+  void emitStatus(String status) => _installedStatus?.call(status);
 }
