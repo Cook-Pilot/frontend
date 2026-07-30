@@ -97,6 +97,7 @@ class _HomeScreenState extends State<HomeScreen> {
   PersistedCookingSession? _resumableSession;
   Recipe? _resumableRecipe;
   bool _resumingCooking = false;
+  var _openingPendingReview = false;
 
   @override
   void initState() {
@@ -296,16 +297,21 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _openPendingReview() async {
     final pendingReviewDraft = _pendingReviewDraft;
-    if (pendingReviewDraft == null) {
+    if (pendingReviewDraft == null || _openingPendingReview) {
       return;
     }
-    await Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) =>
-            widget.reviewScreenBuilder?.call(pendingReviewDraft) ??
-            ReviewScreen(initialDraft: pendingReviewDraft),
-      ),
-    );
+    _openingPendingReview = true;
+    try {
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) =>
+              widget.reviewScreenBuilder?.call(pendingReviewDraft) ??
+              ReviewScreen(initialDraft: pendingReviewDraft),
+        ),
+      );
+    } finally {
+      _openingPendingReview = false;
+    }
     if (mounted) {
       await _refreshRecovery();
     }

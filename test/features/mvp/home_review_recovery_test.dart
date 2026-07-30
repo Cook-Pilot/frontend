@@ -250,6 +250,26 @@ void main() {
     expect(find.text('4|양념이 조금 진했다.|간장을 반 숟갈 줄이기|true'), findsOneWidget);
   });
 
+  testWidgets('후기 카드를 연속으로 눌러도 후기 화면은 하나만 연다', (tester) async {
+    var reviewBuilds = 0;
+    await _pumpHome(
+      tester,
+      pendingReviewDraftLoader: () async => _buildDraft(),
+      reviewScreenBuilder: (_) {
+        reviewBuilds += 1;
+        return const Scaffold(body: Text('단일 후기 화면'));
+      },
+    );
+
+    final card = find.text('후기 작성 이어가기');
+    await tester.tap(card);
+    await tester.tap(card, warnIfMissed: false);
+    await tester.pumpAndSettle();
+
+    expect(reviewBuilds, 1);
+    expect(find.text('단일 후기 화면'), findsOneWidget);
+  });
+
   testWidgets('후기 화면에서 돌아오면 초안을 다시 조회한다', (tester) async {
     PendingReviewDraft? availableDraft = _buildDraft();
     var loadAttempts = 0;
