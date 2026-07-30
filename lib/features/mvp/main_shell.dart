@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../app/app_theme.dart';
 import '../cooking/application/cooking_session_store.dart';
+import '../cooking/data/exception_advice_api.dart';
 import '../recipe/data/recipe_api.dart';
 import '../recipe/domain/recipe.dart';
 import '../review/data/review_api.dart';
@@ -223,6 +224,7 @@ class _HomeScreenState extends State<HomeScreen> {
           servings: session.servings,
           setupSnapshot: session.setupSnapshot,
           restoredSession: session,
+          advicePort: HttpExceptionAdvicePort(),
         ),
       ),
     );

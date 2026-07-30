@@ -7,6 +7,7 @@ import '../../core/identity/uuid_v4.dart';
 import '../cooking/application/cooking_ports.dart';
 import '../cooking/application/cooking_session_store.dart';
 import '../cooking/application/timer_controller.dart';
+import '../cooking/data/exception_advice_api.dart';
 import '../cooking/domain/cooking_setup_snapshot.dart';
 import '../cooking/domain/cooking_session_state.dart';
 import '../cooking/domain/cooking_voice_router.dart';
@@ -852,6 +853,7 @@ class _CookSetupScreenState extends State<CookSetupScreen> {
                         servings: servings,
                         setupSnapshot: snapshot,
                         alarm: widget.sessionAlarm,
+                        advicePort: HttpExceptionAdvicePort(),
                         speechInput: widget.sessionSpeechInput,
                         handsFreeVoiceEnabled: _handsFreeVoiceEnabled,
                       ),
@@ -1522,7 +1524,7 @@ class CookSessionScreen extends StatefulWidget {
   /// 권한 요청을 포함한 비동기 알림 초기화의 테스트 주입 지점.
   final Future<TimerAlarmPort> Function()? alarmResolver;
 
-  /// 도움 질문에 답하는 포트. AI 파트가 완성되면 실제 구현으로 교체한다.
+  /// 테스트에서는 fake를 주입하고, 실제 앱에서는 백엔드 F-08 API를 사용한다.
   final ExceptionAdvicePort? advicePort;
 
   /// 테스트에서는 fake를, 실제 앱에서는 네이티브 STT 구현을 사용한다.
@@ -1547,11 +1549,13 @@ class _CookSessionScreenState extends State<CookSessionScreen>
 
   // 도움 질문(음성 폴백) 상태. 답변은 현재 단계에 묶이므로 단계가 바뀌면 버린다.
   late final ExceptionAdvicePort _advice =
-      widget.advicePort ?? DemoExceptionAdvicePort();
+      widget.advicePort ?? HttpExceptionAdvicePort();
   late final CookingVoiceSessionController _voiceSession;
   static const CookingVoiceRouter _voiceRouter = CookingVoiceRouter();
   String? _helpAnswer;
+  ExceptionAdviceSuggestedAction? _helpSuggestedAction;
   bool _helpLoading = false;
+  bool _helpRequestInFlight = false;
   int _helpRequestVersion = 0;
 
   String? _voiceMessage;
@@ -1768,6 +1772,7 @@ class _CookSessionScreenState extends State<CookSessionScreen>
     setState(() {
       step = target;
       _helpAnswer = null;
+      _helpSuggestedAction = null;
       _helpLoading = false;
       _voiceMessage = fromVoice ? '$target단계로 이동했어요.' : null;
     });
@@ -1997,14 +2002,20 @@ class _CookSessionScreenState extends State<CookSessionScreen>
   }
 
   Future<void> _requestAdvice(String question) async {
-    if (_disposed || _completed || !mounted) {
+    if (_disposed ||
+        _completed ||
+        !mounted ||
+        _helpRequestInFlight ||
+        question.trim().isEmpty) {
       return;
     }
     final requestVersion = ++_helpRequestVersion;
     final requestedStep = step;
+    _helpRequestInFlight = true;
     setState(() {
       _helpLoading = true;
       _helpAnswer = null;
+      _helpSuggestedAction = null;
     });
     ExceptionAdvice advice;
     try {
@@ -2015,34 +2026,75 @@ class _CookSessionScreenState extends State<CookSessionScreen>
           recipeVersionId: 'mvp',
           stepIndex: requestedStep - 1,
           requestContextVersion: requestVersion,
-          instruction: widget.recipe.steps[requestedStep - 1].description,
+          instruction: widget.recipe.steps[requestedStep - 1].instruction,
           remaining: _timer.remaining,
           utterance: question,
           recentEvents: const [],
         ),
       );
     } catch (_) {
+      _helpRequestInFlight = false;
       if (!mounted ||
           requestVersion != _helpRequestVersion ||
           step != requestedStep) {
+        if (mounted) {
+          setState(() {});
+        }
         return;
       }
       setState(() {
         _helpLoading = false;
         _helpAnswer = '답변을 불러오지 못했어요. 버튼과 타이머는 계속 사용할 수 있어요.';
+        _helpSuggestedAction = null;
       });
       return;
     }
+    _helpRequestInFlight = false;
     // 기다리는 사이 단계가 바뀌었으면 낡은 답변을 표시하지 않는다.
     if (!mounted ||
         requestVersion != _helpRequestVersion ||
         step != requestedStep) {
+      if (mounted) {
+        setState(() {});
+      }
       return;
     }
     setState(() {
       _helpLoading = false;
       _helpAnswer = advice.message;
+      _helpSuggestedAction = _safeSuggestedAction(advice.suggestedAction);
     });
+  }
+
+  ExceptionAdviceSuggestedAction? _safeSuggestedAction(
+    ExceptionAdviceSuggestedAction? action,
+  ) {
+    if (action == null ||
+        !_currentStepHasTimer ||
+        action.type != ExceptionAdviceActionType.extendTimer ||
+        (action.seconds != 30 && action.seconds != 60)) {
+      return null;
+    }
+    return action;
+  }
+
+  void _applySuggestedAction() {
+    final action = _helpSuggestedAction;
+    if (action == null || _disposed || _completed || !mounted) {
+      return;
+    }
+    setState(() => _helpSuggestedAction = null);
+    switch (action.type) {
+      case ExceptionAdviceActionType.extendTimer:
+        // API 파서가 30/60초만 통과시키지만 화면 경계에서도 한 번 더 막는다.
+        if (action.seconds != 30 && action.seconds != 60) {
+          return;
+        }
+        _extendCurrentTimer(Duration(seconds: action.seconds));
+        _setVoiceMessage(
+          action.seconds == 60 ? '타이머에 1분을 추가했어요.' : '타이머에 30초를 추가했어요.',
+        );
+    }
   }
 
   String _timerLabel(int stepMinutes) {
@@ -2292,7 +2344,7 @@ class _CookSessionScreenState extends State<CookSessionScreen>
                 Expanded(
                   child: OutlinedButton.icon(
                     key: const Key('help-request'),
-                    onPressed: _openHelpSheet,
+                    onPressed: _helpRequestInFlight ? null : _openHelpSheet,
                     icon: const Icon(Icons.keyboard_rounded, size: 20),
                     label: const Text('직접 입력'),
                   ),
@@ -2313,6 +2365,19 @@ class _CookSessionScreenState extends State<CookSessionScreen>
                 title: '도움 답변',
                 body: answer,
               ),
+              if (_helpSuggestedAction
+                  case final ExceptionAdviceSuggestedAction action) ...[
+                const SizedBox(height: 8),
+                OutlinedButton.icon(
+                  key: const Key('help-suggested-action'),
+                  onPressed: _applySuggestedAction,
+                  icon: const Icon(Icons.timer_outlined, size: 18),
+                  label: Text(
+                    '제안 적용 · '
+                    '${action.seconds == 60 ? '1분' : '${action.seconds}초'} 추가',
+                  ),
+                ),
+              ],
             ],
           ],
         ),
