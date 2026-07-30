@@ -2829,6 +2829,8 @@ class _ReviewScreenState extends State<ReviewScreen>
   Timer? _autosaveTimer;
   bool _saving = false;
   bool _finalized = false;
+  bool _leaving = false;
+  bool _allowPop = false;
   ReviewSaveResult? _submittedReview;
   ReviewSaveResult? _saved;
   PersonalVersionApprovalResult? _personalVersionResult;
@@ -2893,7 +2895,11 @@ class _ReviewScreenState extends State<ReviewScreen>
   }
 
   void _scheduleAutosave() {
-    if (_finalized || _saving || _submittedReview != null || _saved != null) {
+    if (_finalized ||
+        _saving ||
+        _leaving ||
+        _submittedReview != null ||
+        _saved != null) {
       return;
     }
     _autosaveTimer?.cancel();
@@ -2901,7 +2907,11 @@ class _ReviewScreenState extends State<ReviewScreen>
   }
 
   void _onTextChanged(String _) {
-    if (!mounted || _saving || _submittedReview != null || _saved != null) {
+    if (!mounted ||
+        _saving ||
+        _leaving ||
+        _submittedReview != null ||
+        _saved != null) {
       return;
     }
     setState(() {
@@ -2913,6 +2923,7 @@ class _ReviewScreenState extends State<ReviewScreen>
 
   void _setRating(int value) {
     if (_saving ||
+        _leaving ||
         _submittedReview != null ||
         _saved != null ||
         rating == value) {
@@ -2928,6 +2939,7 @@ class _ReviewScreenState extends State<ReviewScreen>
 
   void _setPersonalVersionApproval(bool value) {
     if (_saving ||
+        _leaving ||
         _submittedReview != null ||
         _saved != null ||
         _approvedPersonalVersionCreation == value) {
@@ -2965,6 +2977,28 @@ class _ReviewScreenState extends State<ReviewScreen>
     }
   }
 
+  Future<void> _leaveAfterDraftFlush() async {
+    if (_leaving || _saving || !mounted) {
+      return;
+    }
+    setState(() => _leaving = true);
+    if (!_finalized && !await _flushDraft()) {
+      if (mounted) {
+        setState(() => _leaving = false);
+      }
+      return;
+    }
+    if (!mounted) {
+      return;
+    }
+    setState(() => _allowPop = true);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        Navigator.of(context).pop();
+      }
+    });
+  }
+
   List<String> get _changeLabels {
     final changes = <String>[];
     for (final ingredient in _draft.setupSnapshot.ingredients) {
@@ -2992,7 +3026,7 @@ class _ReviewScreenState extends State<ReviewScreen>
   }
 
   Future<void> _save() async {
-    if (_saving || _saved != null) return;
+    if (_saving || _leaving || _saved != null) return;
     setState(() {
       _saving = true;
       _saveError = null;
@@ -3105,7 +3139,7 @@ class _ReviewScreenState extends State<ReviewScreen>
         _draft.setupSnapshot.source == CookingRecipeSource.personal
         ? '개인 버전 기반'
         : '원본 기반';
-    return PageShell(
+    final screen = PageShell(
       title: '조리 후 리뷰',
       children: [
         Text(
@@ -3128,6 +3162,7 @@ class _ReviewScreenState extends State<ReviewScreen>
                       child: IconButton(
                         onPressed:
                             _saving ||
+                                _leaving ||
                                 _submittedReview != null ||
                                 _saved != null
                             ? null
@@ -3169,7 +3204,11 @@ class _ReviewScreenState extends State<ReviewScreen>
         TextField(
           key: const Key('review-comment-field'),
           controller: _commentController,
-          enabled: !_saving && _submittedReview == null && _saved == null,
+          enabled:
+              !_saving &&
+              !_leaving &&
+              _submittedReview == null &&
+              _saved == null,
           minLines: 3,
           maxLines: 5,
           inputFormatters: const [
@@ -3189,7 +3228,11 @@ class _ReviewScreenState extends State<ReviewScreen>
         TextField(
           key: const Key('review-next-time-field'),
           controller: _nextTimeController,
-          enabled: !_saving && _submittedReview == null && _saved == null,
+          enabled:
+              !_saving &&
+              !_leaving &&
+              _submittedReview == null &&
+              _saved == null,
           minLines: 2,
           maxLines: 4,
           inputFormatters: const [
@@ -3215,7 +3258,8 @@ class _ReviewScreenState extends State<ReviewScreen>
           ),
           subtitle: const Text('승인한 경우에만 다음 조리에 사용할 개인 레시피를 만들어요.'),
           value: _approvedPersonalVersionCreation,
-          onChanged: _saving || _submittedReview != null || _saved != null
+          onChanged:
+              _saving || _leaving || _submittedReview != null || _saved != null
               ? null
               : _setPersonalVersionApproval,
         ),
@@ -3263,7 +3307,9 @@ class _ReviewScreenState extends State<ReviewScreen>
       ],
       bottom: PressableScale(
         child: FilledButton(
-          onPressed: _saving ? null : (_saved == null ? _save : _goHome),
+          onPressed: _saving || _leaving
+              ? null
+              : (_saved == null ? _save : _goHome),
           child: Text(
             _saving
                 ? '저장 중'
@@ -3273,6 +3319,16 @@ class _ReviewScreenState extends State<ReviewScreen>
           ),
         ),
       ),
+    );
+    return PopScope(
+      key: const Key('review-draft-pop-scope'),
+      canPop: _allowPop || (_finalized && !_saving),
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) {
+          unawaited(_leaveAfterDraftFlush());
+        }
+      },
+      child: screen,
     );
   }
 }

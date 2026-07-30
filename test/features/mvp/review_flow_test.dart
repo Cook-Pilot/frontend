@@ -284,6 +284,60 @@ void main() {
       expect((await store.load())?.comment, '화면 종료 직전 입력');
     });
 
+    testWidgets('뒤로가기는 debounce 전 최신 draft 저장 완료를 기다린다', (tester) async {
+      final saveGate = Completer<void>();
+      final store = _FakePendingReviewDraftStore(saveGate: saveGate);
+      await _pushReviewRoute(tester, store: store);
+      await tester.enterText(
+        find.byKey(const Key('review-comment-field')),
+        '뒤로가기 직전 최신 입력',
+      );
+
+      await tester.binding.handlePopRoute();
+      await tester.pump();
+
+      expect(find.byType(ReviewScreen), findsOneWidget);
+      expect(store.saveAttempts, hasLength(1));
+      expect(store.saveAttempts.single.comment, '뒤로가기 직전 최신 입력');
+      expect(
+        tester
+            .widget<PopScope>(find.byKey(const Key('review-draft-pop-scope')))
+            .canPop,
+        isFalse,
+      );
+
+      saveGate.complete();
+      await _pumpAsyncWork(tester);
+      await tester.pumpAndSettle();
+
+      expect(find.byType(ReviewScreen), findsNothing);
+      expect(find.text('테스트 홈'), findsOneWidget);
+      expect((await store.load())?.comment, '뒤로가기 직전 최신 입력');
+    });
+
+    testWidgets('뒤로가기 draft flush 실패 시 화면에 남아 재시도할 수 있다', (tester) async {
+      final store = _FakePendingReviewDraftStore(failAllSaves: true);
+      await _pushReviewRoute(tester, store: store);
+      await tester.enterText(
+        find.byKey(const Key('review-comment-field')),
+        '저장 실패 시 보존할 입력',
+      );
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+
+      expect(find.byType(ReviewScreen), findsOneWidget);
+      expect(find.byKey(const Key('review-draft-save-error')), findsOneWidget);
+      expect(
+        tester
+            .widget<TextField>(find.byKey(const Key('review-comment-field')))
+            .controller!
+            .text,
+        '저장 실패 시 보존할 입력',
+      );
+      expect(store.saveAttempts, hasLength(1));
+    });
+
     testWidgets('최대 길이의 중간 삽입을 거절해 기존 마지막 글자를 보존한다', (tester) async {
       final store = _FakePendingReviewDraftStore();
       final original = List.filled(1000, '가').join();
@@ -699,6 +753,37 @@ Future<void> _pumpReview(
     ),
   );
   await tester.pump();
+}
+
+Future<void> _pushReviewRoute(
+  WidgetTester tester, {
+  required PendingReviewDraftGateway store,
+}) async {
+  tester.view.physicalSize = const Size(1200, 1600);
+  tester.view.devicePixelRatio = 1;
+  addTearDown(tester.view.resetPhysicalSize);
+  addTearDown(tester.view.resetDevicePixelRatio);
+  final navigatorKey = GlobalKey<NavigatorState>();
+  await tester.pumpWidget(
+    MaterialApp(
+      navigatorKey: navigatorKey,
+      home: const Scaffold(body: Text('테스트 홈')),
+    ),
+  );
+  await tester.pump();
+  unawaited(
+    navigatorKey.currentState!.push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => ReviewScreen(
+          initialDraft: _draft(),
+          pendingReviewDraftStore: store,
+          reviewRepository: _FakeReviewRepository(),
+          personalVersionApprovalGateway: _FakeApprovalGateway(),
+        ),
+      ),
+    ),
+  );
+  await tester.pumpAndSettle();
 }
 
 final class _FakeCookingSessionStore implements CookingSessionGateway {
