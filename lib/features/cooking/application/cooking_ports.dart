@@ -1,5 +1,7 @@
 import 'package:flutter/foundation.dart';
 
+const int maxExceptionAdviceQuestionLength = 500;
+
 @immutable
 final class ExceptionAdviceEvent {
   const ExceptionAdviceEvent({

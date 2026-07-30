@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../../design/cookpilot_spacing.dart';
+import '../../application/cooking_ports.dart';
 
 /// 음성 폴백용 질문 입력 시트. 제출한 질문 문자열을 반환하고,
 /// 입력 없이 닫으면 null을 반환한다.
@@ -57,10 +58,19 @@ final class _HelpQuestionSheetState extends State<HelpQuestionSheet> {
                 color: theme.colorScheme.onSurfaceVariant,
               ),
             ),
+            const SizedBox(height: CookPilotSpacing.xs),
+            Text(
+              '질문은 Google Gemini로 전송될 수 있어요. '
+              '개인정보·건강정보는 입력하지 마세요.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
             const SizedBox(height: CookPilotSpacing.md),
             TextField(
               key: const Key('help-question-field'),
               controller: _question,
+              maxLength: maxExceptionAdviceQuestionLength,
               autofocus: true,
               textInputAction: TextInputAction.send,
               onSubmitted: (_) => _submit(),
