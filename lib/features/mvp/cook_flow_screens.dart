@@ -557,23 +557,31 @@ class _CookSetupScreenState extends State<CookSetupScreen> {
         personal?.ingredients ?? widget.recipe.ingredients;
     _steps = List<CookStep>.of(personal?.steps ?? widget.recipe.steps);
     final scale = servings / _safeBaseServings;
-    _ingredients = sourceIngredients
-        .map(
-          (ingredient) => _IngredientSetupDraft(
-            originalIngredientId: ingredient.originalIngredientId,
-            originalName: ingredient.name,
-            name: ingredient.name,
-            amount: ingredient.amount == null
-                ? null
-                : ingredient.amount! * scale,
-            baselineAmount: ingredient.amount == null
-                ? null
-                : ingredient.amount! * scale,
-            unit: ingredient.unit,
-            isRequired: ingredient.isRequired,
-          ),
-        )
-        .toList(growable: false);
+    _ingredients = personal == null
+        ? sourceIngredients
+              .map(
+                (ingredient) => _IngredientSetupDraft(
+                  originalIngredientId: ingredient.originalIngredientId,
+                  originalName: ingredient.name,
+                  name: ingredient.name,
+                  amount: ingredient.amount == null
+                      ? null
+                      : ingredient.amount! * scale,
+                  baselineAmount: ingredient.amount == null
+                      ? null
+                      : ingredient.amount! * scale,
+                  baselineUnit: ingredient.unit,
+                  baselineIsRequired: ingredient.isRequired,
+                  unit: ingredient.unit,
+                  isRequired: ingredient.isRequired,
+                ),
+              )
+              .toList(growable: false)
+        : buildOriginalAnchoredSetupIngredients(
+            baseIngredients: widget.recipe.ingredients,
+            composedIngredients: personal.ingredients,
+            scale: scale,
+          ).map(_IngredientSetupDraft.fromSnapshot).toList(growable: false);
     _ingredients = _ingredients
         .map((ingredient) {
           final originalIngredientId = ingredient.originalIngredientId;
@@ -1375,6 +1383,8 @@ class _CookSetupScreenState extends State<CookSetupScreen> {
         _IngredientEditMode.restoreOriginal => ingredient.copyWith(
           name: ingredient.originalName,
           amount: ingredient.baselineAmount,
+          unit: ingredient.baselineUnit,
+          isRequired: ingredient.baselineIsRequired,
           omitted: false,
         ),
       };
@@ -1413,10 +1423,30 @@ final class _IngredientSetupDraft {
     required this.name,
     required this.amount,
     required this.baselineAmount,
+    required this.baselineUnit,
+    required this.baselineIsRequired,
     required this.unit,
     required this.isRequired,
     this.omitted = false,
   });
+
+  factory _IngredientSetupDraft.fromSnapshot(
+    CookingSetupIngredient ingredient,
+  ) {
+    return _IngredientSetupDraft(
+      originalIngredientId: ingredient.originalIngredientId,
+      originalName: ingredient.originalName,
+      name: ingredient.name,
+      amount: ingredient.amount,
+      baselineAmount: ingredient.baselineAmount,
+      baselineUnit: ingredient.baselineUnit ?? ingredient.unit,
+      baselineIsRequired:
+          ingredient.baselineIsRequired ?? ingredient.isRequired,
+      unit: ingredient.unit,
+      isRequired: ingredient.isRequired,
+      omitted: ingredient.omitted,
+    );
+  }
 
   static const _unset = Object();
 
@@ -1425,6 +1455,8 @@ final class _IngredientSetupDraft {
   final String name;
   final double? amount;
   final double? baselineAmount;
+  final String baselineUnit;
+  final bool baselineIsRequired;
   final String unit;
   final bool isRequired;
   final bool omitted;
@@ -1438,6 +1470,8 @@ final class _IngredientSetupDraft {
     name: name,
     amount: amount == null ? null : amount! * scale,
     baselineAmount: baselineAmount == null ? null : baselineAmount! * scale,
+    baselineUnit: baselineUnit,
+    baselineIsRequired: baselineIsRequired,
     unit: unit,
     isRequired: isRequired,
     omitted: omitted,
@@ -1446,6 +1480,8 @@ final class _IngredientSetupDraft {
   _IngredientSetupDraft copyWith({
     String? name,
     Object? amount = _unset,
+    String? unit,
+    bool? isRequired,
     bool? omitted,
   }) {
     return _IngredientSetupDraft(
@@ -1454,8 +1490,10 @@ final class _IngredientSetupDraft {
       name: name ?? this.name,
       amount: identical(amount, _unset) ? this.amount : amount as double?,
       baselineAmount: baselineAmount,
-      unit: unit,
-      isRequired: isRequired,
+      baselineUnit: baselineUnit,
+      baselineIsRequired: baselineIsRequired,
+      unit: unit ?? this.unit,
+      isRequired: isRequired ?? this.isRequired,
       omitted: omitted ?? this.omitted,
     );
   }
@@ -1466,6 +1504,8 @@ final class _IngredientSetupDraft {
     name: name,
     amount: amount,
     baselineAmount: baselineAmount,
+    baselineUnit: baselineUnit,
+    baselineIsRequired: baselineIsRequired,
     unit: unit,
     isRequired: isRequired,
     omitted: omitted,
@@ -2588,6 +2628,8 @@ class _CookSessionScreenState extends State<CookSessionScreen>
             name: ingredient.name,
             amount: ingredient.amount,
             baselineAmount: ingredient.amount,
+            baselineUnit: ingredient.unit,
+            baselineIsRequired: ingredient.isRequired,
             unit: ingredient.unit,
             isRequired: ingredient.isRequired,
           ),
@@ -2686,7 +2728,6 @@ class _ReviewScreenState extends State<ReviewScreen> {
         clientSessionId: widget.clientSessionId,
         cookedAt: widget.cookedAt,
         snapshot: widget.setupSnapshot,
-        timerSecondsByStep: widget.timerSecondsByStep,
         rating: rating,
         comment: _commentController.text,
         nextTimeNote: _nextTimeController.text,
