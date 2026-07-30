@@ -7,6 +7,8 @@ import '../../../core/api/api_config.dart';
 import '../../user/data/beta_user_repository.dart';
 import '../application/cooking_ports.dart';
 
+const _maxRemainingSeconds = 86_400;
+
 final class ExceptionAdviceApiException implements Exception {
   const ExceptionAdviceApiException(this.message, {this.statusCode});
 
@@ -48,7 +50,10 @@ final class HttpExceptionAdvicePort implements ExceptionAdvicePort {
               'stepIndex': context.stepIndex,
               'userSpeech': context.utterance,
               'instruction': context.instruction,
-              'remainingSeconds': context.remaining.inSeconds.clamp(0, 5999),
+              'remainingSeconds': context.remaining.inSeconds.clamp(
+                0,
+                _maxRemainingSeconds,
+              ),
             }),
           )
           .timeout(timeout),
@@ -90,12 +95,17 @@ ExceptionAdvice _decodeAdvice(List<int> bodyBytes) {
   if (speechText == null && screenText == null) {
     throw const ExceptionAdviceApiException('도움 답변 형식이 올바르지 않습니다.');
   }
+  final isMock = decoded['mock'] == true;
 
   return ExceptionAdvice(
     speechText: speechText ?? screenText,
     screenText: screenText ?? speechText,
-    suggestedAction: _decodeSuggestedAction(decoded['suggestedAction']),
-    isMock: decoded['mock'] == true,
+    // 프론트가 백엔드보다 먼저 배포되어 기존 고정 mock 응답을 받더라도
+    // 데모 행동을 실제 사용자 타이머에 적용하지 않는다.
+    suggestedAction: isMock
+        ? null
+        : _decodeSuggestedAction(decoded['suggestedAction']),
+    isMock: isMock,
     eventPayload: _decodeEventPayload(decoded['eventPayload']),
   );
 }

@@ -2002,11 +2002,20 @@ class _CookSessionScreenState extends State<CookSessionScreen>
   }
 
   Future<void> _requestAdvice(String question) async {
+    final normalizedQuestion = question.trim();
     if (_disposed ||
         _completed ||
         !mounted ||
         _helpRequestInFlight ||
-        question.trim().isEmpty) {
+        normalizedQuestion.isEmpty) {
+      return;
+    }
+    if (normalizedQuestion.length > maxExceptionAdviceQuestionLength) {
+      setState(() {
+        _helpLoading = false;
+        _helpAnswer = '질문은 $maxExceptionAdviceQuestionLength자 이하로 줄여주세요.';
+        _helpSuggestedAction = null;
+      });
       return;
     }
     final requestVersion = ++_helpRequestVersion;
@@ -2026,9 +2035,12 @@ class _CookSessionScreenState extends State<CookSessionScreen>
           recipeVersionId: 'mvp',
           stepIndex: requestedStep - 1,
           requestContextVersion: requestVersion,
-          instruction: widget.recipe.steps[requestedStep - 1].instruction,
+          // 개인 버전의 현재 실행 단계 문장뿐 아니라 주의사항까지 함께 보낸다.
+          // 서버의 원본 stepIndex는 ADD/REMOVE로 재인덱싱된 실행 스냅샷과
+          // 다를 수 있으므로 이 description이 F8 현재 단계 문맥의 정본이다.
+          instruction: widget.recipe.steps[requestedStep - 1].description,
           remaining: _timer.remaining,
-          utterance: question,
+          utterance: normalizedQuestion,
           recentEvents: const [],
         ),
       );
@@ -2062,7 +2074,9 @@ class _CookSessionScreenState extends State<CookSessionScreen>
     setState(() {
       _helpLoading = false;
       _helpAnswer = advice.message;
-      _helpSuggestedAction = _safeSuggestedAction(advice.suggestedAction);
+      _helpSuggestedAction = advice.isMock
+          ? null
+          : _safeSuggestedAction(advice.suggestedAction);
     });
   }
 
@@ -2350,6 +2364,15 @@ class _CookSessionScreenState extends State<CookSessionScreen>
                   ),
                 ),
               ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'AI 질문은 답변 생성을 위해 Google Gemini로 전송될 수 있어요. '
+              '개인정보·건강정보는 말하거나 입력하지 마세요.',
+              key: const Key('ai-data-disclosure'),
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
             ),
             if (_helpLoading) ...[
               const SizedBox(height: 12),

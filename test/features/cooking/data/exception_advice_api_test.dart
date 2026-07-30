@@ -78,6 +78,32 @@ void main() {
     expect(advice.eventPayload['problem'], 'WATER_NOT_BOILING');
   });
 
+  test('긴 타이머도 화면 표시 상한이 아니라 백엔드 계약 상한까지 보낸다', () async {
+    late Map<String, dynamic> requestBody;
+    final port = HttpExceptionAdvicePort(
+      baseUrl: baseUrl,
+      client: MockClient((request) async {
+        requestBody = jsonDecode(request.body) as Map<String, dynamic>;
+        return _jsonResponse('{"screenText":"상태를 확인하세요."}');
+      }),
+    );
+    const longTimerContext = ExceptionAdviceContext(
+      sessionId: '40000000-0000-0000-0000-000000000001',
+      recipeId: recipeId,
+      recipeVersionId: 'mvp',
+      stepIndex: 1,
+      requestContextVersion: 3,
+      instruction: '오래 끓이세요.',
+      remaining: Duration(hours: 25),
+      utterance: '얼마나 남았어요?',
+      recentEvents: <ExceptionAdviceEvent>[],
+    );
+
+    await port.requestAdvice(longTimerContext);
+
+    expect(requestBody['remainingSeconds'], 86400);
+  });
+
   test('한쪽 답변 텍스트만 있어도 다른 표시 용도로 안전하게 보완한다', () async {
     final port = HttpExceptionAdvicePort(
       baseUrl: baseUrl,
@@ -118,6 +144,28 @@ void main() {
 
     expect((await port.requestAdvice(context)).suggestedAction, isNull);
     expect((await port.requestAdvice(context)).suggestedAction, isNull);
+  });
+
+  test('기존 백엔드 mock 답변의 행동 제안은 실제 타이머 후보로 노출하지 않는다', () async {
+    final port = HttpExceptionAdvicePort(
+      baseUrl: baseUrl,
+      client: MockClient(
+        (_) async => _jsonResponse('''
+          {
+            "mock": true,
+            "speechText": "고정 데모 답변",
+            "screenText": "고정 데모 답변",
+            "suggestedAction": {"type": "EXTEND_TIMER", "seconds": 60}
+          }
+        '''),
+      ),
+    );
+
+    final advice = await port.requestAdvice(context);
+
+    expect(advice.isMock, isTrue);
+    expect(advice.suggestedAction, isNull);
+    expect(advice.screenText, '고정 데모 답변');
   });
 
   test('JSON이 아니거나 답변 텍스트가 없으면 형식 오류로 처리한다', () async {
