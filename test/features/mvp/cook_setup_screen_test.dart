@@ -57,7 +57,8 @@ void main() {
             },
             "ingredients": [
               {
-                "originalIngredientId": null,
+                "originalIngredientId":
+                  "20000000-0000-0000-0000-000000000501",
                 "name": "밥",
                 "amount": 0.8,
                 "unit": "공기",
@@ -291,7 +292,8 @@ void main() {
             },
             "ingredients": [
               {
-                "originalIngredientId": null,
+                "originalIngredientId":
+                  "20000000-0000-0000-0000-000000000501",
                 "name": "밥",
                 "amount": 0.8,
                 "unit": "공기",

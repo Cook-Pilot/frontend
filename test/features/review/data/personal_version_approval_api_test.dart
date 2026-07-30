@@ -261,6 +261,39 @@ void main() {
       ),
       throwsArgumentError,
     );
+    expect(
+      () => buildOriginalAnchoredSetupIngredients(
+        baseIngredients: const <Ingredient>[
+          Ingredient(name: '식별자 없는 원본', amount: 1, unit: '개', isRequired: true),
+        ],
+        composedIngredients: const <Ingredient>[],
+        scale: 1,
+      ),
+      throwsArgumentError,
+    );
+    expect(
+      () => buildOriginalAnchoredSetupIngredients(
+        baseIngredients: const <Ingredient>[
+          Ingredient(
+            originalIngredientId: '11000000-0000-0000-0000-000000000001',
+            name: '물',
+            amount: 500,
+            unit: 'ml',
+            isRequired: true,
+          ),
+          Ingredient(
+            originalIngredientId: '11000000-0000-0000-0000-000000000001',
+            name: '중복된 물',
+            amount: 600,
+            unit: 'ml',
+            isRequired: true,
+          ),
+        ],
+        composedIngredients: const <Ingredient>[],
+        scale: 1,
+      ),
+      throwsArgumentError,
+    );
   });
 
   test('취소된 추가 재료와 변경 없는 원본 재료는 diff에서 제외한다', () {
