@@ -133,7 +133,6 @@ class ReviewRepository {
     required String clientSessionId,
     required DateTime cookedAt,
     required CookingSetupSnapshot snapshot,
-    required Map<int, int> timerSecondsByStep,
     required int rating,
     required String comment,
     required String nextTimeNote,
@@ -147,28 +146,6 @@ class ReviewRepository {
       'rating': rating,
       'comment': _nullIfBlank(comment),
       'nextTimeNote': _nullIfBlank(nextTimeNote),
-      'ingredients': [
-        for (final (index, ingredient) in snapshot.ingredients.indexed)
-          <String, Object?>{
-            'originalIngredientId': ingredient.originalIngredientId,
-            'name': ingredient.name,
-            'amount': ingredient.amount,
-            'unit': ingredient.unit,
-            'required': ingredient.isRequired,
-            'omitted': ingredient.omitted,
-            'sortOrder': index,
-          },
-      ],
-      'steps': [
-        for (final (index, step) in snapshot.steps.indexed)
-          <String, Object?>{
-            'originalStepId': step.originalStepId,
-            'instruction': step.instruction,
-            'timerSeconds': timerSecondsByStep[index] ?? step.timerSeconds,
-            'cautionNote': step.cautionNote,
-            'sortOrder': index,
-          },
-      ],
     };
 
     final response = await _translateTransportErrors(

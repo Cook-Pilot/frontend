@@ -55,7 +55,7 @@ void main() {
 
   tearDown(BetaUserSession.clear);
 
-  test('실제로 조리한 설정과 같은 세션 ID를 후기 저장 요청에 보낸다', () async {
+  test('PR 37 후기 사실만 저장하고 실행 diff는 개인 버전 요청으로 분리한다', () async {
     late Map<String, dynamic> requestBody;
     final repository = ReviewRepository(
       baseUrl: baseUrl,
@@ -66,8 +66,7 @@ void main() {
         requestBody = jsonDecode(request.body) as Map<String, dynamic>;
         return _jsonResponse(
           '{"id":"50000000-0000-0000-0000-000000000001",'
-          '"createdPersonalVersionId":'
-          '"20000000-0000-0000-0000-000000000001"}',
+          '"createdPersonalVersionId":null}',
           statusCode: 201,
         );
       }),
@@ -77,7 +76,6 @@ void main() {
       clientSessionId: sessionId,
       cookedAt: DateTime.utc(2026, 7, 26, 1),
       snapshot: snapshot,
-      timerSecondsByStep: const {0: 180},
       rating: 5,
       comment: ' 맛있었어요 ',
       nextTimeNote: '  ',
@@ -88,22 +86,9 @@ void main() {
     expect(requestBody['targetServings'], 2);
     expect(requestBody['comment'], '맛있었어요');
     expect(requestBody['nextTimeNote'], isNull);
-    expect(
-      (requestBody['ingredients'] as List).single,
-      containsPair('originalIngredientId', ingredientId),
-    );
-    expect(
-      (requestBody['ingredients'] as List).single,
-      containsPair('name', '두부'),
-    );
-    expect(
-      (requestBody['steps'] as List).single,
-      containsPair('timerSeconds', 180),
-    );
-    expect(
-      result.createdPersonalVersionId,
-      '20000000-0000-0000-0000-000000000001',
-    );
+    expect(requestBody, isNot(contains('ingredients')));
+    expect(requestBody, isNot(contains('steps')));
+    expect(result.createdPersonalVersionId, isNull);
   });
 
   test('월 범위를 UTC 쿼리로 보내고 조리 이력을 읽는다', () async {
@@ -165,7 +150,6 @@ void main() {
         clientSessionId: sessionId,
         cookedAt: DateTime.utc(2026, 7, 26),
         snapshot: snapshot,
-        timerSecondsByStep: const {},
         rating: 5,
         comment: '',
         nextTimeNote: '',
