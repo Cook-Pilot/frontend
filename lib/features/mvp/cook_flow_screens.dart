@@ -9,6 +9,8 @@ import '../cooking/application/cooking_session_store.dart';
 import '../cooking/application/timer_controller.dart';
 import '../cooking/domain/cooking_setup_snapshot.dart';
 import '../cooking/domain/cooking_session_state.dart';
+import '../cooking/domain/cooking_voice_router.dart';
+import '../cooking/presentation/native_speech_input.dart';
 import '../cooking/presentation/timer_alarm_provider.dart';
 import '../cooking/presentation/widgets/help_question_sheet.dart';
 import '../recipe/data/recipe_api.dart';
@@ -1449,6 +1451,16 @@ bool _sameIngredientName(String left, String right) {
   return normalize(left) == normalize(right);
 }
 
+enum _CookSpeechPhase {
+  idle,
+  starting,
+  listening,
+  stopping,
+  permissionDenied,
+  retryRequired,
+  unavailable,
+}
+
 class CookSessionScreen extends StatefulWidget {
   const CookSessionScreen({
     super.key,
@@ -1458,6 +1470,7 @@ class CookSessionScreen extends StatefulWidget {
     this.restoredSession,
     this.alarm,
     this.advicePort,
+    this.speechInput,
   });
 
   final Recipe recipe;
@@ -1472,6 +1485,9 @@ class CookSessionScreen extends StatefulWidget {
 
   /// 도움 질문에 답하는 포트. AI 파트가 완성되면 실제 구현으로 교체한다.
   final ExceptionAdvicePort? advicePort;
+
+  /// 테스트에서는 fake를, 실제 앱에서는 네이티브 STT 구현을 사용한다.
+  final SpeechInputPort? speechInput;
 
   @override
   State<CookSessionScreen> createState() => _CookSessionScreenState();
@@ -1488,9 +1504,19 @@ class _CookSessionScreenState extends State<CookSessionScreen>
   // 도움 질문(음성 폴백) 상태. 답변은 현재 단계에 묶이므로 단계가 바뀌면 버린다.
   late final ExceptionAdvicePort _advice =
       widget.advicePort ?? DemoExceptionAdvicePort();
+  late final SpeechInputPort _speechInput =
+      widget.speechInput ?? NativeSpeechInput();
+  static const CookingVoiceRouter _voiceRouter = CookingVoiceRouter();
   String? _helpAnswer;
   bool _helpLoading = false;
   int _helpRequestVersion = 0;
+
+  _CookSpeechPhase _speechPhase = _CookSpeechPhase.idle;
+  String? _voiceMessage;
+  int _speechSessionVersion = 0;
+  final Set<String> _seenUtteranceIds = <String>{};
+  Future<void>? _speechStopFuture;
+  bool _disposed = false;
 
   // 원래 디자인은 그대로 두고 시계(타이머)만 실제로 동작시킨다.
   // 기본 클럭이 WallAnchoredMonotonicClock이라 화면이 꺼져도 시간이 이어진다.
@@ -1552,16 +1578,390 @@ class _CookSessionScreenState extends State<CookSessionScreen>
     // 화면을 다시 켜면 잠든 사이 흐른 시간을 반영해 남은 시간을 재계산한다.
     if (state == AppLifecycleState.resumed) {
       _timer.sync();
+      return;
     }
+    // 백그라운드에서는 마이크를 열어 두지 않는다. 세션 버전을 먼저
+    // 무효화해 stop 완료 전에 도착한 콜백도 화면을 바꾸지 못하게 한다.
+    unawaited(
+      _deactivateSpeechInput(forceStop: true, message: '화면을 벗어나 음성 입력을 멈췄어요.'),
+    );
   }
 
   @override
   void dispose() {
+    _disposed = true;
+    _speechSessionVersion++;
     WidgetsBinding.instance.removeObserver(this);
     _timer.removeListener(_onTimerChanged);
+    unawaited(_stopSpeechPort());
     unawaited(_alarm?.cancelScheduledAlarm() ?? Future<void>.value());
     _timer.dispose();
     super.dispose();
+  }
+
+  bool get _speechIsActive =>
+      _speechPhase == _CookSpeechPhase.starting ||
+      _speechPhase == _CookSpeechPhase.listening ||
+      _speechPhase == _CookSpeechPhase.stopping;
+
+  bool _isCurrentSpeechSession(int version) =>
+      !_disposed && mounted && !_completed && version == _speechSessionVersion;
+
+  Future<void> _stopSpeechPort() {
+    final pending = _speechStopFuture;
+    if (pending != null) {
+      return pending;
+    }
+    late final Future<void> stopFuture;
+    stopFuture = (() async {
+      try {
+        await _speechInput.stop();
+      } catch (_) {
+        // 조리 화면은 버튼만으로 계속 사용할 수 있어야 한다.
+      }
+    })();
+    _speechStopFuture = stopFuture;
+    unawaited(
+      stopFuture.whenComplete(() {
+        if (identical(_speechStopFuture, stopFuture)) {
+          _speechStopFuture = null;
+        }
+      }),
+    );
+    return stopFuture;
+  }
+
+  Future<void> _deactivateSpeechInput({
+    bool forceStop = false,
+    String? message,
+  }) async {
+    final wasActive = _speechIsActive;
+    if (!wasActive && !forceStop) {
+      return;
+    }
+    final stopVersion = ++_speechSessionVersion;
+    if (!_disposed && mounted) {
+      setState(() {
+        _speechPhase = wasActive
+            ? _CookSpeechPhase.stopping
+            : _CookSpeechPhase.idle;
+        if (message != null) {
+          _voiceMessage = message;
+        }
+      });
+    }
+    await _stopSpeechPort();
+    if (!_disposed && mounted && stopVersion == _speechSessionVersion) {
+      setState(() => _speechPhase = _CookSpeechPhase.idle);
+    }
+  }
+
+  void _toggleSpeechInput() {
+    if (_speechPhase == _CookSpeechPhase.starting ||
+        _speechPhase == _CookSpeechPhase.listening) {
+      unawaited(_deactivateSpeechInput(message: '음성 입력을 멈췄어요.'));
+      return;
+    }
+    if (_speechPhase != _CookSpeechPhase.stopping) {
+      unawaited(_startSpeechInput());
+    }
+  }
+
+  Future<void> _startSpeechInput() async {
+    if (_disposed || _completed || _speechIsActive) {
+      return;
+    }
+    final version = ++_speechSessionVersion;
+    setState(() {
+      _speechPhase = _CookSpeechPhase.starting;
+      _voiceMessage = '마이크를 준비하고 있어요.';
+    });
+
+    final pendingStop = _speechStopFuture;
+    if (pendingStop != null) {
+      await pendingStop;
+    }
+    if (!_isCurrentSpeechSession(version)) {
+      return;
+    }
+
+    try {
+      _speechInput.start(
+        onReady: () {
+          if (!_isCurrentSpeechSession(version)) {
+            return;
+          }
+          setState(() {
+            _speechPhase = _CookSpeechPhase.listening;
+            _voiceMessage = '듣고 있어요. “다음 단계”처럼 말해보세요.';
+          });
+        },
+        onUtterance: (utterance, utteranceId) {
+          _handleSpeechUtterance(
+            utterance,
+            utteranceId: utteranceId,
+            sessionVersion: version,
+          );
+        },
+        onFailure: (failure) {
+          _handleSpeechFailure(failure, sessionVersion: version);
+        },
+      );
+    } catch (_) {
+      _handleSpeechFailure(
+        SpeechInputFailure.unavailable,
+        sessionVersion: version,
+      );
+    }
+  }
+
+  void _handleSpeechFailure(
+    SpeechInputFailure failure, {
+    required int sessionVersion,
+  }) {
+    if (!_isCurrentSpeechSession(sessionVersion)) {
+      return;
+    }
+    _speechSessionVersion++;
+    final (phase, message) = switch (failure) {
+      SpeechInputFailure.permissionDenied => (
+        _CookSpeechPhase.permissionDenied,
+        '마이크 권한이 없어요. 직접 입력으로 질문할 수 있어요.',
+      ),
+      SpeechInputFailure.retryRequired => (
+        _CookSpeechPhase.retryRequired,
+        '음성을 인식하지 못했어요. 다시 시도하거나 직접 입력해주세요.',
+      ),
+      SpeechInputFailure.unavailable => (
+        _CookSpeechPhase.unavailable,
+        '이 기기에서는 음성 입력을 사용할 수 없어요. 직접 입력을 이용해주세요.',
+      ),
+    };
+    setState(() {
+      _speechPhase = phase;
+      _voiceMessage = message;
+    });
+    unawaited(_stopSpeechPort());
+  }
+
+  void _handleSpeechUtterance(
+    String utterance, {
+    required String? utteranceId,
+    required int sessionVersion,
+  }) {
+    if (!_isCurrentSpeechSession(sessionVersion)) {
+      return;
+    }
+    if (utteranceId != null && !_rememberUtteranceId(utteranceId)) {
+      return;
+    }
+    final transcript = utterance.trim();
+    if (transcript.isEmpty) {
+      _handleSpeechFailure(
+        SpeechInputFailure.retryRequired,
+        sessionVersion: sessionVersion,
+      );
+      return;
+    }
+
+    // 한 듣기 세션에서는 첫 유효 문장만 처리한다. 네이티브 STT가 동일한
+    // 최종 문장을 반복 전달하거나 stop 직후 늦은 콜백을 보내도 명령은
+    // 한 번만 실행된다.
+    _speechSessionVersion++;
+    setState(() {
+      _speechPhase = _CookSpeechPhase.idle;
+      _voiceMessage = '“$transcript”로 들었어요.';
+    });
+    unawaited(_stopSpeechPort());
+
+    final intent = _voiceRouter.route(
+      transcript,
+      recipeTitle: widget.recipe.title,
+      ingredientNames: [
+        for (final ingredient in widget.recipe.ingredients) ingredient.name,
+      ],
+      currentStepInstruction: widget.recipe.steps[step - 1].instruction,
+    );
+    _applyVoiceIntent(intent, transcript: transcript);
+  }
+
+  bool _rememberUtteranceId(String utteranceId) {
+    if (!_seenUtteranceIds.add(utteranceId)) {
+      return false;
+    }
+    if (_seenUtteranceIds.length > 64) {
+      _seenUtteranceIds.clear();
+      _seenUtteranceIds.add(utteranceId);
+    }
+    return true;
+  }
+
+  void _applyVoiceIntent(VoiceIntent intent, {required String transcript}) {
+    if (_disposed || _completed || !mounted) {
+      return;
+    }
+    switch (intent.type) {
+      case VoiceIntentType.next:
+        _moveCookingStep(1, fromVoice: true);
+      case VoiceIntentType.previous:
+        _moveCookingStep(-1, fromVoice: true);
+      case VoiceIntentType.repeat:
+        _setVoiceMessage(
+          '현재 안내를 다시 보여드릴게요. '
+          '${widget.recipe.steps[step - 1].description}',
+        );
+      case VoiceIntentType.currentStep:
+        _setVoiceMessage(
+          '현재는 $step단계예요. '
+          '${widget.recipe.steps[step - 1].description}',
+        );
+      case VoiceIntentType.startTimer:
+        _startTimerFromVoice();
+      case VoiceIntentType.extendTimer:
+        _extendTimerFromVoice(intent.seconds);
+      case VoiceIntentType.pauseTimer:
+        _pauseTimerFromVoice();
+      case VoiceIntentType.resumeTimer:
+        _resumeTimerFromVoice();
+      case VoiceIntentType.finish:
+        _finishCooking();
+      case VoiceIntentType.exceptionQuestion:
+        unawaited(_requestAdvice(transcript));
+      case VoiceIntentType.ignore:
+        _setVoiceMessage('명령을 이해하지 못했어요. 다시 말하거나 직접 입력을 이용해주세요.');
+    }
+  }
+
+  void _setVoiceMessage(String message) {
+    if (_disposed || _completed || !mounted) {
+      return;
+    }
+    setState(() => _voiceMessage = message);
+  }
+
+  void _moveCookingStep(int delta, {required bool fromVoice}) {
+    if (_completed) {
+      return;
+    }
+    final target = step + delta;
+    if (target < 1) {
+      _setVoiceMessage('첫 단계예요. 이전 단계가 없어요.');
+      return;
+    }
+    if (target > widget.recipe.steps.length) {
+      _setVoiceMessage('마지막 단계예요. 완료했다면 “조리 완료”라고 말해주세요.');
+      return;
+    }
+    // 화면 버튼으로 이동할 때도 진행 중인 음성 세션을 끊어, 이전 단계에서
+    // 시작된 인식 결과가 새 단계에 적용되지 않도록 한다.
+    if (_speechIsActive) {
+      unawaited(_deactivateSpeechInput());
+    }
+    _helpRequestVersion++;
+    setState(() {
+      step = target;
+      _helpAnswer = null;
+      _helpLoading = false;
+      _voiceMessage = fromVoice ? '$target단계로 이동했어요.' : null;
+    });
+    _resetTimerForStep();
+    _persist();
+  }
+
+  bool get _currentStepHasTimer =>
+      widget.recipe.steps[step - 1].timerDuration > Duration.zero;
+
+  void _startTimerFromVoice() {
+    if (!_currentStepHasTimer) {
+      _setVoiceMessage('현재 단계에는 설정된 타이머가 없어요.');
+      return;
+    }
+    _timer.sync();
+    switch (_timer.status) {
+      case TimerStatus.idle:
+        _timer.start();
+        _scheduleAlarm();
+        _setVoiceMessage('타이머를 시작했어요.');
+      case TimerStatus.paused:
+        _timer.resume();
+        _scheduleAlarm();
+        _setVoiceMessage('일시정지한 타이머를 다시 시작했어요.');
+      case TimerStatus.running:
+        _setVoiceMessage('타이머가 이미 실행 중이에요.');
+      case TimerStatus.elapsed:
+        _setVoiceMessage('타이머가 이미 끝났어요. 시간을 추가하거나 리셋해주세요.');
+    }
+  }
+
+  void _extendTimerFromVoice(int requestedSeconds) {
+    if (!_currentStepHasTimer) {
+      _setVoiceMessage('현재 단계에는 연장할 타이머가 없어요.');
+      return;
+    }
+    final seconds = requestedSeconds > 0 ? requestedSeconds : 60;
+    final extension = Duration(seconds: seconds);
+    _extendCurrentTimer(extension);
+    final minutes = seconds ~/ 60;
+    final remainder = seconds % 60;
+    final amount = switch ((minutes, remainder)) {
+      (> 0, 0) => '$minutes분',
+      (0, > 0) => '$remainder초',
+      _ => '$minutes분 $remainder초',
+    };
+    _setVoiceMessage('타이머에 $amount를 추가했어요.');
+  }
+
+  void _pauseTimerFromVoice() {
+    if (!_currentStepHasTimer) {
+      _setVoiceMessage('현재 단계에는 일시정지할 타이머가 없어요.');
+      return;
+    }
+    _timer.sync();
+    if (_timer.status != TimerStatus.running) {
+      _setVoiceMessage(
+        _timer.status == TimerStatus.elapsed
+            ? '타이머가 이미 끝났어요.'
+            : '현재 실행 중인 타이머가 없어요.',
+      );
+      return;
+    }
+    _timer.pause();
+    unawaited(_alarm?.cancelScheduledAlarm() ?? Future<void>.value());
+    _setVoiceMessage('타이머를 일시정지했어요.');
+  }
+
+  void _resumeTimerFromVoice() {
+    if (!_currentStepHasTimer) {
+      _setVoiceMessage('현재 단계에는 다시 시작할 타이머가 없어요.');
+      return;
+    }
+    if (_timer.status != TimerStatus.paused) {
+      _setVoiceMessage('일시정지된 타이머가 없어요.');
+      return;
+    }
+    _timer.resume();
+    _scheduleAlarm();
+    _setVoiceMessage('타이머를 다시 시작했어요.');
+  }
+
+  void _finishCooking() {
+    if (_completed || !mounted) {
+      return;
+    }
+    _completed = true;
+    _helpRequestVersion++;
+    _speechSessionVersion++;
+    unawaited(_stopSpeechPort());
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute<void>(
+        builder: (_) => ReviewScreen(
+          setupSnapshot: _reviewSnapshot(),
+          clientSessionId: _sessionId,
+          cookedAt: DateTime.now(),
+          timerSecondsByStep: Map.unmodifiable(_timerSecondsByStep),
+        ),
+      ),
+    );
   }
 
   void _onTimerChanged() {
@@ -1644,16 +2044,29 @@ class _CookSessionScreenState extends State<CookSessionScreen>
 
   void _addMinute() {
     // add()는 정지/종료 상태여도 타이머를 다시 진행시킨다.
+    _extendCurrentTimer(const Duration(minutes: 1));
+  }
+
+  void _extendCurrentTimer(Duration extension) {
     _timerSecondsByStep[step - 1] =
-        _timer.effectiveDuration.inSeconds +
-        const Duration(minutes: 1).inSeconds;
-    _timer.add(const Duration(minutes: 1));
+        _timer.effectiveDuration.inSeconds + extension.inSeconds;
+    _timer.add(extension);
     _scheduleAlarm();
   }
 
   Future<void> _openHelpSheet() async {
+    if (_speechIsActive) {
+      unawaited(_deactivateSpeechInput());
+    }
     final question = await HelpQuestionSheet.show(context);
     if (question == null || !mounted) {
+      return;
+    }
+    await _requestAdvice(question);
+  }
+
+  Future<void> _requestAdvice(String question) async {
+    if (_disposed || _completed || !mounted) {
       return;
     }
     final requestVersion = ++_helpRequestVersion;
@@ -1666,8 +2079,8 @@ class _CookSessionScreenState extends State<CookSessionScreen>
     try {
       advice = await _advice.requestAdvice(
         ExceptionAdviceContext(
-          sessionId: 'mvp-local',
-          recipeId: widget.recipe.title,
+          sessionId: _sessionId,
+          recipeId: widget.recipe.id,
           recipeVersionId: 'mvp',
           stepIndex: requestedStep - 1,
           requestContextVersion: requestVersion,
@@ -1723,6 +2136,35 @@ class _CookSessionScreenState extends State<CookSessionScreen>
     return '${minutes.toString().padLeft(2, '0')}:'
         '${seconds.toString().padLeft(2, '0')}';
   }
+
+  String get _speechTitle => switch (_speechPhase) {
+    _CookSpeechPhase.idle => '음성으로 조리하기',
+    _CookSpeechPhase.starting => '마이크 준비 중',
+    _CookSpeechPhase.listening => '듣는 중',
+    _CookSpeechPhase.stopping => '마이크 정리 중',
+    _CookSpeechPhase.permissionDenied => '마이크 권한 필요',
+    _CookSpeechPhase.retryRequired => '다시 말해주세요',
+    _CookSpeechPhase.unavailable => '음성 입력 사용 불가',
+  };
+
+  String get _speechBody =>
+      _voiceMessage ?? '단계 이동, 현재 안내, 타이머 조작을 말로 할 수 있어요.';
+
+  String get _speechButtonLabel => switch (_speechPhase) {
+    _CookSpeechPhase.starting || _CookSpeechPhase.listening => '듣기 중지',
+    _CookSpeechPhase.stopping => '중지 중',
+    _CookSpeechPhase.permissionDenied => '권한 다시 확인',
+    _CookSpeechPhase.retryRequired => '다시 말하기',
+    _CookSpeechPhase.unavailable => '다시 시도',
+    _CookSpeechPhase.idle => '말하기',
+  };
+
+  IconData get _speechIcon => switch (_speechPhase) {
+    _CookSpeechPhase.listening => Icons.graphic_eq_rounded,
+    _CookSpeechPhase.permissionDenied => Icons.mic_off_rounded,
+    _CookSpeechPhase.unavailable => Icons.error_outline_rounded,
+    _ => Icons.mic_rounded,
+  };
 
   @override
   Widget build(BuildContext context) {
@@ -1890,16 +2332,41 @@ class _CookSessionScreenState extends State<CookSessionScreen>
               ),
             ),
             const SizedBox(height: 14),
-            PressableScale(
-              child: GestureDetector(
-                key: const Key('help-request'),
-                onTap: _openHelpSheet,
-                child: const InfoStrip(
-                  icon: Icons.mic_rounded,
-                  title: '"얼마나 익었나요?"',
-                  body: '말하면 익힘 상태를 확인하고 다음 행동을 안내해요. 눌러서 질문을 입력할 수도 있어요.',
+            InfoStrip(
+              key: const Key('voice-input-status'),
+              icon: _speechIcon,
+              title: _speechTitle,
+              body: _speechBody,
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: FilledButton.icon(
+                    key: const Key('voice-input-toggle'),
+                    onPressed: _speechPhase == _CookSpeechPhase.stopping
+                        ? null
+                        : _toggleSpeechInput,
+                    icon: Icon(
+                      _speechPhase == _CookSpeechPhase.starting ||
+                              _speechPhase == _CookSpeechPhase.listening
+                          ? Icons.stop_rounded
+                          : Icons.mic_rounded,
+                      size: 20,
+                    ),
+                    label: Text(_speechButtonLabel),
+                  ),
                 ),
-              ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    key: const Key('help-request'),
+                    onPressed: _openHelpSheet,
+                    icon: const Icon(Icons.keyboard_rounded, size: 20),
+                    label: const Text('직접 입력'),
+                  ),
+                ),
+              ],
             ),
             if (_helpLoading) ...[
               const SizedBox(height: 12),
@@ -1926,26 +2393,9 @@ class _CookSessionScreenState extends State<CookSessionScreen>
             onPressed: () {
               if (isLast) {
                 // 후기 저장이 성공하기 전까지 동일 세션으로 재시도할 수 있게 보존한다.
-                _completed = true;
-                Navigator.of(context).pushReplacement(
-                  MaterialPageRoute<void>(
-                    builder: (_) => ReviewScreen(
-                      setupSnapshot: _reviewSnapshot(),
-                      clientSessionId: _sessionId,
-                      cookedAt: DateTime.now(),
-                      timerSecondsByStep: Map.unmodifiable(_timerSecondsByStep),
-                    ),
-                  ),
-                );
+                _finishCooking();
               } else {
-                _helpRequestVersion++;
-                setState(() {
-                  step++;
-                  _helpAnswer = null;
-                  _helpLoading = false;
-                });
-                _resetTimerForStep();
-                _persist();
+                _moveCookingStep(1, fromVoice: false);
               }
             },
             child: Text(isLast ? '조리 완료' : '다음 단계'),
