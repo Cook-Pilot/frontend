@@ -45,6 +45,10 @@ Home에서 pending review를 찾아 자동 복구하는 진입점은 이 PR 범�
 Home이 dispose 저장보다 먼저 이전 draft를 읽어 최신 입력을 덮는 경합이 생기지
 않는다.
 
+비동기 flush가 끝나기 전에 route pop을 허용할 수 없으므로 iOS의 edge-swipe
+뒤로가기는 이 화면에서 비활성화한다. AppBar 뒤로가기와 Android 시스템
+뒤로가기는 위 저장 경계를 거쳐 정상 동작한다.
+
 저장값은 `PendingReviewDraft` 검증을 통과해야 한다.
 
 - 별점은 1~5다.
