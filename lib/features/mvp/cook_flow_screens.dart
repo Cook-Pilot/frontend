@@ -1580,11 +1580,17 @@ class _CookSessionScreenState extends State<CookSessionScreen>
       _timer.sync();
       return;
     }
+    // 최초 마이크 권한 다이얼로그로 포커스만 잠깐 잃었을 때 starting
+    // 세션을 무효화하면, 사용자가 허용해도 듣기가 시작되지 않는다.
+    // 이미 듣는 중인 inactive 상태는 프라이버시를 위해 아래에서 멈춘다.
+    if (state == AppLifecycleState.inactive &&
+        _speechPhase == _CookSpeechPhase.starting) {
+      return;
+    }
     // 백그라운드에서는 마이크를 열어 두지 않는다. 세션 버전을 먼저
     // 무효화해 stop 완료 전에 도착한 콜백도 화면을 바꾸지 못하게 한다.
-    unawaited(
-      _deactivateSpeechInput(forceStop: true, message: '화면을 벗어나 음성 입력을 멈췄어요.'),
-    );
+    final message = _speechIsActive ? '화면을 벗어나 음성 입력을 멈췄어요.' : null;
+    unawaited(_deactivateSpeechInput(forceStop: true, message: message));
   }
 
   @override
@@ -1864,7 +1870,7 @@ class _CookSessionScreenState extends State<CookSessionScreen>
       _helpLoading = false;
       _voiceMessage = fromVoice ? '$target단계로 이동했어요.' : null;
     });
-    _resetTimerForStep();
+    _resetTimerForStep(keepRecordedDuration: true);
     _persist();
   }
 
@@ -1908,7 +1914,8 @@ class _CookSessionScreenState extends State<CookSessionScreen>
       (0, > 0) => '$remainder초',
       _ => '$minutes분 $remainder초',
     };
-    _setVoiceMessage('타이머에 $amount를 추가했어요.');
+    final objectParticle = remainder == 0 ? '을' : '를';
+    _setVoiceMessage('타이머에 $amount$objectParticle 추가했어요.');
   }
 
   void _pauseTimerFromVoice() {
@@ -2008,9 +2015,16 @@ class _CookSessionScreenState extends State<CookSessionScreen>
     );
   }
 
-  void _resetTimerForStep() {
-    _timerSecondsByStep.remove(step - 1);
-    final duration = widget.recipe.steps[step - 1].timerDuration;
+  void _resetTimerForStep({bool keepRecordedDuration = false}) {
+    final recordedSeconds = keepRecordedDuration
+        ? _timerSecondsByStep[step - 1]
+        : null;
+    if (!keepRecordedDuration) {
+      _timerSecondsByStep.remove(step - 1);
+    }
+    final duration = recordedSeconds == null
+        ? widget.recipe.steps[step - 1].timerDuration
+        : Duration(seconds: recordedSeconds);
     _timer.reset(duration, autoStart: false);
     _lastStatus = _timer.status;
     unawaited(_alarm?.cancelScheduledAlarm() ?? Future<void>.value());
@@ -2056,7 +2070,7 @@ class _CookSessionScreenState extends State<CookSessionScreen>
 
   Future<void> _openHelpSheet() async {
     if (_speechIsActive) {
-      unawaited(_deactivateSpeechInput());
+      unawaited(_deactivateSpeechInput(message: '음성 입력을 멈췄어요. 질문을 직접 입력해주세요.'));
     }
     final question = await HelpQuestionSheet.show(context);
     if (question == null || !mounted) {
