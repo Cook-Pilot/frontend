@@ -7,11 +7,17 @@ import '../cooking/application/cooking_session_store.dart';
 import '../cooking/data/exception_advice_api.dart';
 import '../recipe/data/recipe_api.dart';
 import '../recipe/domain/recipe.dart';
+import '../review/application/pending_review_draft_store.dart';
 import '../review/data/review_api.dart';
 import 'cook_flow_screens.dart';
 import 'mvp_widgets.dart';
 
 final _recipeRepository = RecipeRepository();
+
+typedef HomeReviewScreenBuilder =
+    Widget Function(PendingReviewDraft initialDraft);
+typedef HomePendingReviewDraftLoader = Future<PendingReviewDraft?> Function();
+typedef HomeCookingSessionLoader = Future<PersistedCookingSession?> Function();
 
 class MainShell extends StatefulWidget {
   const MainShell({super.key});
@@ -56,24 +62,47 @@ class _MainShellState extends State<MainShell> {
 }
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+  const HomeScreen({
+    super.key,
+    this.recipeRepository,
+    this.pendingReviewDraftLoader,
+    this.cookingSessionLoader,
+    this.reviewScreenBuilder,
+  });
+
+  final RecipeRepository? recipeRepository;
+  final HomePendingReviewDraftLoader? pendingReviewDraftLoader;
+  final HomeCookingSessionLoader? cookingSessionLoader;
+  final HomeReviewScreenBuilder? reviewScreenBuilder;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  final CookingSessionStore _sessionStore = const CookingSessionStore();
+  late final RecipeRepository _homeRecipeRepository;
+  late final CookingSessionStore _sessionStore;
+  late final HomePendingReviewDraftLoader _pendingReviewDraftLoader;
+  late final HomeCookingSessionLoader _cookingSessionLoader;
 
   late Future<_HomeCatalog> _catalog;
+  var _recoveryGeneration = 0;
+  var _recoveryLoading = true;
+  Object? _recoveryError;
+  PendingReviewDraft? _pendingReviewDraft;
   PersistedCookingSession? _resumableSession;
   Recipe? _resumableRecipe;
 
   @override
   void initState() {
     super.initState();
+    _homeRecipeRepository = widget.recipeRepository ?? _recipeRepository;
+    _sessionStore = const CookingSessionStore();
+    _pendingReviewDraftLoader =
+        widget.pendingReviewDraftLoader ?? PendingReviewDraftStore().load;
+    _cookingSessionLoader = widget.cookingSessionLoader ?? _sessionStore.load;
     _catalog = _loadCatalog();
-    unawaited(_loadResumableSession());
+    unawaited(_refreshRecovery(markLoading: false));
   }
 
   String get _greeting {
@@ -85,9 +114,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<_HomeCatalog> _loadCatalog() async {
     final results = await Future.wait<List<RecipeSummary>>([
-      _recipeRepository.findAll(),
-      _recipeRepository.findRecent(),
-      _recipeRepository.findFavorites(),
+      _homeRecipeRepository.findAll(),
+      _homeRecipeRepository.findRecent(),
+      _homeRecipeRepository.findFavorites(),
     ]);
     final summaries = results[0];
     final recent = results[1];
@@ -102,7 +131,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
     Recipe? featured;
     try {
-      featured = await _recipeRepository.findById(summaries.first);
+      featured = await _homeRecipeRepository.findById(summaries.first);
     } on Object {
       // 추천 상세가 실패해도 조회 가능한 전체 목록은 유지한다.
       featured = null;
@@ -116,25 +145,80 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _retry() {
-    setState(() => _catalog = _loadCatalog());
-    unawaited(_loadResumableSession());
+    setState(() {
+      _catalog = _loadCatalog();
+    });
+    unawaited(_refreshRecovery());
   }
 
   void _refreshHome() {
     _retry();
   }
 
-  Future<void> _loadResumableSession() async {
-    final session = await _sessionStore.load();
-    if (!mounted) {
-      return;
-    }
-    if (session == null || !session.isResumable) {
+  bool _isCurrentRecovery(int generation) {
+    return mounted && generation == _recoveryGeneration;
+  }
+
+  Future<void> _refreshRecovery({bool markLoading = true}) async {
+    final generation = ++_recoveryGeneration;
+    if (markLoading && mounted) {
       setState(() {
+        _recoveryLoading = true;
+        _recoveryError = null;
+        _pendingReviewDraft = null;
         _resumableSession = null;
         _resumableRecipe = null;
       });
-      return;
+    }
+
+    try {
+      final pendingReviewDraft = await _pendingReviewDraftLoader();
+      if (!_isCurrentRecovery(generation)) {
+        return;
+      }
+      if (pendingReviewDraft != null) {
+        setState(() {
+          _recoveryLoading = false;
+          _recoveryError = null;
+          _pendingReviewDraft = pendingReviewDraft;
+          _resumableSession = null;
+          _resumableRecipe = null;
+        });
+        return;
+      }
+
+      final resumableCooking = await _findResumableCooking(generation);
+      if (!_isCurrentRecovery(generation)) {
+        return;
+      }
+      setState(() {
+        _recoveryLoading = false;
+        _recoveryError = null;
+        _pendingReviewDraft = null;
+        _resumableSession = resumableCooking?.session;
+        _resumableRecipe = resumableCooking?.recipe;
+      });
+    } on Object catch (error) {
+      if (!_isCurrentRecovery(generation)) {
+        return;
+      }
+      setState(() {
+        _recoveryLoading = false;
+        _recoveryError = error;
+        _pendingReviewDraft = null;
+        _resumableSession = null;
+        _resumableRecipe = null;
+      });
+    }
+  }
+
+  Future<_ResumableCooking?> _findResumableCooking(int generation) async {
+    final session = await _cookingSessionLoader();
+    if (!_isCurrentRecovery(generation)) {
+      return null;
+    }
+    if (session == null || !session.isResumable) {
+      return null;
     }
 
     final storedRecipeId = session.recipeId;
@@ -147,36 +231,20 @@ class _HomeScreenState extends State<HomeScreen> {
       } else {
         final recipeId = storedRecipeId;
         if (recipeId != null && recipeId.isNotEmpty) {
-          recipe = await _recipeRepository.findByRecipeId(recipeId);
+          recipe = await _homeRecipeRepository.findByRecipeId(recipeId);
         } else {
-          final summaries = await _recipeRepository.findAll();
+          final summaries = await _homeRecipeRepository.findAll();
           final matches = summaries
               .where((summary) => summary.title == session.recipeTitle)
               .toList(growable: false);
           if (matches.length != 1) {
-            if (matches.isEmpty) {
-              await _sessionStore.clear();
-            }
-            if (mounted) {
-              setState(() {
-                _resumableSession = null;
-                _resumableRecipe = null;
-              });
-            }
-            return;
+            return null;
           }
-          recipe = await _recipeRepository.findById(matches.single);
+          recipe = await _homeRecipeRepository.findById(matches.single);
         }
       }
       if (recipe.steps.isEmpty) {
-        await _sessionStore.clear();
-        if (mounted) {
-          setState(() {
-            _resumableSession = null;
-            _resumableRecipe = null;
-          });
-        }
-        return;
+        return null;
       }
       if (session.recipeId != recipe.id ||
           session.recipeTitle != recipe.title) {
@@ -184,30 +252,32 @@ class _HomeScreenState extends State<HomeScreen> {
           recipeId: recipe.id,
           recipeTitle: recipe.title,
         );
-        await _sessionStore.save(restoredSession);
       }
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _resumableSession = restoredSession;
-        _resumableRecipe = recipe;
-      });
+      return _ResumableCooking(session: restoredSession, recipe: recipe);
     } on RecipeApiException catch (error) {
       if (storedRecipeId == null ||
           storedRecipeId.isEmpty ||
           error.statusCode != 404) {
-        return;
+        rethrow;
       }
-      await _sessionStore.clear();
-      if (mounted) {
-        setState(() {
-          _resumableSession = null;
-          _resumableRecipe = null;
-        });
-      }
-    } on Object {
-      // 서버가 잠시 불안정할 때는 복원 가능한 로컬 세션을 삭제하지 않는다.
+      return null;
+    }
+  }
+
+  Future<void> _openPendingReview() async {
+    final pendingReviewDraft = _pendingReviewDraft;
+    if (pendingReviewDraft == null) {
+      return;
+    }
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) =>
+            widget.reviewScreenBuilder?.call(pendingReviewDraft) ??
+            ReviewScreen(initialDraft: pendingReviewDraft),
+      ),
+    );
+    if (mounted) {
+      await _refreshRecovery();
     }
   }
 
@@ -229,8 +299,17 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
     if (mounted) {
-      unawaited(_loadResumableSession());
+      unawaited(_refreshRecovery());
     }
+  }
+
+  Future<void> _refreshAll() async {
+    final nextCatalog = _loadCatalog();
+    setState(() {
+      _catalog = nextCatalog;
+    });
+    final nextRecovery = _refreshRecovery();
+    await Future.wait([nextCatalog, nextRecovery]);
   }
 
   @override
@@ -238,12 +317,9 @@ class _HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       body: SafeArea(
         child: RefreshIndicator(
-          onRefresh: () async {
-            final next = _loadCatalog();
-            setState(() => _catalog = next);
-            await next;
-          },
+          onRefresh: _refreshAll,
           child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
             padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
             children: [
               Row(
@@ -289,7 +365,22 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ],
               ),
-              if (_resumableSession
+              if (_recoveryLoading) ...[
+                const SizedBox(height: 18),
+                const _HomeRecoveryLoadingCard(),
+              ] else if (_recoveryError != null) ...[
+                const SizedBox(height: 18),
+                _HomeRecoveryErrorCard(
+                  onRetry: () => unawaited(_refreshRecovery()),
+                ),
+              ] else if (_pendingReviewDraft
+                  case final PendingReviewDraft draft) ...[
+                const SizedBox(height: 18),
+                _ResumeReviewCard(
+                  draft: draft,
+                  onTap: () => unawaited(_openPendingReview()),
+                ),
+              ] else if (_resumableSession
                   case final PersistedCookingSession session) ...[
                 const SizedBox(height: 18),
                 _ResumeCookingCard(
@@ -986,6 +1077,159 @@ bool _isSameDate(DateTime left, DateTime right) {
       left.day == right.day;
 }
 
+class _HomeRecoveryLoadingCard extends StatelessWidget {
+  const _HomeRecoveryLoadingCard();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(AppShape.container),
+        border: Border.all(color: AppColors.line),
+      ),
+      child: const Row(
+        children: [
+          SizedBox(
+            width: 22,
+            height: 22,
+            child: CircularProgressIndicator(strokeWidth: 2.5),
+          ),
+          SizedBox(width: 13),
+          Expanded(
+            child: Text(
+              '저장된 진행 상황을 확인하고 있어요.',
+              style: TextStyle(
+                color: AppColors.slate,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _HomeRecoveryErrorCard extends StatelessWidget {
+  const _HomeRecoveryErrorCard({required this.onRetry});
+
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(AppShape.container),
+        border: Border.all(color: AppColors.line),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.error_outline_rounded, color: AppColors.accent),
+              SizedBox(width: 9),
+              Expanded(
+                child: Text(
+                  '저장된 진행 상황을 불러오지 못했어요.',
+                  style: TextStyle(
+                    color: AppColors.ink,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 7),
+          const Text(
+            '후기나 조리 세션이 남아 있을 수 있어요. 다시 확인해 주세요.',
+            style: TextStyle(color: AppColors.slate, fontSize: 13),
+          ),
+          const SizedBox(height: 12),
+          OutlinedButton(onPressed: onRetry, child: const Text('다시 시도')),
+        ],
+      ),
+    );
+  }
+}
+
+class _ResumeReviewCard extends StatelessWidget {
+  const _ResumeReviewCard({required this.draft, required this.onTap});
+
+  final PendingReviewDraft draft;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return PressableScale(
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: AppColors.accentSoft,
+            borderRadius: BorderRadius.circular(AppShape.container),
+            border: Border.all(color: AppColors.line),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: const BoxDecoration(
+                  color: AppColors.accent,
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.rate_review_rounded,
+                  color: Colors.white,
+                ),
+              ),
+              const SizedBox(width: 13),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      '후기 작성 이어가기',
+                      style: TextStyle(
+                        color: AppColors.accent,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 13,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      draft.setupSnapshot.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: AppColors.ink,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 16,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    const Text(
+                      '작성 중인 내용을 확인하고 저장해 주세요.',
+                      style: TextStyle(color: AppColors.slate, fontSize: 13),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_right_rounded, color: AppColors.muted),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _ResumeCookingCard extends StatelessWidget {
   const _ResumeCookingCard({
     required this.session,
@@ -1233,4 +1477,11 @@ class _HomeCatalog {
   final Recipe? featured;
   final List<RecipeSummary> recent;
   final List<RecipeSummary> favorites;
+}
+
+class _ResumableCooking {
+  const _ResumableCooking({required this.session, required this.recipe});
+
+  final PersistedCookingSession session;
+  final Recipe recipe;
 }
