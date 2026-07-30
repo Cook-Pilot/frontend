@@ -39,6 +39,12 @@ Home에서 pending review를 찾아 자동 복구하는 진입점은 이 PR 범�
 상태로 바뀌면 debounce를 기다리지 않고 flush하며, 화면 dispose 시에도 finalized
 상태가 아니면 마지막 draft 저장을 시도한다.
 
+시스템 뒤로가기는 최신 draft flush가 끝날 때까지 화면 이탈을 잠근다. 저장에
+성공한 뒤에만 route를 닫고, 실패하면 입력을 화면에 유지한 채 오류와 재시도 경로를
+보여준다. 따라서 사용자가 autosave 300ms 안에 내용을 고치고 바로 뒤로가더라도,
+Home이 dispose 저장보다 먼저 이전 draft를 읽어 최신 입력을 덮는 경합이 생기지
+않는다.
+
 저장값은 `PendingReviewDraft` 검증을 통과해야 한다.
 
 - 별점은 1~5다.
@@ -99,6 +105,8 @@ ownership 지적이 있었으므로, 서버에서 사용자 범위 조회로 해
   재시도할 수 있으며 active 세션 저장도 강제로 다시 시도한다.
 - [x] 별점·두 텍스트·승인 토글의 300ms autosave, lifecycle flush, dispose flush가
   최신값을 보존한다.
+- [x] 뒤로가기는 최신 draft 저장 완료를 기다리고, flush 실패 시 화면과 입력을
+  유지해 이전 draft로 복구되는 경합을 막는다.
 - [x] emoji를 포함해 코멘트 1,000 / 다음 메모 500 Unicode code point 경계가
   formatter와 `PendingReviewDraft` 양쪽에서 일치한다.
 - [x] 저장 직전 draft flush 실패 시 `ReviewRepository.submit`가 호출되지 않는다.
