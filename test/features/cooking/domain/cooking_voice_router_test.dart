@@ -106,6 +106,27 @@ void main() {
       }
     });
 
+    test('keeps one-character Korean ingredient names as cooking context', () {
+      final waterQuestion = router.route(
+        '물 더 넣어야 해?',
+        recipeTitle: '밥',
+        ingredientNames: const ['물', '쌀', '파'],
+        currentStepInstruction: '약불에서 익힌다',
+      );
+      final riceProblem = router.route(
+        '쌀이 없어',
+        recipeTitle: '밥',
+        ingredientNames: const ['물', '쌀', '파'],
+        currentStepInstruction: '쌀을 씻는다',
+      );
+
+      expect(
+        waterQuestion,
+        const VoiceIntent(VoiceIntentType.exceptionQuestion),
+      );
+      expect(riceProblem, const VoiceIntent(VoiceIntentType.exceptionQuestion));
+    });
+
     test('does not mistake 진짜 for a salty problem', () {
       expect(
         routeOf('고기 진짜 익었어?'),
