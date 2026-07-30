@@ -20,7 +20,7 @@ void main() {
         stepIndex: 0,
         instruction: '물을 끓이세요.',
         timerSeconds: 180,
-        cautionNote: null,
+        cautionNote: '뜨거운 증기를 조심하세요.',
         imageUrl: '',
       ),
     ],
@@ -116,9 +116,11 @@ void main() {
     await submitQuestion(tester, '물이 안 끓어요');
 
     final context = advice.requests.single;
+    expect(find.byKey(const Key('ai-data-disclosure')), findsOneWidget);
     expect(context.utterance, '물이 안 끓어요');
     expect(context.stepIndex, 0);
     expect(context.instruction, recipe.steps.first.description);
+    expect(context.instruction, contains('주의: 뜨거운 증기를 조심하세요.'));
     expect(find.textContaining('30초'), findsOneWidget);
   });
 
@@ -129,6 +131,20 @@ void main() {
     await submitQuestion(tester, '물이 안 끓어요');
 
     expect(find.textContaining('답변을 불러오지 못했어요'), findsOneWidget);
+  });
+
+  testWidgets('500자를 넘는 STT 질문은 서버로 보내지 않고 길이 안내를 표시한다', (tester) async {
+    final advice = FakeExceptionAdvicePort();
+    final speech = FakeSpeechInput();
+    await pumpSession(tester, advicePort: advice, speechInput: speech);
+
+    await tester.tap(find.byKey(const Key('voice-input-toggle')));
+    await tester.pump();
+    speech.emitUtterance('물이 안 끓어요 ${'가' * 500}', utteranceId: 'too-long');
+    await tester.pump();
+
+    expect(advice.requests, isEmpty);
+    expect(find.textContaining('500자 이하'), findsOneWidget);
   });
 
   testWidgets('단계가 바뀐 뒤 도착한 답변과 행동 제안은 표시하지 않는다', (tester) async {
@@ -251,6 +267,27 @@ void main() {
     await submitQuestion(tester, '물이 안 끓어요');
 
     expect(find.text('현재 상태를 확인하세요.'), findsOneWidget);
+    expect(find.byKey(const Key('help-suggested-action')), findsNothing);
+    expect(find.text('03:00'), findsOneWidget);
+  });
+
+  testWidgets('mock 답변은 허용된 형태의 타이머 행동도 확인 버튼을 만들지 않는다', (tester) async {
+    final advice = FakeExceptionAdvicePort(
+      response: const ExceptionAdvice(
+        speechText: '고정 데모 답변',
+        screenText: '고정 데모 답변',
+        isMock: true,
+        suggestedAction: ExceptionAdviceSuggestedAction(
+          type: ExceptionAdviceActionType.extendTimer,
+          seconds: 60,
+        ),
+      ),
+    );
+    await pumpSession(tester, advicePort: advice);
+
+    await submitQuestion(tester, '물이 안 끓어요');
+
+    expect(find.text('고정 데모 답변'), findsOneWidget);
     expect(find.byKey(const Key('help-suggested-action')), findsNothing);
     expect(find.text('03:00'), findsOneWidget);
   });
