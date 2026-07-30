@@ -125,7 +125,8 @@ final class CookingVoiceRouter {
     // Materialize ingredient tokens once so callers may safely pass a lazy
     // iterable and both exception gates see the same vocabulary.
     final ingredientTokens = <String>{
-      for (final ingredient in ingredientNames) ..._contextTokens(ingredient),
+      for (final ingredient in ingredientNames)
+        ..._contextTokens(ingredient, allowSingleKorean: true),
     };
     final dynamicContextTokens = <String>{
       ..._contextTokens(recipeTitle),
@@ -371,11 +372,17 @@ final class CookingVoiceRouter {
     return value.toLowerCase().replaceAll(RegExp(r'\s+'), '');
   }
 
-  static Iterable<String> _contextTokens(String value) sync* {
+  static Iterable<String> _contextTokens(
+    String value, {
+    bool allowSingleKorean = false,
+  }) sync* {
     final lower = value.toLowerCase();
     for (final match in RegExp(r'[가-힣a-z0-9]+').allMatches(lower)) {
       final token = match.group(0)!;
-      if (token.runes.length >= 2) yield token;
+      if (token.runes.length >= 2 ||
+          (allowSingleKorean && RegExp(r'^[가-힣]$').hasMatch(token))) {
+        yield token;
+      }
     }
   }
 
