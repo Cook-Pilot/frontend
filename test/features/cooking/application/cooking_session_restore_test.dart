@@ -283,7 +283,6 @@ final class _FakeReviewRepository extends ReviewRepository {
     required String clientSessionId,
     required DateTime cookedAt,
     required CookingSetupSnapshot snapshot,
-    required Map<int, int> timerSecondsByStep,
     required int rating,
     required String comment,
     required String nextTimeNote,

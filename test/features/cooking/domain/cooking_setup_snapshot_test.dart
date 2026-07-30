@@ -17,6 +17,8 @@ void main() {
           originalName: '대파',
           name: '쪽파',
           amount: 1,
+          baselineUnit: '단',
+          baselineIsRequired: false,
           unit: '대',
           isRequired: true,
         ),
@@ -50,6 +52,8 @@ void main() {
     expect(restored!.source, CookingRecipeSource.personal);
     expect(restored.personalVersionId, 'personal-version-id');
     expect(restored.ingredients.first.isSubstituted, isTrue);
+    expect(restored.ingredients.first.baselineUnit, '단');
+    expect(restored.ingredients.first.baselineIsRequired, isFalse);
     expect(restored.ingredients.last.omitted, isTrue);
     expect(restored.steps.single.timerSeconds, 60);
   });
