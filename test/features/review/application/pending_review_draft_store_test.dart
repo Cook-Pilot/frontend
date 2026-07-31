@@ -20,6 +20,7 @@ void main() {
         comment: '  맛있었어요  ',
         nextTimeNote: ' 다음에는 물을 덜 넣기 ',
         approvedPersonalVersionCreation: true,
+        acceptedReviewId: acceptedReviewId,
       );
 
       final restored = PendingReviewDraft.fromJson(draft.toJson());
@@ -35,7 +36,25 @@ void main() {
       expect(restored.comment, '  맛있었어요  ');
       expect(restored.nextTimeNote, ' 다음에는 물을 덜 넣기 ');
       expect(restored.approvedPersonalVersionCreation, isTrue);
+      expect(restored.acceptedReviewId, acceptedReviewId);
       expect(() => restored.timerSecondsByStep[0] = 10, throwsUnsupportedError);
+    });
+
+    test('v1 draft를 후기 접수 ID가 없는 현재 스키마로 마이그레이션한다', () {
+      final legacyJson =
+          buildDraft(approvedPersonalVersionCreation: true).toJson()
+            ..['schemaVersion'] = 1
+            ..remove('acceptedReviewId');
+
+      final restored = PendingReviewDraft.fromJson(legacyJson);
+
+      expect(restored, isNotNull);
+      expect(restored!.acceptedReviewId, isNull);
+      expect(
+        restored.toJson(),
+        containsPair('schemaVersion', PendingReviewDraft.currentSchemaVersion),
+      );
+      expect(restored.toJson(), containsPair('acceptedReviewId', isNull));
     });
 
     test('후기 길이는 UTF-16 길이가 아닌 Unicode code point로 검사한다', () {
@@ -73,6 +92,20 @@ void main() {
         () => buildDraft(
           clientSessionIdValue: '00000000-0000-0000-0000-000000000000',
         ),
+        throwsArgumentError,
+      );
+      expect(
+        () => buildDraft(acceptedReviewId: 'not-a-uuid'),
+        throwsArgumentError,
+      );
+      expect(
+        () => buildDraft(
+          acceptedReviewId: '00000000-0000-0000-0000-000000000000',
+        ),
+        throwsArgumentError,
+      );
+      expect(
+        () => buildDraft(acceptedReviewId: acceptedReviewId),
         throwsArgumentError,
       );
       expect(() => buildDraft(comment: '앞\u0000뒤'), throwsArgumentError);
@@ -121,9 +154,12 @@ void main() {
     test('현재 스키마의 필드가 빠지거나 추가된 JSON은 읽지 않는다', () {
       final missing = buildDraft().toJson()..remove('rating');
       final unknown = buildDraft().toJson()..['futureField'] = true;
+      final invalidAcceptedReviewId = buildDraft().toJson()
+        ..['acceptedReviewId'] = 'invalid';
 
       expect(PendingReviewDraft.fromJson(missing), isNull);
       expect(PendingReviewDraft.fromJson(unknown), isNull);
+      expect(PendingReviewDraft.fromJson(invalidAcceptedReviewId), isNull);
     });
 
     test('현재 후기 실행 스냅샷은 모든 최상위 필드를 요구한다', () {
@@ -291,6 +327,7 @@ void main() {
           rating: 5,
           comment: '최신 초안',
           approvedPersonalVersionCreation: true,
+          acceptedReviewId: acceptedReviewId,
         ),
       );
 
@@ -299,6 +336,33 @@ void main() {
       expect(restored!.rating, 5);
       expect(restored.comment, '최신 초안');
       expect(restored.approvedPersonalVersionCreation, isTrue);
+      expect(restored.acceptedReviewId, acceptedReviewId);
+    });
+
+    test('저장된 v1 draft를 잃지 않고 불러와 다음 저장에서 v2로 올린다', () async {
+      final legacyJson =
+          buildDraft(approvedPersonalVersionCreation: true).toJson()
+            ..['schemaVersion'] = 1
+            ..remove('acceptedReviewId');
+      SharedPreferences.setMockInitialValues(<String, Object>{
+        PendingReviewDraftStore.storageKey: jsonEncode(legacyJson),
+      });
+      final store = PendingReviewDraftStore();
+
+      final restored = await store.load();
+
+      expect(restored, isNotNull);
+      expect(restored!.acceptedReviewId, isNull);
+
+      await store.save(restored);
+      final preferences = await SharedPreferences.getInstance();
+      final raw = preferences.getString(PendingReviewDraftStore.storageKey);
+      final migrated = Map<String, Object?>.from(jsonDecode(raw!) as Map);
+      expect(
+        migrated['schemaVersion'],
+        PendingReviewDraft.currentSchemaVersion,
+      );
+      expect(migrated, containsPair('acceptedReviewId', isNull));
     });
 
     test('서로 다른 store의 동시 저장도 요청 순서대로 직렬화한다', () async {
@@ -523,7 +587,7 @@ void main() {
       final store = PendingReviewDraftStore();
       final validJson = buildDraft().toJson();
       final corruptedValues = <Map<String, Object?>>[
-        <String, Object?>{...validJson, 'schemaVersion': 2},
+        <String, Object?>{...validJson, 'schemaVersion': 3},
         <String, Object?>{...validJson, 'clientSessionId': 'invalid'},
         <String, Object?>{...validJson, 'rating': 6},
         <String, Object?>{
@@ -840,6 +904,7 @@ final class _FailingSetSharedPreferencesStore
 
 const clientSessionId = '40000000-0000-0000-0000-000000000001';
 const recipeId = '10000000-0000-0000-0000-000000000001';
+const acceptedReviewId = '50000000-0000-0000-0000-000000000001';
 
 PendingReviewDraft buildDraft({
   String clientSessionIdValue = clientSessionId,
@@ -849,6 +914,7 @@ PendingReviewDraft buildDraft({
   String comment = '맛있었어요',
   String nextTimeNote = '다음에는 덜 짜게',
   bool approvedPersonalVersionCreation = false,
+  String? acceptedReviewId,
 }) {
   return PendingReviewDraft(
     clientSessionId: clientSessionIdValue,
@@ -859,6 +925,7 @@ PendingReviewDraft buildDraft({
     comment: comment,
     nextTimeNote: nextTimeNote,
     approvedPersonalVersionCreation: approvedPersonalVersionCreation,
+    acceptedReviewId: acceptedReviewId,
   );
 }
 
