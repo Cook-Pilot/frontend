@@ -100,7 +100,10 @@ Home은 화면 진입과 당겨서 새로고침 시 pending review draft를 먼�
 수 있으며, Home의 `후기 작성 이어가기` 진입점에서 재개한다.
 
 `CookingSessionStore`는 저장·삭제 API의 `false` 결과와 저장소 접근 예외를 성공으로
-숨기지 않는다. 따라서 active session만 남은 정리 실패도 위 경고에 포함된다.
+숨기지 않는다. 실패 전에 바뀐 SharedPreferences 메모리 캐시는 디스크 상태로 다시
+불러와, 저장되지 않은 세션을 복구값으로 보거나 실제로 남은 세션을 숨기지 않는다.
+손상값 정리가 실패해도 캐시를 복원해 다음 `load`가 삭제를 다시 시도한다. 따라서
+active session만 남은 정리 실패도 위 경고에 포함된다.
 
 ## 병합 전제
 
@@ -137,6 +140,7 @@ Home은 화면 진입과 당겨서 새로고침 시 pending review draft를 먼�
 관련 단위 테스트는 `test/features/review/application/pending_review_draft_store_test.dart`,
 `test/features/review/data/review_api_test.dart`,
 `test/features/review/data/personal_version_approval_api_test.dart` 및
+`test/features/cooking/application/cooking_session_store_test.dart`,
 `test/features/cooking/application/cooking_session_restore_test.dart`,
 `test/features/mvp/review_flow_test.dart`,
 `test/features/mvp/home_review_recovery_test.dart`에 둔다. 전체 테스트 수와 정적
