@@ -217,6 +217,10 @@ final class PendingReviewDraftStore {
         jsonEncode(draft.toJson()),
       );
       if (!saved) {
+        // SharedPreferences는 플랫폼 저장 결과를 기다리기 전에 메모리 캐시를
+        // 갱신한다. 디스크 쓰기가 실패한 초안이 다음 load에서 복구값처럼
+        // 보이지 않도록, 같은 직렬화 작업 안에서 실제 저장 상태를 다시 읽는다.
+        await preferences.reload();
         throw StateError('후기 초안을 로컬에 저장하지 못했습니다.');
       }
     });
