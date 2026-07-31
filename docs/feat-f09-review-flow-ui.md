@@ -4,11 +4,8 @@
 
 조리 완료 시점의 실행 문맥을 `PendingReviewDraft`로 먼저 보존하고, 후기 화면에서
 작성·전송·개인 버전 승인까지의 상태를 같은 초안으로 연결한다. 이 문서는
-`lib/features/mvp/cook_flow_screens.dart`의 UI 흐름과 기존 draft/API 계약의 연결
-경계를 설명한다.
-
-Home에서 pending review를 찾아 자동 복구하는 진입점은 이 PR 범위가 아니다. 해당
-복구 우선순위와 화면 진입은 별도 PR에서 연결한다.
+`lib/features/mvp/cook_flow_screens.dart`의 UI 흐름, Home 복구 진입점과 기존
+draft/API 계약의 연결 경계를 설명한다.
 
 ## 조리 완료와 draft 전환
 
@@ -48,6 +45,14 @@ Home이 dispose 저장보다 먼저 이전 draft를 읽어 최신 입력을 덮�
 비동기 flush가 끝나기 전에 route pop을 허용할 수 없으므로 iOS의 edge-swipe
 뒤로가기는 이 화면에서 비활성화한다. AppBar 뒤로가기와 Android 시스템
 뒤로가기는 위 저장 경계를 거쳐 정상 동작한다.
+
+## Home 복구 진입점
+
+Home은 화면 진입과 당겨서 새로고침 시 pending review draft를 먼저 조회한다.
+초안이 있으면 활성 조리 세션보다 우선해 `후기 작성 이어가기` 카드를 표시하고,
+카드를 누르면 저장된 draft 전체를 `ReviewScreen`의 초기값으로 전달한다. 따라서
+사용자가 저장 가능한 뒤로가기로 후기 화면을 닫더라도 Home에서 같은 입력과
+`acceptedReviewId` 체크포인트로 다시 진입할 수 있다.
 
 저장값은 `PendingReviewDraft` 검증을 통과해야 한다.
 
@@ -92,7 +97,7 @@ Home이 dispose 저장보다 먼저 이전 draft를 읽어 최신 입력을 덮�
 실패해도 이미 서버에 저장된 조리 기록을 실패로 바꾸지 않는다. 성공 화면에
 임시 데이터가 홈에 다시 표시될 수 있다는 경고를 함께 표시한다. 남은 draft가
 복원되면 동일 `clientSessionId`와 `reviewId` 멱등 계약으로 안전하게 다시 완료할
-수 있으며, Home 진입점은 별도 recovery PR에서 연결한다.
+수 있으며, Home의 `후기 작성 이어가기` 진입점에서 재개한다.
 
 `CookingSessionStore`는 저장·삭제 API의 `false` 결과와 저장소 접근 예외를 성공으로
 숨기지 않는다. 따라서 active session만 남은 정리 실패도 위 경고에 포함된다.
@@ -124,6 +129,8 @@ ownership 지적이 있었으므로, 서버에서 사용자 범위 조회로 해
   승인 요청만 다시 보낸다.
 - [x] 후기 ID 체크포인트 저장 실패는 승인 호출을 막고, 승인 실패 뒤 시스템
   뒤로가기·재진입도 같은 reviewId로 승인만 재시도한다.
+- [x] 후기 화면을 뒤로 닫은 뒤 Home은 pending draft를 활성 조리 세션보다 먼저
+  표시하고, 저장된 draft 전체를 같은 후기 흐름으로 다시 전달한다.
 - [x] finalized 뒤 늦은 autosave/lifecycle/dispose 콜백이 clear된 draft를 되살리지
   않으며, draft 또는 session clear 실패는 성공 메시지와 cleanup warning을 함께
   표시한다.
@@ -132,5 +139,6 @@ ownership 지적이 있었으므로, 서버에서 사용자 범위 조회로 해
 `test/features/review/data/review_api_test.dart`,
 `test/features/review/data/personal_version_approval_api_test.dart` 및
 `test/features/cooking/application/cooking_session_restore_test.dart`,
-`test/features/mvp/review_flow_test.dart`에 둔다. 전체 테스트 수와 정적 분석 결과는
-PR의 `확인` 항목에 기록한다.
+`test/features/mvp/review_flow_test.dart`,
+`test/features/mvp/home_review_recovery_test.dart`에 둔다. 전체 테스트 수와 정적
+분석 결과는 PR의 `확인` 항목에 기록한다.
