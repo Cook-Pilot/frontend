@@ -2843,6 +2843,12 @@ class _ReviewScreenState extends State<ReviewScreen>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _draft = widget.initialDraft;
+    if (_draft.acceptedReviewId case final String acceptedReviewId) {
+      _submittedReview = ReviewSaveResult(
+        id: acceptedReviewId,
+        createdPersonalVersionId: null,
+      );
+    }
     rating = _draft.rating;
     _approvedPersonalVersionCreation = _draft.approvedPersonalVersionCreation;
     _commentController = TextEditingController(text: _draft.comment);
@@ -3055,6 +3061,15 @@ class _ReviewScreenState extends State<ReviewScreen>
       reviewAccepted = true;
       PersonalVersionApprovalResult? personalVersionResult;
       if (submittedDraft.approvedPersonalVersionCreation) {
+        if (submittedDraft.acceptedReviewId == null) {
+          _draft = submittedDraft.copyWith(acceptedReviewId: result.id);
+          if (!await _flushDraft()) {
+            if (mounted) {
+              setState(() => _saving = false);
+            }
+            return;
+          }
+        }
         personalVersionResult = await _personalVersionApprovalGateway
             .createFromApprovedReview(
               reviewId: result.id,
@@ -3288,6 +3303,15 @@ class _ReviewScreenState extends State<ReviewScreen>
             body: error,
           ),
         ],
+        if (!_saving && _submittedReview != null && _saved == null) ...[
+          const SizedBox(height: 8),
+          const InfoStrip(
+            key: Key('review-approval-retry-state'),
+            icon: Icons.restart_alt_rounded,
+            title: '후기는 이미 저장됐어요',
+            body: '개인 버전 저장만 같은 후기 기록으로 다시 시도할 수 있어요.',
+          ),
+        ],
         if (_saved != null) ...[
           const SizedBox(height: 16),
           InfoStrip(
@@ -3314,7 +3338,9 @@ class _ReviewScreenState extends State<ReviewScreen>
             _saving
                 ? '저장 중'
                 : _saved == null
-                ? '조리 기록 저장'
+                ? _submittedReview == null
+                      ? '조리 기록 저장'
+                      : '개인 버전 다시 저장'
                 : '홈으로',
           ),
         ),

@@ -498,7 +498,14 @@ void main() {
     testWidgets('개인 버전 실패 재시도는 이미 저장된 후기를 다시 만들지 않는다', (tester) async {
       final store = _FakePendingReviewDraftStore();
       final reviewRepository = _FakeReviewRepository();
-      final approvalGateway = _FakeApprovalGateway(failuresRemaining: 1);
+      var checkpointObservedBeforeApproval = false;
+      final approvalGateway = _FakeApprovalGateway(
+        failuresRemaining: 1,
+        onCall: (reviewId) async {
+          checkpointObservedBeforeApproval =
+              (await store.load())?.acceptedReviewId == reviewId;
+        },
+      );
       await _pumpReview(
         tester,
         store: store,
@@ -513,7 +520,11 @@ void main() {
 
       expect(reviewRepository.calls, 1);
       expect(approvalGateway.calls, 1);
-      expect(await store.load(), isNotNull);
+      expect(checkpointObservedBeforeApproval, isTrue);
+      expect(
+        (await store.load())?.acceptedReviewId,
+        '50000000-0000-0000-0000-000000000001',
+      );
       expect(
         find.textContaining('후기는 저장했지만 개인 버전을 만들지 못했습니다.'),
         findsOneWidget,
@@ -533,13 +544,116 @@ void main() {
         isNull,
       );
 
-      await tester.tap(find.text('조리 기록 저장'));
+      await tester.tap(find.text('개인 버전 다시 저장'));
       await tester.pumpAndSettle();
 
       expect(reviewRepository.calls, 1);
       expect(approvalGateway.calls, 2);
+      expect(approvalGateway.reviewIds, const [
+        '50000000-0000-0000-0000-000000000001',
+        '50000000-0000-0000-0000-000000000001',
+      ]);
       expect(await store.load(), isNull);
       expect(find.text('조리 기록을 저장했어요'), findsOneWidget);
+    });
+
+    testWidgets('후기 ID checkpoint 실패 시 승인 호출을 멈추고 같은 화면에서 안전하게 재시도한다', (
+      tester,
+    ) async {
+      final store = _FakePendingReviewDraftStore(failingSaveCalls: const {2});
+      final reviewRepository = _FakeReviewRepository();
+      final approvalGateway = _FakeApprovalGateway();
+      await _pumpReview(
+        tester,
+        store: store,
+        reviewRepository: reviewRepository,
+        approvalGateway: approvalGateway,
+      );
+
+      await tester.tap(find.byKey(const Key('personal-version-opt-in')));
+      await tester.pump();
+      await tester.tap(find.text('조리 기록 저장'));
+      await tester.pumpAndSettle();
+
+      expect(reviewRepository.calls, 1);
+      expect(approvalGateway.calls, 0);
+      expect(find.byKey(const Key('review-draft-save-error')), findsOneWidget);
+      expect(
+        find.byKey(const Key('review-approval-retry-state')),
+        findsOneWidget,
+      );
+      expect(find.text('개인 버전 다시 저장'), findsOneWidget);
+
+      await tester.tap(find.text('개인 버전 다시 저장'));
+      await tester.pumpAndSettle();
+
+      expect(reviewRepository.calls, 1);
+      expect(approvalGateway.calls, 1);
+      expect(approvalGateway.reviewIds, const [
+        '50000000-0000-0000-0000-000000000001',
+      ]);
+      expect(await store.load(), isNull);
+    });
+
+    testWidgets('승인 실패 뒤 시스템 back과 재진입은 후기 POST 없이 같은 ID로 승인만 재시도한다', (
+      tester,
+    ) async {
+      final store = _FakePendingReviewDraftStore();
+      final reviewRepository = _FakeReviewRepository();
+      final approvalGateway = _FakeApprovalGateway(failuresRemaining: 1);
+      await _pushReviewRoute(
+        tester,
+        store: store,
+        reviewRepository: reviewRepository,
+        approvalGateway: approvalGateway,
+      );
+
+      await tester.tap(find.byKey(const Key('personal-version-opt-in')));
+      await tester.pump();
+      await tester.tap(find.text('조리 기록 저장'));
+      await tester.pumpAndSettle();
+
+      expect(reviewRepository.calls, 1);
+      expect(approvalGateway.calls, 1);
+      expect(
+        (await store.load())?.acceptedReviewId,
+        '50000000-0000-0000-0000-000000000001',
+      );
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+
+      expect(find.byType(ReviewScreen), findsNothing);
+      final restored = await store.load();
+      expect(
+        restored?.acceptedReviewId,
+        '50000000-0000-0000-0000-000000000001',
+      );
+
+      await _pumpReview(
+        tester,
+        store: store,
+        reviewRepository: reviewRepository,
+        approvalGateway: approvalGateway,
+        initialDraft: restored,
+      );
+
+      expect(
+        find.byKey(const Key('review-approval-retry-state')),
+        findsOneWidget,
+      );
+      expect(find.text('개인 버전 다시 저장'), findsOneWidget);
+
+      await tester.tap(find.text('개인 버전 다시 저장'));
+      await tester.pumpAndSettle();
+
+      expect(reviewRepository.calls, 1);
+      expect(approvalGateway.calls, 2);
+      expect(approvalGateway.reviewIds, const [
+        '50000000-0000-0000-0000-000000000001',
+        '50000000-0000-0000-0000-000000000001',
+      ]);
+      expect(await store.load(), isNull);
     });
 
     testWidgets('최종 저장 뒤 늦은 debounce가 pending draft를 되살리지 않는다', (tester) async {
@@ -685,6 +799,7 @@ PendingReviewDraft _draft({
   String comment = '',
   String nextTimeNote = '',
   bool approved = false,
+  String? acceptedReviewId,
 }) {
   return PendingReviewDraft(
     clientSessionId: '40000000-0000-0000-0000-000000000002',
@@ -695,6 +810,7 @@ PendingReviewDraft _draft({
     comment: comment,
     nextTimeNote: nextTimeNote,
     approvedPersonalVersionCreation: approved,
+    acceptedReviewId: acceptedReviewId,
   );
 }
 
@@ -758,6 +874,9 @@ Future<void> _pumpReview(
 Future<void> _pushReviewRoute(
   WidgetTester tester, {
   required PendingReviewDraftGateway store,
+  _FakeReviewRepository? reviewRepository,
+  _FakeApprovalGateway? approvalGateway,
+  PendingReviewDraft? initialDraft,
 }) async {
   tester.view.physicalSize = const Size(1200, 1600);
   tester.view.devicePixelRatio = 1;
@@ -775,10 +894,11 @@ Future<void> _pushReviewRoute(
     navigatorKey.currentState!.push<void>(
       MaterialPageRoute<void>(
         builder: (_) => ReviewScreen(
-          initialDraft: _draft(),
+          initialDraft: initialDraft ?? _draft(),
           pendingReviewDraftStore: store,
-          reviewRepository: _FakeReviewRepository(),
-          personalVersionApprovalGateway: _FakeApprovalGateway(),
+          reviewRepository: reviewRepository ?? _FakeReviewRepository(),
+          personalVersionApprovalGateway:
+              approvalGateway ?? _FakeApprovalGateway(),
         ),
       ),
     ),
@@ -875,11 +995,13 @@ final class _FakePendingReviewDraftStore implements PendingReviewDraftGateway {
     this.saveGate,
     this.saveFailuresRemaining = 0,
     this.failAllSaves = false,
+    this.failingSaveCalls = const {},
   });
 
   final Completer<void>? saveGate;
   int saveFailuresRemaining;
   final bool failAllSaves;
+  final Set<int> failingSaveCalls;
   final List<PendingReviewDraft> saveAttempts = <PendingReviewDraft>[];
   PendingReviewDraft? _storedDraft;
 
@@ -890,7 +1012,9 @@ final class _FakePendingReviewDraftStore implements PendingReviewDraftGateway {
     if (gate != null) {
       await gate.future;
     }
-    if (failAllSaves || saveFailuresRemaining > 0) {
+    if (failAllSaves ||
+        failingSaveCalls.contains(saveAttempts.length) ||
+        saveFailuresRemaining > 0) {
       if (saveFailuresRemaining > 0) {
         saveFailuresRemaining -= 1;
       }
@@ -941,10 +1065,12 @@ final class _FakeApprovalGateway implements PersonalVersionApprovalGateway {
   _FakeApprovalGateway({
     this.result = const PersonalVersionCreated(),
     this.failuresRemaining = 0,
+    this.onCall,
   });
 
   final PersonalVersionApprovalResult result;
   int failuresRemaining;
+  final FutureOr<void> Function(String reviewId)? onCall;
   int calls = 0;
   final List<String> reviewIds = <String>[];
   final List<String?> transcripts = <String?>[];
@@ -958,6 +1084,10 @@ final class _FakeApprovalGateway implements PersonalVersionApprovalGateway {
     calls += 1;
     reviewIds.add(reviewId);
     transcripts.add(cookingTranscript);
+    final callback = onCall;
+    if (callback != null) {
+      await callback(reviewId);
+    }
     if (failuresRemaining > 0) {
       failuresRemaining -= 1;
       throw const PersonalVersionApprovalApiException('개인 버전 저장 실패');
