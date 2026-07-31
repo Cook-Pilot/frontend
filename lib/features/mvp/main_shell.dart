@@ -18,6 +18,8 @@ typedef HomeReviewScreenBuilder =
     Widget Function(PendingReviewDraft initialDraft);
 typedef HomePendingReviewDraftLoader = Future<PendingReviewDraft?> Function();
 typedef HomeCookingSessionLoader = Future<PersistedCookingSession?> Function();
+typedef HomeCookingScreenBuilder =
+    Widget Function(PersistedCookingSession session, Recipe recipe);
 
 class MainShell extends StatefulWidget {
   const MainShell({super.key});
@@ -68,12 +70,14 @@ class HomeScreen extends StatefulWidget {
     this.pendingReviewDraftLoader,
     this.cookingSessionLoader,
     this.reviewScreenBuilder,
+    this.cookingScreenBuilder,
   });
 
   final RecipeRepository? recipeRepository;
   final HomePendingReviewDraftLoader? pendingReviewDraftLoader;
   final HomeCookingSessionLoader? cookingSessionLoader;
   final HomeReviewScreenBuilder? reviewScreenBuilder;
+  final HomeCookingScreenBuilder? cookingScreenBuilder;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -92,6 +96,7 @@ class _HomeScreenState extends State<HomeScreen> {
   PendingReviewDraft? _pendingReviewDraft;
   PersistedCookingSession? _resumableSession;
   Recipe? _resumableRecipe;
+  bool _resumingCooking = false;
 
   @override
   void initState() {
@@ -307,24 +312,74 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _resumeCooking() async {
+    if (_resumingCooking) {
+      return;
+    }
     final session = _resumableSession;
     final recipe = _resumableRecipe;
     if (session == null || recipe == null) {
       return;
     }
-    await Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => CookSessionScreen(
-          recipe: recipe,
-          servings: session.servings,
-          setupSnapshot: session.setupSnapshot,
-          restoredSession: session,
-          advicePort: HttpExceptionAdvicePort(),
+    final generation = ++_recoveryGeneration;
+    setState(() => _resumingCooking = true);
+    try {
+      final PendingReviewDraft? latestPendingReviewDraft;
+      try {
+        latestPendingReviewDraft = await _pendingReviewDraftLoader();
+      } on Object catch (error) {
+        if (_isCurrentRecovery(generation)) {
+          setState(() {
+            _recoveryLoading = false;
+            _recoveryError = error;
+            _pendingReviewDraft = null;
+            _resumableSession = null;
+            _resumableRecipe = null;
+          });
+        }
+        return;
+      }
+      if (!_isCurrentRecovery(generation)) {
+        return;
+      }
+      // Keep the explicit check for BuildContext use after the async load.
+      if (!mounted) {
+        return;
+      }
+      if (latestPendingReviewDraft != null) {
+        setState(() {
+          _recoveryLoading = false;
+          _recoveryError = null;
+          _pendingReviewDraft = latestPendingReviewDraft;
+          _resumableSession = null;
+          _resumableRecipe = null;
+        });
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(const SnackBar(content: Text('작성 중인 후기를 먼저 이어갈게요.')));
+        await _openPendingReview();
+        return;
+      }
+
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) =>
+              widget.cookingScreenBuilder?.call(session, recipe) ??
+              CookSessionScreen(
+                recipe: recipe,
+                servings: session.servings,
+                setupSnapshot: session.setupSnapshot,
+                restoredSession: session,
+                advicePort: HttpExceptionAdvicePort(),
+              ),
         ),
-      ),
-    );
-    if (mounted) {
-      unawaited(_refreshRecovery());
+      );
+      if (mounted) {
+        unawaited(_refreshRecovery());
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _resumingCooking = false);
+      }
     }
   }
 
@@ -412,7 +467,10 @@ class _HomeScreenState extends State<HomeScreen> {
                   session: session,
                   stepCount:
                       _resumableRecipe?.steps.length ?? session.stepIndex + 1,
-                  onTap: () => unawaited(_resumeCooking()),
+                  checkingPendingReview: _resumingCooking,
+                  onTap: _resumingCooking
+                      ? null
+                      : () => unawaited(_resumeCooking()),
                 ),
               ],
               FutureBuilder<_HomeCatalog>(
@@ -1259,12 +1317,14 @@ class _ResumeCookingCard extends StatelessWidget {
   const _ResumeCookingCard({
     required this.session,
     required this.stepCount,
+    required this.checkingPendingReview,
     required this.onTap,
   });
 
   final PersistedCookingSession session;
   final int stepCount;
-  final VoidCallback onTap;
+  final bool checkingPendingReview;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -1297,9 +1357,9 @@ class _ResumeCookingCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      '이어서 요리하기',
-                      style: TextStyle(
+                    Text(
+                      checkingPendingReview ? '후기 상태 확인 중' : '이어서 요리하기',
+                      style: const TextStyle(
                         color: AppColors.accent,
                         fontWeight: FontWeight.w800,
                         fontSize: 13,
@@ -1327,7 +1387,14 @@ class _ResumeCookingCard extends StatelessWidget {
                   ],
                 ),
               ),
-              const Icon(Icons.chevron_right_rounded, color: AppColors.muted),
+              if (checkingPendingReview)
+                const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              else
+                const Icon(Icons.chevron_right_rounded, color: AppColors.muted),
             ],
           ),
         ),

@@ -41,6 +41,26 @@
   전달한다.
 - `setState`에는 동기 상태 변경만 넣고 저장소·API 작업은 밖에서 기다린다.
 
+## 새 조리 진입 보호
+
+`PendingReviewDraftStore`는 작성 중 후기 한 건과 서버가 수락한
+`acceptedReviewId`를 함께 보관한다. 이 값이 남은 동안 다른 조리를 완료하면
+singleton 초안을 덮어써 안전한 재시도 기준을 잃을 수 있으므로, 새 조리보다
+기존 후기 완료를 우선한다.
+
+- Home의 오늘 메뉴·최근·즐겨찾기·전체 목록과 Search 결과는 모두
+  `RecipeDetailScreen`을 거쳐 `CookSetupScreen`으로 수렴한다. 실제
+  `CookSessionScreen`을 열기 직전에 pending draft를 다시 읽고, 초안이 있으면
+  새 조리를 열지 않고 같은 draft의 `ReviewScreen`으로 이동한다.
+- 후기 화면 뒤에 남은 기존 조리 설정 화면에서도 같은 최종 guard를 거치므로
+  시스템 뒤로가기 후 새 세션을 시작해 초안을 덮는 우회 경로가 없다.
+- Home의 `이어서 요리하기`도 저장된 화면 상태만 신뢰하지 않고 탭 직전에
+  pending draft를 다시 읽는다. 그 사이 초안이 생겼으면 후기 화면을 우선 연다.
+- pending 저장소 조회 실패는 `초안 없음`으로 간주하지 않는다. 새 조리와 조리
+  재개를 모두 fail-closed하고 재시도 안내를 표시한다.
+- 조회 중에는 진입 버튼을 잠가 중복 탭이 여러 조리·후기 route를 만들지 않게
+  한다. pending draft가 없을 때는 기존 조리 설정·재개 동작을 유지한다.
+
 ## 스택 의존성
 
 이 복구 진입점은 같은 PR에서 `ReviewScreen`이
@@ -64,3 +84,6 @@
 - 늦게 끝난 이전 복구 요청이 최신 결과를 덮지 않음
 - 늦게 끝난 두 번째 초안 조회도 최신 결과를 덮지 않음
 - pull-to-refresh로 카탈로그와 새 초안을 함께 갱신
+- 조리 설정에서 pending 없음·있음·조회 오류·중복 탭에 따른 조리/후기 route
+  경계
+- Home 조리 재개 직전 새 pending draft와 조회 오류의 fail-closed 처리
