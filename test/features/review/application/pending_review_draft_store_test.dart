@@ -5,6 +5,7 @@ import 'package:cookpilot/features/cooking/domain/cooking_setup_snapshot.dart';
 import 'package:cookpilot/features/review/application/pending_review_draft_store.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:shared_preferences_platform_interface/shared_preferences_platform_interface.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -312,7 +313,64 @@ void main() {
 
       expect(await store.load(), isNull);
     });
+
+    test('플랫폼 remove가 false면 캐시에서 키가 사라져도 실패를 전달한다', () async {
+      SharedPreferences.setMockInitialValues(<String, Object>{
+        PendingReviewDraftStore.storageKey: 'draft',
+      });
+      final preferences = await SharedPreferences.getInstance();
+      final originalPlatform = SharedPreferencesStorePlatform.instance;
+      addTearDown(() {
+        SharedPreferencesStorePlatform.instance = originalPlatform;
+      });
+      final platform = _FalseRemoveSharedPreferencesStore();
+      SharedPreferencesStorePlatform.instance = platform;
+      final store = PendingReviewDraftStore(
+        preferencesLoader: () async => preferences,
+      );
+
+      await expectLater(
+        store.clear(),
+        throwsA(
+          isA<StateError>().having(
+            (error) => error.message,
+            'message',
+            '후기 초안을 로컬에서 정리하지 못했습니다.',
+          ),
+        ),
+      );
+
+      expect(platform.removedKeys, const [
+        'flutter.${PendingReviewDraftStore.storageKey}',
+      ]);
+      expect(
+        preferences.containsKey(PendingReviewDraftStore.storageKey),
+        isFalse,
+        reason: 'SharedPreferences는 플랫폼 결과와 무관하게 먼저 메모리 캐시를 지운다.',
+      );
+    });
   });
+}
+
+final class _FalseRemoveSharedPreferencesStore
+    extends SharedPreferencesStorePlatform {
+  final List<String> removedKeys = [];
+
+  @override
+  Future<bool> clear() async => true;
+
+  @override
+  Future<Map<String, Object>> getAll() async => const {};
+
+  @override
+  Future<bool> remove(String key) async {
+    removedKeys.add(key);
+    return false;
+  }
+
+  @override
+  Future<bool> setValue(String valueType, String key, Object value) async =>
+      true;
 }
 
 const clientSessionId = '40000000-0000-0000-0000-000000000001';
