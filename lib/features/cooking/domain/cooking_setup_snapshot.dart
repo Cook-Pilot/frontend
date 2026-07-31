@@ -66,7 +66,7 @@ List<CookingSetupIngredient> buildOriginalAnchoredSetupIngredients({
         name: ingredient.name,
         amount: _scaledAmount(ingredient.amount, scale),
         baselineAmount: _scaledAmount(
-          baseIngredient?.amount ?? ingredient.amount,
+          baseIngredient == null ? ingredient.amount : baseIngredient.amount,
           scale,
         ),
         baselineUnit: baseIngredient?.unit ?? ingredient.unit,

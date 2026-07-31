@@ -211,6 +211,45 @@ void main() {
     ]);
   });
 
+  test('원본 수량이 null이면 개인 버전의 숫자 수량을 누적 MODIFY로 유지한다', () {
+    final ingredients = buildOriginalAnchoredSetupIngredients(
+      baseIngredients: const <Ingredient>[
+        Ingredient(
+          originalIngredientId: '11000000-0000-0000-0000-000000000001',
+          name: '소금',
+          amount: null,
+          unit: '약간',
+          isRequired: true,
+        ),
+      ],
+      composedIngredients: const <Ingredient>[
+        Ingredient(
+          originalIngredientId: '11000000-0000-0000-0000-000000000001',
+          name: '소금',
+          amount: 2,
+          unit: '약간',
+          isRequired: true,
+        ),
+      ],
+      scale: 1,
+    );
+
+    expect(ingredients.single.baselineAmount, isNull);
+
+    final request = PersonalVersionApprovalRequest.fromSnapshot(
+      snapshot: _snapshotWith(ingredients: ingredients),
+    ).toJson();
+    final setup = request['setup'] as Map<String, Object?>;
+    expect(setup['ingredientAdjustments'], <Map<String, Object?>>[
+      <String, Object?>{
+        'originalIngredientId': '11000000-0000-0000-0000-000000000001',
+        'type': 'MODIFY',
+        'amount': 2.0,
+        'sortOrder': 0,
+      },
+    ]);
+  });
+
   test('개인 버전 합성 결과의 원본 ID가 없거나 중복되면 조용히 diff를 잃지 않는다', () {
     const base = <Ingredient>[
       Ingredient(

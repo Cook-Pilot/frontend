@@ -82,6 +82,8 @@ status만 `PersonalVersionCreated` marker로 바꾼다. 빈 `201` body도 같은
 
 - 기본 재료의 이름·양·단위·필수 여부를 `originalName`, `baselineAmount`,
   `baselineUnit`, `baselineIsRequired`로 보존
+- 원본 양이 정해지지 않은 재료는 `baselineAmount: null` 자체를 보존한다. 개인
+  버전이 숫자 수량을 부여하면 이 차이를 누적 `MODIFY`로 다시 전송한다.
 - 합성 결과에서 빠진 기본 재료를 `omitted: true`로 추가해 누적 `REMOVE` 보존
 - 원본 ID가 없는 합성 재료는 누적 `ADD`로 보존
 - 개인 버전에서 이미 바뀐 이름·양·단위·필수 여부는 현재값으로 유지해 누적
@@ -148,6 +150,7 @@ focused 테스트는 다음을 확인한다.
 - 베타 사용자 헤더, URL, JSON 계약
 - `ADD` / `REMOVE` / `MODIFY` 매핑과 무변경 제외
 - 개인 버전 합성 결과의 누적 `ADD` / `REMOVE` / `MODIFY` 보존
+- 원본 수량 `null`과 개인 버전 숫자 수량의 누적 `MODIFY` 및 JSON 왕복 보존
 - 빈 `stepAdjustments`와 타이머 비포함
 - `createdAt: null` 또는 빈 body인 `201` 생성 marker
 - `204` 변경 없음
