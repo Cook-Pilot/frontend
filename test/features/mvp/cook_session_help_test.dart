@@ -176,6 +176,90 @@ void main() {
     expect(find.byKey(const Key('help-suggested-action')), findsNothing);
   });
 
+  testWidgets('이전 단계 요청 중에도 새 단계 질문을 허용하고 최신 요청만 화면을 소유한다', (tester) async {
+    final advice = QueuedExceptionAdvicePort();
+    await pumpSession(tester, advicePort: advice, testRecipe: twoStepRecipe);
+
+    await submitQuestion(tester, '물이 안 끓어요');
+    await tester.tap(find.widgetWithText(FilledButton, '다음 단계'));
+    await tester.pumpAndSettle();
+
+    final availableHelpButton = tester.widget<OutlinedButton>(
+      find.byKey(const Key('help-request')),
+    );
+    expect(availableHelpButton.onPressed, isNotNull);
+
+    await submitQuestion(tester, '면을 얼마나 더 끓여야 해요?');
+    expect(advice.requests, hasLength(2));
+    expect(advice.requests.first.stepIndex, 0);
+    expect(advice.requests.last.stepIndex, 1);
+    expect(
+      advice.requests.last.requestContextVersion,
+      greaterThan(advice.requests.first.requestContextVersion),
+    );
+
+    advice.completions.first.complete(
+      const ExceptionAdvice(screenText: '이전 단계 답변', speechText: '이전 단계 답변'),
+    );
+    await tester.pump();
+
+    expect(find.text('이전 단계 답변'), findsNothing);
+    expect(find.text('답변 준비 중'), findsOneWidget);
+    final stillOwnedByLatest = tester.widget<OutlinedButton>(
+      find.byKey(const Key('help-request')),
+    );
+    expect(stillOwnedByLatest.onPressed, isNull);
+
+    advice.completions.last.complete(
+      const ExceptionAdvice(screenText: '새 단계 답변', speechText: '새 단계 답변'),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('새 단계 답변'), findsOneWidget);
+    expect(find.text('답변 준비 중'), findsNothing);
+    final releasedHelpButton = tester.widget<OutlinedButton>(
+      find.byKey(const Key('help-request')),
+    );
+    expect(releasedHelpButton.onPressed, isNotNull);
+  });
+
+  testWidgets('이전 질문이 대기 중이어도 음성 단계 이동 뒤 새 음성 질문을 전송한다', (tester) async {
+    final advice = QueuedExceptionAdvicePort();
+    final speech = FakeSpeechInput();
+    await pumpSession(
+      tester,
+      advicePort: advice,
+      testRecipe: twoStepRecipe,
+      speechInput: speech,
+    );
+
+    await submitQuestion(tester, '물이 안 끓어요');
+    await tester.tap(find.byKey(const Key('voice-input-toggle')));
+    await tester.pumpAndSettle();
+    speech.emitUtterance('다음 단계', utteranceId: 'voice-next');
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('voice-input-toggle')));
+    await tester.pumpAndSettle();
+    speech.emitUtterance('면을 더 끓여야 해?', utteranceId: 'voice-question');
+    await tester.pump();
+
+    expect(advice.requests, hasLength(2));
+    expect(advice.requests.last.stepIndex, 1);
+    expect(advice.requests.last.utterance, '면을 더 끓여야 해?');
+
+    advice.completions.last.complete(
+      const ExceptionAdvice(message: '새 단계 음성 답변'),
+    );
+    advice.completions.first.complete(
+      const ExceptionAdvice(message: '이전 단계 음성 답변'),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('새 단계 음성 답변'), findsOneWidget);
+    expect(find.text('이전 단계 음성 답변'), findsNothing);
+  });
+
   testWidgets('진행 중에는 버튼과 음성의 중복 F8 요청을 보내지 않는다', (tester) async {
     final advice = QueuedExceptionAdvicePort();
     final speech = FakeSpeechInput();
