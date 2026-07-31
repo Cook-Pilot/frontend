@@ -191,12 +191,22 @@ class _HomeScreenState extends State<HomeScreen> {
       if (!_isCurrentRecovery(generation)) {
         return;
       }
+      // The active-session lookup can outlive cooking completion. Re-read the
+      // draft so a review created while that lookup was running still wins.
+      final latestPendingReviewDraft = await _pendingReviewDraftLoader();
+      if (!_isCurrentRecovery(generation)) {
+        return;
+      }
       setState(() {
         _recoveryLoading = false;
         _recoveryError = null;
-        _pendingReviewDraft = null;
-        _resumableSession = resumableCooking?.session;
-        _resumableRecipe = resumableCooking?.recipe;
+        _pendingReviewDraft = latestPendingReviewDraft;
+        _resumableSession = latestPendingReviewDraft == null
+            ? resumableCooking?.session
+            : null;
+        _resumableRecipe = latestPendingReviewDraft == null
+            ? resumableCooking?.recipe
+            : null;
       });
     } on Object catch (error) {
       if (!_isCurrentRecovery(generation)) {
