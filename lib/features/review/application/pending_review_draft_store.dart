@@ -258,7 +258,7 @@ final class PendingReviewDraftStore {
     return _serialize(() async {
       final preferences = await _preferencesLoader();
       final removed = await preferences.remove(storageKey);
-      if (!removed && preferences.containsKey(storageKey)) {
+      if (!removed) {
         throw StateError('후기 초안을 로컬에서 정리하지 못했습니다.');
       }
     });
