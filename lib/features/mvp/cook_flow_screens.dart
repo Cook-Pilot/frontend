@@ -2860,7 +2860,7 @@ class _ReviewScreenState extends State<ReviewScreen> {
             icon: Icons.check_circle_rounded,
             title: '조리 기록을 저장했어요',
             body: saved.createdPersonalVersionId == null
-                ? '실행 변경이 없어 후기에만 기록했어요.'
+                ? '후기를 조리 기록에 저장했어요.'
                 : '실행한 변경을 새 개인 레시피 버전으로 함께 저장했어요.',
           ),
         ],
