@@ -227,7 +227,7 @@ void main() {
 
     test('플랫폼 저장 실패 뒤 캐시를 이전 영속 초안으로 복원한다', () async {
       final previousDraft = buildDraft(rating: 2, comment: '이전 영속 초안');
-      final platform = _FalseSetSharedPreferencesStore({
+      final platform = _FailingSetSharedPreferencesStore({
         'flutter.${PendingReviewDraftStore.storageKey}': jsonEncode(
           previousDraft.toJson(),
         ),
@@ -260,10 +260,11 @@ void main() {
       expect(platform.setKeys, const [
         'flutter.${PendingReviewDraftStore.storageKey}',
       ]);
+      expect(platform.getAllCalls, 2, reason: '초기 load 뒤 캐시 복구는 한 번만 수행한다.');
     });
 
     test('플랫폼 저장 실패 뒤 영속 초안이 없으면 캐시도 비운다', () async {
-      final platform = _FalseSetSharedPreferencesStore(const {});
+      final platform = _FailingSetSharedPreferencesStore(const {});
       final originalPlatform = SharedPreferencesStorePlatform.instance;
       addTearDown(() {
         SharedPreferencesStorePlatform.instance = originalPlatform;
@@ -281,6 +282,77 @@ void main() {
         preferences.containsKey(PendingReviewDraftStore.storageKey),
         isFalse,
       );
+      expect(platform.getAllCalls, 2, reason: '초기 load 뒤 캐시 복구는 한 번만 수행한다.');
+    });
+
+    test('플랫폼 저장 예외 뒤 이전 영속 초안을 복원하고 원래 stack을 전달한다', () async {
+      final previousDraft = buildDraft(rating: 2, comment: '예외 전 영속 초안');
+      final writeError = StateError('platform write failed');
+      final writeStackTrace = StackTrace.fromString(
+        'platform setValue failure stack',
+      );
+      final platform = _FailingSetSharedPreferencesStore(
+        {
+          'flutter.${PendingReviewDraftStore.storageKey}': jsonEncode(
+            previousDraft.toJson(),
+          ),
+        },
+        writeError: writeError,
+        writeStackTrace: writeStackTrace,
+      );
+      final originalPlatform = SharedPreferencesStorePlatform.instance;
+      addTearDown(() {
+        SharedPreferencesStorePlatform.instance = originalPlatform;
+      });
+      SharedPreferencesStorePlatform.instance = platform;
+      final preferences = await SharedPreferences.getInstance();
+      final store = PendingReviewDraftStore(
+        preferencesLoader: () async => preferences,
+      );
+      Object? caughtError;
+      StackTrace? caughtStackTrace;
+
+      try {
+        await store.save(buildDraft(rating: 5, comment: '예외로 저장되지 않은 최신 초안'));
+      } on Object catch (error, stackTrace) {
+        caughtError = error;
+        caughtStackTrace = stackTrace;
+      }
+
+      expect(caughtError, same(writeError));
+      expect(caughtStackTrace.toString(), writeStackTrace.toString());
+      final restored = await store.load();
+      expect(restored, isNotNull);
+      expect(restored!.rating, 2);
+      expect(restored.comment, '예외 전 영속 초안');
+      expect(platform.getAllCalls, 2, reason: '초기 load 뒤 캐시 복구는 한 번만 수행한다.');
+    });
+
+    test('플랫폼 저장 예외 뒤 영속 초안이 없으면 캐시도 비운다', () async {
+      final writeError = StateError('platform write failed');
+      final platform = _FailingSetSharedPreferencesStore(
+        const {},
+        writeError: writeError,
+        writeStackTrace: StackTrace.fromString('platform failure stack'),
+      );
+      final originalPlatform = SharedPreferencesStorePlatform.instance;
+      addTearDown(() {
+        SharedPreferencesStorePlatform.instance = originalPlatform;
+      });
+      SharedPreferencesStorePlatform.instance = platform;
+      final preferences = await SharedPreferences.getInstance();
+      final store = PendingReviewDraftStore(
+        preferencesLoader: () async => preferences,
+      );
+
+      await expectLater(store.save(buildDraft()), throwsA(same(writeError)));
+
+      expect(await store.load(), isNull);
+      expect(
+        preferences.containsKey(PendingReviewDraftStore.storageKey),
+        isFalse,
+      );
+      expect(platform.getAllCalls, 2, reason: '초기 load 뒤 캐시 복구는 한 번만 수행한다.');
     });
 
     test('저장소를 열지 못한 오류를 초안 없음으로 숨기지 않는다', () async {
@@ -431,13 +503,19 @@ final class _FalseRemoveSharedPreferencesStore
       true;
 }
 
-final class _FalseSetSharedPreferencesStore
+final class _FailingSetSharedPreferencesStore
     extends SharedPreferencesStorePlatform {
-  _FalseSetSharedPreferencesStore(Map<String, Object> persistedValues)
-    : _persistedValues = Map<String, Object>.from(persistedValues);
+  _FailingSetSharedPreferencesStore(
+    Map<String, Object> persistedValues, {
+    this.writeError,
+    this.writeStackTrace,
+  }) : _persistedValues = Map<String, Object>.from(persistedValues);
 
   final Map<String, Object> _persistedValues;
+  final Object? writeError;
+  final StackTrace? writeStackTrace;
   final List<String> setKeys = [];
+  var getAllCalls = 0;
 
   @override
   Future<bool> clear() async {
@@ -446,8 +524,10 @@ final class _FalseSetSharedPreferencesStore
   }
 
   @override
-  Future<Map<String, Object>> getAll() async =>
-      Map<String, Object>.from(_persistedValues);
+  Future<Map<String, Object>> getAll() async {
+    getAllCalls += 1;
+    return Map<String, Object>.from(_persistedValues);
+  }
 
   @override
   Future<bool> remove(String key) async {
@@ -458,6 +538,10 @@ final class _FalseSetSharedPreferencesStore
   @override
   Future<bool> setValue(String valueType, String key, Object value) async {
     setKeys.add(key);
+    final error = writeError;
+    if (error != null) {
+      Error.throwWithStackTrace(error, writeStackTrace ?? StackTrace.current);
+    }
     return false;
   }
 }
