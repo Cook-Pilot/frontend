@@ -199,10 +199,25 @@ final class CookingSessionStore implements CookingSessionGateway {
   @override
   Future<void> save(PersistedCookingSession session) async {
     final prefs = await _loadPreferences();
-    final saved = await prefs.setString(_key, jsonEncode(session.toJson()));
-    if (!saved) {
-      throw StateError('진행 중 조리 세션을 로컬에 저장하지 못했습니다.');
+    Object? writeError;
+    StackTrace? writeStackTrace;
+    try {
+      final saved = await prefs.setString(_key, jsonEncode(session.toJson()));
+      if (saved) {
+        return;
+      }
+    } on Object catch (error, stackTrace) {
+      writeError = error;
+      writeStackTrace = stackTrace;
     }
+
+    // SharedPreferences는 플랫폼 저장 결과보다 먼저 메모리 캐시를 갱신한다.
+    // 실패 뒤 디스크 상태를 다시 읽어 미저장 세션이 복구값처럼 보이지 않게 한다.
+    await prefs.reload();
+    if (writeError != null) {
+      Error.throwWithStackTrace(writeError, writeStackTrace!);
+    }
+    throw StateError('진행 중 조리 세션을 로컬에 저장하지 못했습니다.');
   }
 
   /// 저장된 세션이 없거나 값이 손상됐으면 null. 손상값은 함께 정리한다.
@@ -225,16 +240,46 @@ final class CookingSessionStore implements CookingSessionGateway {
     } catch (_) {
       // 손상된 JSON은 아래에서 제거한다.
     }
-    await prefs.remove(_key);
+    await _removeBestEffort(prefs);
     return null;
   }
 
   @override
   Future<void> clear() async {
     final prefs = await _loadPreferences();
-    final removed = await prefs.remove(_key);
-    if (!removed) {
-      throw StateError('진행 중 조리 세션을 로컬에서 정리하지 못했습니다.');
+    Object? removeError;
+    StackTrace? removeStackTrace;
+    try {
+      final removed = await prefs.remove(_key);
+      if (removed) {
+        return;
+      }
+    } on Object catch (error, stackTrace) {
+      removeError = error;
+      removeStackTrace = stackTrace;
+    }
+
+    // remove도 플랫폼 결과보다 먼저 캐시를 지우므로 실패 시 실제 저장값을 복원한다.
+    await prefs.reload();
+    if (removeError != null) {
+      Error.throwWithStackTrace(removeError, removeStackTrace!);
+    }
+    throw StateError('진행 중 조리 세션을 로컬에서 정리하지 못했습니다.');
+  }
+
+  static Future<void> _removeBestEffort(SharedPreferences prefs) async {
+    try {
+      final removed = await prefs.remove(_key);
+      if (removed) {
+        return;
+      }
+    } on Object {
+      // 손상값은 반환하지 않되, 아래 reload로 다음 load의 정리 재시도를 보장한다.
+    }
+    try {
+      await prefs.reload();
+    } on Object {
+      // 손상값 정리는 best effort다. 다음 앱 시작이나 load에서 다시 시도한다.
     }
   }
 }
