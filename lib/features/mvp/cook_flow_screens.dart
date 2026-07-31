@@ -1555,8 +1555,11 @@ class _CookSessionScreenState extends State<CookSessionScreen>
   String? _helpAnswer;
   ExceptionAdviceSuggestedAction? _helpSuggestedAction;
   bool _helpLoading = false;
-  bool _helpRequestInFlight = false;
   int _helpRequestVersion = 0;
+  int? _helpRequestOwnerVersion;
+
+  bool get _helpRequestInFlight =>
+      _helpRequestOwnerVersion == _helpRequestVersion;
 
   String? _voiceMessage;
   bool _disposed = false;
@@ -2020,7 +2023,7 @@ class _CookSessionScreenState extends State<CookSessionScreen>
     }
     final requestVersion = ++_helpRequestVersion;
     final requestedStep = step;
-    _helpRequestInFlight = true;
+    _helpRequestOwnerVersion = requestVersion;
     setState(() {
       _helpLoading = true;
       _helpAnswer = null;
@@ -2045,39 +2048,46 @@ class _CookSessionScreenState extends State<CookSessionScreen>
         ),
       );
     } catch (_) {
-      _helpRequestInFlight = false;
-      if (!mounted ||
-          requestVersion != _helpRequestVersion ||
-          step != requestedStep) {
-        if (mounted) {
-          setState(() {});
-        }
+      if (!_ownsCurrentHelpRequest(requestVersion, requestedStep)) {
+        _releaseHelpRequest(requestVersion);
         return;
       }
       setState(() {
+        _helpRequestOwnerVersion = null;
         _helpLoading = false;
         _helpAnswer = '답변을 불러오지 못했어요. 버튼과 타이머는 계속 사용할 수 있어요.';
         _helpSuggestedAction = null;
       });
       return;
     }
-    _helpRequestInFlight = false;
-    // 기다리는 사이 단계가 바뀌었으면 낡은 답변을 표시하지 않는다.
-    if (!mounted ||
-        requestVersion != _helpRequestVersion ||
-        step != requestedStep) {
-      if (mounted) {
-        setState(() {});
-      }
+    // 기다리는 사이 단계가 바뀌었거나 새 요청이 시작됐으면 낡은 답변을
+    // 표시하지 않고 새 요청의 진행 상태도 건드리지 않는다.
+    if (!_ownsCurrentHelpRequest(requestVersion, requestedStep)) {
+      _releaseHelpRequest(requestVersion);
       return;
     }
     setState(() {
+      _helpRequestOwnerVersion = null;
       _helpLoading = false;
       _helpAnswer = advice.message;
       _helpSuggestedAction = advice.isMock
           ? null
           : _safeSuggestedAction(advice.suggestedAction);
     });
+  }
+
+  bool _ownsCurrentHelpRequest(int requestVersion, int requestedStep) =>
+      mounted &&
+      !_disposed &&
+      !_completed &&
+      _helpRequestOwnerVersion == requestVersion &&
+      _helpRequestVersion == requestVersion &&
+      step == requestedStep;
+
+  void _releaseHelpRequest(int requestVersion) {
+    if (_helpRequestOwnerVersion == requestVersion) {
+      _helpRequestOwnerVersion = null;
+    }
   }
 
   ExceptionAdviceSuggestedAction? _safeSuggestedAction(
