@@ -444,17 +444,19 @@ void main() {
       expect(await store.load(), isNull);
     });
 
-    test('플랫폼 remove가 false면 캐시에서 키가 사라져도 실패를 전달한다', () async {
-      SharedPreferences.setMockInitialValues(<String, Object>{
-        PendingReviewDraftStore.storageKey: 'draft',
+    test('플랫폼 remove가 false면 실제 초안을 캐시에 복원하고 실패를 전달한다', () async {
+      final persistedDraft = buildDraft(rating: 2, comment: '삭제되지 않은 초안');
+      final platform = _FailingRemoveSharedPreferencesStore({
+        'flutter.${PendingReviewDraftStore.storageKey}': jsonEncode(
+          persistedDraft.toJson(),
+        ),
       });
-      final preferences = await SharedPreferences.getInstance();
       final originalPlatform = SharedPreferencesStorePlatform.instance;
       addTearDown(() {
         SharedPreferencesStorePlatform.instance = originalPlatform;
       });
-      final platform = _FalseRemoveSharedPreferencesStore();
       SharedPreferencesStorePlatform.instance = platform;
+      final preferences = await SharedPreferences.getInstance();
       final store = PendingReviewDraftStore(
         preferencesLoader: () async => preferences,
       );
@@ -473,28 +475,102 @@ void main() {
       expect(platform.removedKeys, const [
         'flutter.${PendingReviewDraftStore.storageKey}',
       ]);
+      final restored = await store.load();
+      expect(restored, isNotNull);
+      expect(restored!.rating, 2);
+      expect(restored.comment, '삭제되지 않은 초안');
       expect(
-        preferences.containsKey(PendingReviewDraftStore.storageKey),
-        isFalse,
-        reason: 'SharedPreferences는 플랫폼 결과와 무관하게 먼저 메모리 캐시를 지운다.',
+        platform.getAllCalls,
+        2,
+        reason: '초기 load 뒤 clear 실패의 캐시 복구는 한 번만 수행한다.',
+      );
+    });
+
+    test('플랫폼 remove 예외 뒤 실제 초안과 원래 stack을 복원한다', () async {
+      final persistedDraft = buildDraft(rating: 3, comment: '예외 뒤 남은 초안');
+      final removeError = StateError('platform remove failed');
+      final removeStackTrace = StackTrace.fromString(
+        'platform remove failure stack',
+      );
+      final platform = _FailingRemoveSharedPreferencesStore(
+        {
+          'flutter.${PendingReviewDraftStore.storageKey}': jsonEncode(
+            persistedDraft.toJson(),
+          ),
+        },
+        removeError: removeError,
+        removeStackTrace: removeStackTrace,
+      );
+      final originalPlatform = SharedPreferencesStorePlatform.instance;
+      addTearDown(() {
+        SharedPreferencesStorePlatform.instance = originalPlatform;
+      });
+      SharedPreferencesStorePlatform.instance = platform;
+      final preferences = await SharedPreferences.getInstance();
+      final store = PendingReviewDraftStore(
+        preferencesLoader: () async => preferences,
+      );
+      Object? caughtError;
+      StackTrace? caughtStackTrace;
+
+      try {
+        await store.clear();
+      } on Object catch (error, stackTrace) {
+        caughtError = error;
+        caughtStackTrace = stackTrace;
+      }
+
+      expect(caughtError, same(removeError));
+      expect(caughtStackTrace.toString(), removeStackTrace.toString());
+      final restored = await store.load();
+      expect(restored, isNotNull);
+      expect(restored!.rating, 3);
+      expect(restored.comment, '예외 뒤 남은 초안');
+      expect(platform.removedKeys, const [
+        'flutter.${PendingReviewDraftStore.storageKey}',
+      ]);
+      expect(
+        platform.getAllCalls,
+        2,
+        reason: '초기 load 뒤 clear 실패의 캐시 복구는 한 번만 수행한다.',
       );
     });
   });
 }
 
-final class _FalseRemoveSharedPreferencesStore
+final class _FailingRemoveSharedPreferencesStore
     extends SharedPreferencesStorePlatform {
+  _FailingRemoveSharedPreferencesStore(
+    Map<String, Object> persistedValues, {
+    this.removeError,
+    this.removeStackTrace,
+  }) : _persistedValues = Map<String, Object>.from(persistedValues);
+
+  final Map<String, Object> _persistedValues;
+  final Object? removeError;
+  final StackTrace? removeStackTrace;
   final List<String> removedKeys = [];
+  var getAllCalls = 0;
 
   @override
-  Future<bool> clear() async => true;
+  Future<bool> clear() async {
+    _persistedValues.clear();
+    return true;
+  }
 
   @override
-  Future<Map<String, Object>> getAll() async => const {};
+  Future<Map<String, Object>> getAll() async {
+    getAllCalls += 1;
+    return Map<String, Object>.from(_persistedValues);
+  }
 
   @override
   Future<bool> remove(String key) async {
     removedKeys.add(key);
+    final error = removeError;
+    if (error != null) {
+      Error.throwWithStackTrace(error, removeStackTrace ?? StackTrace.current);
+    }
     return false;
   }
 
