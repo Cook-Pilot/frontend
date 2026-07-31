@@ -52,6 +52,7 @@ void main() {
     required FakeSpeechInput speechInput,
     ExceptionAdvicePort? advicePort,
     Recipe testRecipe = recipe,
+    bool handsFreeVoiceEnabled = false,
   }) async {
     // The cooking controls live in one scrollable screen. Give the widget test
     // enough vertical room to build both the timer and voice controls so these
@@ -66,6 +67,7 @@ void main() {
           alarm: const SilentTimerAlarm(),
           advicePort: advicePort,
           speechInput: speechInput,
+          handsFreeVoiceEnabled: handsFreeVoiceEnabled,
         ),
       ),
     );
@@ -79,6 +81,100 @@ void main() {
     // A new session may wait for the previous asynchronous stop to finish.
     await tester.pumpAndSettle();
   }
+
+  testWidgets('핸즈프리는 명령 처리 후 이전 마이크가 닫힌 뒤 다시 듣는다', (tester) async {
+    final speech = FakeSpeechInput()..hangOnStop = true;
+    await pumpSession(tester, speechInput: speech, handsFreeVoiceEnabled: true);
+
+    expect(speech.startCount, 1);
+    expect(find.text('듣는 중'), findsOneWidget);
+
+    final staleHandler = speech.utteranceHandlers.single;
+    speech.emitUtterance('다음 단계', utteranceId: 'hands-free-next');
+    await tester.pump();
+
+    expect(find.text('2 / 3 단계'), findsOneWidget);
+    expect(speech.stopCount, 1);
+    expect(speech.startCount, 1);
+
+    speech.completePendingStop();
+    await tester.pumpAndSettle();
+
+    expect(speech.startCount, 2);
+    expect(find.text('듣는 중'), findsOneWidget);
+
+    staleHandler('다음 단계', 'late-old-session');
+    await tester.pump();
+    expect(find.text('2 / 3 단계'), findsOneWidget);
+  });
+
+  testWidgets('핸즈프리도 백그라운드에서 멈춘 뒤 자동으로 다시 시작하지 않는다', (tester) async {
+    final speech = FakeSpeechInput();
+    await pumpSession(tester, speechInput: speech, handsFreeVoiceEnabled: true);
+    expect(speech.startCount, 1);
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    await tester.pumpAndSettle();
+    expect(speech.stopCount, greaterThanOrEqualTo(1));
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pumpAndSettle();
+    expect(speech.startCount, 1);
+  });
+
+  testWidgets('핸즈프리에서 직접 입력을 열면 닫은 뒤에도 자동 듣기를 재개하지 않는다', (tester) async {
+    final speech = FakeSpeechInput();
+    await pumpSession(tester, speechInput: speech, handsFreeVoiceEnabled: true);
+    expect(speech.startCount, 1);
+
+    await tester.tap(find.byKey(const Key('help-request')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('help-question-field')), findsOneWidget);
+    expect(speech.stopCount, greaterThanOrEqualTo(1));
+
+    await tester.tapAt(const Offset(8, 8));
+    await tester.pumpAndSettle();
+    expect(speech.startCount, 1);
+
+    await tapVoiceButton(tester);
+    expect(speech.startCount, 2);
+    expect(find.text('듣는 중'), findsOneWidget);
+  });
+
+  testWidgets('핸즈프리 완료 명령 뒤에는 새 듣기 세션을 시작하지 않는다', (tester) async {
+    final speech = FakeSpeechInput();
+    const oneStepRecipe = Recipe(
+      id: '10000000-0000-0000-0000-000000000008',
+      title: '핸즈프리 완료 레시피',
+      description: '완료 뒤 자동 재시작을 검증한다.',
+      baseServings: 1,
+      imageUrl: '',
+      ingredients: <Ingredient>[],
+      steps: <CookStep>[
+        CookStep(
+          stepIndex: 0,
+          instruction: '마무리하세요.',
+          timerSeconds: null,
+          cautionNote: null,
+          imageUrl: '',
+        ),
+      ],
+      hasPersonalVersion: false,
+    );
+    await pumpSession(
+      tester,
+      speechInput: speech,
+      testRecipe: oneStepRecipe,
+      handsFreeVoiceEnabled: true,
+    );
+    expect(speech.startCount, 1);
+
+    speech.emitUtterance('조리 완료', utteranceId: 'hands-free-finish');
+    await tester.pumpAndSettle();
+
+    expect(find.byType(ReviewScreen), findsOneWidget);
+    expect(speech.startCount, 1);
+  });
 
   testWidgets('권한 실패 상태를 표시하고 직접 입력 질문은 계속 처리한다', (tester) async {
     final speech = FakeSpeechInput();
