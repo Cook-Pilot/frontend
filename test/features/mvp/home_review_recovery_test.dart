@@ -38,6 +38,34 @@ void main() {
     expect(cookingSessionLoadAttempts, 0);
   });
 
+  testWidgets('활성 세션 조회 중 새 후기 초안이 생기면 후기를 우선 표시한다', (tester) async {
+    final activeLoad = Completer<PersistedCookingSession?>();
+    final draft = _buildDraft();
+    var pendingLoadAttempts = 0;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildCookPilotTheme(),
+        home: HomeScreen(
+          recipeRepository: _EmptyRecipeRepository(),
+          pendingReviewDraftLoader: () async {
+            pendingLoadAttempts += 1;
+            return pendingLoadAttempts == 1 ? null : draft;
+          },
+          cookingSessionLoader: () => activeLoad.future,
+        ),
+      ),
+    );
+    await tester.pump();
+
+    activeLoad.complete(_buildActiveSession());
+    await tester.pumpAndSettle();
+
+    expect(pendingLoadAttempts, 2);
+    expect(find.text('후기 작성 이어가기'), findsOneWidget);
+    expect(find.text('이어서 요리하기'), findsNothing);
+  });
+
   testWidgets('후기 초안이 없고 활성 조리 세션만 있으면 조리 이어가기를 표시한다', (tester) async {
     await _pumpHome(
       tester,
@@ -100,7 +128,7 @@ void main() {
 
     expect(find.text('후기 작성 이어가기'), findsNothing);
     expect(find.text('이어서 요리하기'), findsNothing);
-    expect(loadAttempts, 2);
+    expect(loadAttempts, 3);
   });
 
   testWidgets('복구 로드 오류는 활성 세션 대신 오류와 재시도를 표시한다', (tester) async {
