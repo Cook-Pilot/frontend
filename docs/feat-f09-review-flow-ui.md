@@ -71,11 +71,15 @@ Home이 dispose 저장보다 먼저 이전 draft를 읽어 최신 입력을 덮�
 사용자가 개인 버전 생성을 승인한 경우에만, 후기 `201 Created`로 받은 `reviewId`에
 대해 `POST /api/v1/reviews/{reviewId}/personal-versions`를 호출한다.
 
+- 후기 POST 성공 직후에는 승인 API보다 먼저 `reviewId`를 draft의
+  `acceptedReviewId`로 저장한다. 이 체크포인트 저장에 실패하면 승인 API를
+  호출하지 않고 화면을 잠근 채 로컬 저장부터 재시도한다.
 - 개인 버전 API의 `201 Created`는 생성 성공이고, `204 No Content`는 적용할 변경이
   없는 성공이다. 둘 다 최종 완료로 처리한다.
 - 후기 저장은 성공했지만 승인 API가 실패하면 후기 API를 다시 보내지 않는다.
-  같은 화면에서 저장 버튼을 다시 누르면 보관한 `reviewId`로 승인 API만 재시도한다.
-  서버의 동일 reviewId 요청 멱등성도 이 경로의 전제다.
+  같은 화면에서 저장 버튼을 다시 누르거나 화면을 나갔다가 Home 복구로 재진입해도
+  보관한 `reviewId`로 승인 API만 재시도한다. 서버의 동일 reviewId 요청 멱등성도
+  이 경로의 전제다.
 - 사용자가 승인을 선택하지 않으면 후기 저장 성공만으로 최종 완료한다.
 
 ## 최종화와 정리 실패
@@ -118,6 +122,8 @@ ownership 지적이 있었으므로, 서버에서 사용자 범위 조회로 해
   가고 draft/session이 정리된다.
 - [x] 승인 API 실패 뒤 재시도는 후기 POST를 중복 호출하지 않고 같은 reviewId로
   승인 요청만 다시 보낸다.
+- [x] 후기 ID 체크포인트 저장 실패는 승인 호출을 막고, 승인 실패 뒤 시스템
+  뒤로가기·재진입도 같은 reviewId로 승인만 재시도한다.
 - [x] finalized 뒤 늦은 autosave/lifecycle/dispose 콜백이 clear된 draft를 되살리지
   않으며, draft 또는 session clear 실패는 성공 메시지와 cleanup warning을 함께
   표시한다.

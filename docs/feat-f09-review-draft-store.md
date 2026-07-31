@@ -23,6 +23,7 @@
 | `comment` | 작성 중인 후기 본문 |
 | `nextTimeNote` | 다음 조리를 위한 메모 |
 | `approvedPersonalVersionCreation` | 개인 버전 생성을 사용자가 승인했는지 여부 |
+| `acceptedReviewId` | 후기 POST가 이미 성공했을 때 승인 재시도에 사용할 서버 후기 ID |
 
 `setupSnapshot`과 타이머를 함께 보관하는 이유는 앱 재실행 후 현재 서버
 레시피를 다시 조회해 후기 문맥을 만들지 않기 위해서다. 예를 들어 사용자가
@@ -41,11 +42,14 @@ SharedPreferences의 다음 단일 문자열 키에 JSON을 저장한다.
 cookpilot.pending_review_draft.v1
 ```
 
-최상위 JSON에는 `schemaVersion: 1`을 포함한다. 필드가 빠졌거나 알 수 없는
-필드가 추가된 값은 현재 코드가 의미를 확정할 수 없으므로 복원하지 않는다.
+최상위 JSON에는 `schemaVersion: 2`를 포함한다. 기존 v1 초안은
+`acceptedReviewId: null`인 v2 초안으로 읽어 다음 저장에서 마이그레이션한다.
+각 버전에서 필드가 빠졌거나 알 수 없는 필드가 추가된 값은 현재 코드가 의미를
+확정할 수 없으므로 복원하지 않는다.
 후기 초안에 포함된 `setupSnapshot`도 현재 버전의 스냅샷·재료·단계 필드
 집합과 정확히 일치해야 한다. `personalVersionId`, `originalIngredientId`,
-`amount`, `baselineAmount`, `originalStepId`, `timerSeconds`, `cautionNote`처럼
+`amount`, `baselineAmount`, `baselineUnit`, `baselineIsRequired`,
+`originalStepId`, `timerSeconds`, `cautionNote`처럼
 값이 `null`일 수 있는 필드도 키 자체는 반드시 존재해야 한다. 이 엄격한
 경계는 후기 복구에만 적용하며, 다른 저장소의 과거 실행 스냅샷을 읽는
 `CookingSetupSnapshot.fromJson`의 하위 호환 기본값은 유지한다.
@@ -54,7 +58,7 @@ cookpilot.pending_review_draft.v1
 
 ```json
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "clientSessionId": "40000000-0000-0000-0000-000000000001",
   "cookedAt": "2026-07-30T08:30:00.000Z",
   "setupSnapshot": {
@@ -76,7 +80,8 @@ cookpilot.pending_review_draft.v1
   "rating": 4,
   "comment": "맛있었어요",
   "nextTimeNote": "다음에는 덜 짜게",
-  "approvedPersonalVersionCreation": false
+  "approvedPersonalVersionCreation": false,
+  "acceptedReviewId": null
 }
 ```
 
@@ -87,9 +92,11 @@ cookpilot.pending_review_draft.v1
 
 모델 생성과 저장값 복원에 같은 검증을 적용한다.
 
-- `clientSessionId`, 레시피 ID, 개인 버전 ID, 원본 재료·단계 ID는
+- `clientSessionId`, `acceptedReviewId`, 레시피 ID, 개인 버전 ID,
+  원본 재료·단계 ID는
   소문자 canonical UUID 형식이어야 한다.
 - nil UUID는 조리 식별자로 사용하지 않는다.
+- `acceptedReviewId`는 개인 버전 생성을 승인한 초안에만 존재할 수 있다.
 - `cookedAt` 저장값에는 UTC 또는 명시적인 offset이 있어야 한다.
 - 실행 스냅샷의 source와 `personalVersionId` 존재 여부가 일치해야 한다.
 - 단계 index는 0부터 연속이어야 한다.
@@ -150,7 +157,9 @@ SharedPreferences의 플랫폼 저장이나 삭제가 `false`를 반환하거나
 1. 조리완료 버튼을 누르면 후기 화면으로 이동하기 전에 최초 초안을 저장한다.
 2. 별점·후기·다음 메모·개인 버전 승인 변경을 debounce해 같은 초안으로 저장한다.
 3. 앱 시작 시 초안이 있으면 후기 복구 진입점을 표시한다.
-4. 개인 버전을 승인하지 않았으면 후기 저장 성공 뒤에, 승인했으면 개인 버전
+4. 개인 버전을 승인했다면 후기 POST 성공 직후 `acceptedReviewId`를 먼저
+   저장하고, 같은 ID로 개인 버전 생성을 요청한다.
+5. 개인 버전을 승인하지 않았으면 후기 저장 성공 뒤에, 승인했으면 개인 버전
    생성 요청까지 `201` 또는 `204`로 끝난 뒤에만 `clear`한다.
 
 서버 전송 실패나 앱 종료 시에는 초안을 지우지 않는다. 반대로 이 PR만으로는
@@ -170,4 +179,5 @@ SharedPreferences의 플랫폼 저장이나 삭제가 `false`를 반환하거나
 - 플랫폼 저장·삭제 실패 뒤 메모리 캐시와 실제 저장값의 재동기화
 - 저장소 초기화 실패를 `초안 없음`으로 숨기지 않는 오류 전달
 - 단일 초안 교체와 명시적 clear
+- 후기 접수 ID 왕복과 v1 → v2 마이그레이션
 - 손상된 타입·JSON·스키마·도메인 값 자동 정리
