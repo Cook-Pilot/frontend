@@ -233,24 +233,78 @@ void main() {
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
   });
 
-  testWidgets('권한 다이얼로그의 inactive 상태는 진행 중인 인식을 유지한다', (tester) async {
+  testWidgets('권한 다이얼로그의 starting 세션은 닫고 resumed 뒤 다시 시작한다', (tester) async {
+    final speech = FakeSpeechInput()
+      ..autoReady = false
+      ..hangOnStop = true;
+    await pumpSession(tester, speechInput: speech);
+
+    await tapVoiceButton(tester);
+    final staleReady = speech.onReady!;
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    await tester.pump();
+    // 동일 inactive가 중복 전달돼도 resume 재시작 의도를 잃지 않는다.
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    await tester.pump();
+
+    expect(speech.stopCount, greaterThanOrEqualTo(1));
+    staleReady();
+    await tester.pump();
+    expect(find.text('듣는 중'), findsNothing);
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pump();
+    expect(speech.startCount, 1);
+
+    speech.completePendingStop();
+    await tester.pumpAndSettle();
+    expect(speech.startCount, 2);
+    expect(find.text('마이크 준비 중'), findsOneWidget);
+
+    speech.emitReady();
+    await tester.pump();
+    expect(find.text('듣는 중'), findsOneWidget);
+    speech.emitUtterance('다음 단계', utteranceId: 'after-permission-dialog');
+    await tester.pump();
+    expect(find.text('2 / 3 단계'), findsOneWidget);
+  });
+
+  testWidgets('Control Center의 starting inactive도 중지하고 늦은 ready를 버린다', (
+    tester,
+  ) async {
     final speech = FakeSpeechInput()..autoReady = false;
     await pumpSession(tester, speechInput: speech);
 
     await tapVoiceButton(tester);
-    final activeHandler = speech.utteranceHandlers.single;
+    final staleReady = speech.onReady!;
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
     await tester.pump();
 
-    expect(speech.stopCount, 0);
-    expect(find.text('마이크 준비 중'), findsOneWidget);
+    expect(speech.stopCount, greaterThanOrEqualTo(1));
+    staleReady();
+    await tester.pump();
+    expect(find.text('듣는 중'), findsNothing);
+    expect(find.textContaining('화면을 벗어나 음성 입력을 멈췄어요'), findsOneWidget);
+    expect(speech.startCount, 1);
+
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
-    speech.emitReady();
+    await tester.pumpAndSettle();
+    expect(speech.startCount, 2);
+    expect(find.text('마이크 준비 중'), findsOneWidget);
+  });
+
+  testWidgets('resumed가 아닌 동안에는 새 음성 세션을 시작하지 않는다', (tester) async {
+    final speech = FakeSpeechInput();
+    await pumpSession(tester, speechInput: speech);
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
     await tester.pump();
-    expect(find.text('듣는 중'), findsOneWidget);
-    activeHandler('다음 단계', 'after-permission-dialog');
-    await tester.pump();
-    expect(find.text('2 / 3 단계'), findsOneWidget);
+    await tapVoiceButton(tester);
+
+    expect(speech.startCount, 0);
+    expect(find.text('듣는 중'), findsNothing);
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
   });
 
   testWidgets('듣는 중 inactive 상태는 마이크를 닫고 idle 백그라운드는 문구를 덮지 않는다', (
@@ -271,6 +325,8 @@ void main() {
     expect(find.textContaining('화면을 벗어나 음성 입력을 멈췄어요'), findsOneWidget);
 
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pumpAndSettle();
+    expect(speech.startCount, 1);
   });
 
   testWidgets('마지막 단계의 다음 명령은 막고 완료 명령은 후기 화면으로 한 번만 이동한다', (tester) async {
