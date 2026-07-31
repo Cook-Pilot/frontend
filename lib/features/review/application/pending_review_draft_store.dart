@@ -271,10 +271,25 @@ final class PendingReviewDraftStore {
   Future<void> clear() {
     return _serialize(() async {
       final preferences = await _preferencesLoader();
-      final removed = await preferences.remove(storageKey);
-      if (!removed) {
-        throw StateError('후기 초안을 로컬에서 정리하지 못했습니다.');
+      Object? removeError;
+      StackTrace? removeStackTrace;
+      try {
+        final removed = await preferences.remove(storageKey);
+        if (removed) {
+          return;
+        }
+      } on Object catch (error, stackTrace) {
+        removeError = error;
+        removeStackTrace = stackTrace;
       }
+
+      // remove도 플랫폼 결과보다 먼저 메모리 캐시를 지운다. false 반환과
+      // 예외를 같은 경로에서 복구해, 실제로 남은 초안을 숨기지 않는다.
+      await preferences.reload();
+      if (removeError != null) {
+        Error.throwWithStackTrace(removeError, removeStackTrace!);
+      }
+      throw StateError('후기 초안을 로컬에서 정리하지 못했습니다.');
     });
   }
 
