@@ -87,12 +87,12 @@ void main() {
     );
   }
 
-  PendingReviewDraft buildDraft() {
+  PendingReviewDraft buildDraft({Map<int, int> timerSecondsByStep = const {}}) {
     return PendingReviewDraft(
       clientSessionId: '40000000-0000-0000-0000-000000000001',
       cookedAt: DateTime.utc(2026, 7, 26),
       setupSnapshot: buildSnapshot(),
-      timerSecondsByStep: const {},
+      timerSecondsByStep: timerSecondsByStep,
       rating: 5,
       comment: '',
       nextTimeNote: '',
@@ -276,10 +276,7 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(
           home: ReviewScreen(
-            setupSnapshot: buildSnapshot(),
-            clientSessionId: '40000000-0000-0000-0000-000000000001',
-            cookedAt: DateTime(2026, 7, 26),
-            timerSecondsByStep: const {0: 240},
+            initialDraft: buildDraft(timerSecondsByStep: const {0: 240}),
             reviewRepository: _FakeReviewRepository(),
           ),
         ),
@@ -292,7 +289,7 @@ void main() {
       await tester.drag(find.byType(ListView), const Offset(0, -600));
       await tester.pumpAndSettle();
 
-      expect(find.text('후기를 조리 기록에 저장했어요.'), findsOneWidget);
+      expect(find.text('후기만 저장했어요. 개인 버전은 만들지 않았어요.'), findsOneWidget);
       expect(find.textContaining('실행 변경이 없어'), findsNothing);
     });
 
