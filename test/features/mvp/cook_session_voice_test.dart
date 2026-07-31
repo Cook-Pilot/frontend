@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cookpilot/features/cooking/application/cooking_ports.dart';
 import 'package:cookpilot/features/mvp/cook_flow_screens.dart';
 import 'package:cookpilot/features/recipe/domain/recipe.dart';
@@ -53,6 +55,8 @@ void main() {
     ExceptionAdvicePort? advicePort,
     Recipe testRecipe = recipe,
     bool handsFreeVoiceEnabled = false,
+    TimerAlarmPort? alarm = const SilentTimerAlarm(),
+    Future<TimerAlarmPort> Function()? alarmResolver,
   }) async {
     // The cooking controls live in one scrollable screen. Give the widget test
     // enough vertical room to build both the timer and voice controls so these
@@ -64,7 +68,8 @@ void main() {
         home: CookSessionScreen(
           recipe: testRecipe,
           servings: 2,
-          alarm: const SilentTimerAlarm(),
+          alarm: alarm,
+          alarmResolver: alarmResolver,
           advicePort: advicePort,
           speechInput: speechInput,
           handsFreeVoiceEnabled: handsFreeVoiceEnabled,
@@ -106,6 +111,130 @@ void main() {
     staleHandler('다음 단계', 'late-old-session');
     await tester.pump();
     expect(find.text('2 / 3 단계'), findsOneWidget);
+  });
+
+  testWidgets('핸즈프리 중 화면 단계 버튼은 이전 세션을 닫고 새 단계에서 다시 듣는다', (tester) async {
+    final speech = FakeSpeechInput()..hangOnStop = true;
+    await pumpSession(tester, speechInput: speech, handsFreeVoiceEnabled: true);
+    final staleHandler = speech.utteranceHandlers.single;
+
+    await tester.tap(find.widgetWithText(FilledButton, '다음 단계'));
+    await tester.pump();
+
+    expect(find.text('2 / 3 단계'), findsOneWidget);
+    expect(speech.stopCount, 1);
+    expect(speech.startCount, 1);
+    staleHandler('다음 단계', 'stale-before-new-step');
+    await tester.pump();
+    expect(find.text('2 / 3 단계'), findsOneWidget);
+
+    speech.completePendingStop();
+    await tester.pumpAndSettle();
+    expect(speech.startCount, 2);
+    expect(find.text('듣는 중'), findsOneWidget);
+  });
+
+  testWidgets('inactive에서 예약된 최초 핸즈프리는 resumed 뒤 정확히 한 번 시작한다', (tester) async {
+    final speech = FakeSpeechInput();
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+
+    await pumpSession(tester, speechInput: speech, handsFreeVoiceEnabled: true);
+    expect(speech.startCount, 0);
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pumpAndSettle();
+    expect(speech.startCount, 1);
+    expect(find.text('듣는 중'), findsOneWidget);
+  });
+
+  testWidgets('알림 권한 완료가 resumed보다 먼저여도 핸즈프리는 한 번만 시작한다', (tester) async {
+    final speech = FakeSpeechInput();
+    final alarm = Completer<TimerAlarmPort>();
+    await pumpSession(
+      tester,
+      speechInput: speech,
+      handsFreeVoiceEnabled: true,
+      alarm: null,
+      alarmResolver: () => alarm.future,
+    );
+    expect(speech.startCount, 0);
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    alarm.complete(const SilentTimerAlarm());
+    await tester.pump();
+    expect(speech.startCount, 0);
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pumpAndSettle();
+    expect(speech.startCount, 1);
+
+    speech.emitUtterance('현재 단계', utteranceId: 'alarm-before-resume');
+    await tester.pumpAndSettle();
+    expect(speech.startCount, 2);
+  });
+
+  testWidgets('resumed가 알림 권한 완료보다 먼저여도 초기 음성 권한 요청을 직렬화한다', (tester) async {
+    final speech = FakeSpeechInput();
+    final alarm = Completer<TimerAlarmPort>();
+    await pumpSession(
+      tester,
+      speechInput: speech,
+      handsFreeVoiceEnabled: true,
+      alarm: null,
+      alarmResolver: () => alarm.future,
+    );
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pump();
+    expect(speech.startCount, 0);
+
+    alarm.complete(const SilentTimerAlarm());
+    await tester.pumpAndSettle();
+    expect(speech.startCount, 1);
+
+    speech.emitUtterance('현재 단계', utteranceId: 'resume-before-alarm');
+    await tester.pumpAndSettle();
+    expect(speech.startCount, 2);
+  });
+
+  testWidgets('시스템 back은 이전 화면을 열기 전에 음성 세션을 무효화하고 stop한다', (tester) async {
+    final speech = FakeSpeechInput();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) => Scaffold(
+            body: FilledButton(
+              key: const Key('open-cook-session'),
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => CookSessionScreen(
+                    recipe: recipe,
+                    servings: 2,
+                    alarm: const SilentTimerAlarm(),
+                    speechInput: speech,
+                    handsFreeVoiceEnabled: true,
+                  ),
+                ),
+              ),
+              child: const Text('조리 화면 열기'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.byKey(const Key('open-cook-session')));
+    await tester.pumpAndSettle();
+    expect(speech.startCount, 1);
+    final staleHandler = speech.utteranceHandlers.single;
+
+    await tester.binding.handlePopRoute();
+    expect(speech.stopCount, greaterThanOrEqualTo(1));
+    staleHandler('다음 단계', 'stale-after-system-back');
+    await tester.pumpAndSettle();
+
+    expect(find.byType(CookSessionScreen), findsNothing);
+    expect(find.text('조리 화면 열기'), findsOneWidget);
   });
 
   testWidgets('핸즈프리도 백그라운드에서 멈춘 뒤 자동으로 다시 시작하지 않는다', (tester) async {
