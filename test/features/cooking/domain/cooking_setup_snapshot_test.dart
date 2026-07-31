@@ -52,6 +52,7 @@ void main() {
     expect(restored!.source, CookingRecipeSource.personal);
     expect(restored.personalVersionId, 'personal-version-id');
     expect(restored.ingredients.first.isSubstituted, isTrue);
+    expect(restored.ingredients.first.baselineAmount, isNull);
     expect(restored.ingredients.first.baselineUnit, '단');
     expect(restored.ingredients.first.baselineIsRequired, isFalse);
     expect(restored.ingredients.last.omitted, isTrue);
