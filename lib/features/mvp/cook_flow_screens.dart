@@ -406,12 +406,14 @@ class CookSetupScreen extends StatefulWidget {
     this.recipeRepository,
     this.recommendationDataSource,
     this.sessionAlarm,
+    this.sessionSpeechInput,
   });
 
   final Recipe recipe;
   final RecipeRepository? recipeRepository;
   final RecommendationDataSource? recommendationDataSource;
   final TimerAlarmPort? sessionAlarm;
+  final SpeechInputPort? sessionSpeechInput;
 
   @override
   State<CookSetupScreen> createState() => _CookSetupScreenState();
@@ -434,6 +436,7 @@ class _CookSetupScreenState extends State<CookSetupScreen> {
   final Map<String, _AppliedRecommendation> _appliedRecommendations = {};
   bool _loadingRecommendations = false;
   String? _recommendationError;
+  bool _handsFreeVoiceEnabled = false;
 
   @override
   void initState() {
@@ -798,6 +801,42 @@ class _CookSetupScreenState extends State<CookSetupScreen> {
               ' · 생략 ${_ingredients.where((item) => item.omitted).length}개'
               ' · 조리 ${_steps.length}단계',
         ),
+        const SectionTitle('조리 중 음성 사용'),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            ChoiceChip(
+              key: const Key('cooking-voice-mode-manual'),
+              label: const Text('버튼으로 사용'),
+              selected: !_handsFreeVoiceEnabled,
+              onSelected: setupLocked
+                  ? null
+                  : (_) => setState(() => _handsFreeVoiceEnabled = false),
+            ),
+            ChoiceChip(
+              key: const Key('cooking-voice-mode-hands-free'),
+              label: const Text('핸즈프리 음성'),
+              selected: _handsFreeVoiceEnabled,
+              onSelected: setupLocked
+                  ? null
+                  : (_) => setState(() => _handsFreeVoiceEnabled = true),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        InfoStrip(
+          key: const Key('cooking-voice-mode-description'),
+          icon: _handsFreeVoiceEnabled
+              ? Icons.record_voice_over_rounded
+              : Icons.mic_none_rounded,
+          title: _handsFreeVoiceEnabled
+              ? '조리 시작과 함께 음성을 들어요'
+              : '마이크는 자동으로 켜지지 않아요',
+          body: _handsFreeVoiceEnabled
+              ? '명령을 처리한 뒤 다시 듣습니다. 직접 입력을 열거나 앱을 벗어나면 자동 듣기를 멈춰요.'
+              : '기본 설정이에요. 조리 중 말하기 버튼을 누른 경우에만 음성을 사용합니다.',
+        ),
       ],
       bottom: PressableScale(
         child: FilledButton(
@@ -812,6 +851,8 @@ class _CookSetupScreenState extends State<CookSetupScreen> {
                         servings: servings,
                         setupSnapshot: snapshot,
                         alarm: widget.sessionAlarm,
+                        speechInput: widget.sessionSpeechInput,
+                        handsFreeVoiceEnabled: _handsFreeVoiceEnabled,
                       ),
                     ),
                   );
@@ -1471,6 +1512,7 @@ class CookSessionScreen extends StatefulWidget {
     this.alarm,
     this.advicePort,
     this.speechInput,
+    this.handsFreeVoiceEnabled = false,
   });
 
   final Recipe recipe;
@@ -1488,6 +1530,11 @@ class CookSessionScreen extends StatefulWidget {
 
   /// 테스트에서는 fake를, 실제 앱에서는 네이티브 STT 구현을 사용한다.
   final SpeechInputPort? speechInput;
+
+  /// 조리 설정에서 사용자가 명시적으로 핸즈프리를 선택한 경우에만 true다.
+  ///
+  /// false이면 마이크를 자동으로 열지 않고 기존 말하기 버튼으로만 시작한다.
+  final bool handsFreeVoiceEnabled;
 
   @override
   State<CookSessionScreen> createState() => _CookSessionScreenState();
@@ -1520,6 +1567,7 @@ class _CookSessionScreenState extends State<CookSessionScreen>
   int _appLifecycleVersion = 0;
   bool _restartSpeechOnResume = false;
   bool _disposed = false;
+  late bool _handsFreeAutoRearm;
 
   // 원래 디자인은 그대로 두고 시계(타이머)만 실제로 동작시킨다.
   // 기본 클럭이 WallAnchoredMonotonicClock이라 화면이 꺼져도 시간이 이어진다.
@@ -1545,6 +1593,7 @@ class _CookSessionScreenState extends State<CookSessionScreen>
         WidgetsBinding.instance.lifecycleState ?? AppLifecycleState.resumed;
     WidgetsBinding.instance.addObserver(this);
     _timer.addListener(_onTimerChanged);
+    _handsFreeAutoRearm = widget.handsFreeVoiceEnabled;
     final restored = widget.restoredSession;
     _sessionId = restored?.sessionId ?? generateUuidV4();
     _timerSecondsByStep.addAll(
@@ -1566,6 +1615,13 @@ class _CookSessionScreenState extends State<CookSessionScreen>
     }
     unawaited(_initAlarm());
     _persist();
+    if (_handsFreeAutoRearm) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_handsFreeAutoRearm && mounted) {
+          unawaited(_startSpeechInput());
+        }
+      });
+    }
   }
 
   Future<void> _initAlarm() async {
@@ -1599,6 +1655,13 @@ class _CookSessionScreenState extends State<CookSessionScreen>
     _restartSpeechOnResume = state == AppLifecycleState.inactive
         ? _restartSpeechOnResume || _speechPhase == _CookSpeechPhase.starting
         : false;
+    // 핸즈프리 최초 권한 요청(starting + inactive)은 재개 뒤에도 원래
+    // 선택을 유지한다. 이미 듣던 중이거나 실제 백그라운드로 전환되면
+    // 자동 재청취를 끈다.
+    if (state != AppLifecycleState.inactive ||
+        _speechPhase != _CookSpeechPhase.starting) {
+      _handsFreeAutoRearm = false;
+    }
     // 백그라운드에서는 마이크를 열어 두지 않는다. 세션 버전을 먼저
     // 무효화해 stop 완료 전에 도착한 콜백도 화면을 바꾸지 못하게 한다.
     final message = _speechIsActive ? '화면을 벗어나 음성 입력을 멈췄어요.' : null;
@@ -1688,10 +1751,12 @@ class _CookSessionScreenState extends State<CookSessionScreen>
   void _toggleSpeechInput() {
     if (_speechPhase == _CookSpeechPhase.starting ||
         _speechPhase == _CookSpeechPhase.listening) {
+      _handsFreeAutoRearm = false;
       unawaited(_deactivateSpeechInput(message: '음성 입력을 멈췄어요.'));
       return;
     }
     if (_speechPhase != _CookSpeechPhase.stopping) {
+      _handsFreeAutoRearm = widget.handsFreeVoiceEnabled;
       unawaited(_startSpeechInput());
     }
   }
@@ -1818,7 +1883,7 @@ class _CookSessionScreenState extends State<CookSessionScreen>
       _speechPhase = _CookSpeechPhase.idle;
       _voiceMessage = '“$transcript”로 들었어요.';
     });
-    unawaited(_stopSpeechPort());
+    final stopFuture = _stopSpeechPort();
 
     final intent = _voiceRouter.route(
       transcript,
@@ -1829,6 +1894,27 @@ class _CookSessionScreenState extends State<CookSessionScreen>
       currentStepInstruction: widget.recipe.steps[step - 1].instruction,
     );
     _applyVoiceIntent(intent, transcript: transcript);
+    unawaited(_rearmHandsFreeAfterCommand(stopFuture));
+  }
+
+  Future<void> _rearmHandsFreeAfterCommand(Future<void> completedStop) async {
+    await completedStop;
+    if (!_handsFreeAutoRearm ||
+        _disposed ||
+        _completed ||
+        !mounted ||
+        _speechIsActive) {
+      return;
+    }
+    await Future<void>.value();
+    if (!_handsFreeAutoRearm ||
+        _disposed ||
+        _completed ||
+        !mounted ||
+        _speechIsActive) {
+      return;
+    }
+    await _startSpeechInput();
   }
 
   bool _rememberUtteranceId(String utteranceId) {
@@ -2109,6 +2195,7 @@ class _CookSessionScreenState extends State<CookSessionScreen>
   }
 
   Future<void> _openHelpSheet() async {
+    _handsFreeAutoRearm = false;
     if (_speechIsActive) {
       unawaited(_deactivateSpeechInput(message: '음성 입력을 멈췄어요. 질문을 직접 입력해주세요.'));
     }

@@ -9,6 +9,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
+import '../../helpers/cooking_fakes.dart';
+
 void main() {
   const userId = '90000000-0000-0000-0000-000000000001';
   const versionId = '20000000-0000-0000-0000-000000000001';
@@ -238,6 +240,80 @@ void main() {
     expect(find.text('2인분'), findsOneWidget);
     expect(find.text('2공기'), findsOneWidget);
     expect(find.text('4개'), findsOneWidget);
+  });
+
+  testWidgets('조리 전 음성 기본값은 버튼 방식이며 마이크를 자동으로 열지 않는다', (tester) async {
+    final speech = FakeSpeechInput();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: CookSetupScreen(
+          recipe: _recipe(),
+          sessionAlarm: const SilentTimerAlarm(),
+          sessionSpeechInput: speech,
+        ),
+      ),
+    );
+
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('cooking-voice-mode-manual')),
+      300,
+    );
+    final manualChoice = tester.widget<ChoiceChip>(
+      find.byKey(const Key('cooking-voice-mode-manual')),
+    );
+    final handsFreeChoice = tester.widget<ChoiceChip>(
+      find.byKey(const Key('cooking-voice-mode-hands-free')),
+    );
+    expect(manualChoice.selected, isTrue);
+    expect(handsFreeChoice.selected, isFalse);
+    expect(find.text('마이크는 자동으로 켜지지 않아요'), findsOneWidget);
+
+    await tester.tap(find.text('이 설정으로 조리 시작'));
+    await tester.pumpAndSettle();
+
+    final session = tester.widget<CookSessionScreen>(
+      find.byType(CookSessionScreen),
+    );
+    expect(session.handsFreeVoiceEnabled, isFalse);
+    expect(speech.startCount, 0);
+  });
+
+  testWidgets('핸즈프리 선택을 조리 화면에 전달해 진입 후 음성 듣기를 시작한다', (tester) async {
+    final speech = FakeSpeechInput();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: CookSetupScreen(
+          recipe: _recipe(),
+          sessionAlarm: const SilentTimerAlarm(),
+          sessionSpeechInput: speech,
+        ),
+      ),
+    );
+
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('cooking-voice-mode-hands-free')),
+      300,
+    );
+    await tester.tap(find.byKey(const Key('cooking-voice-mode-hands-free')));
+    await tester.pump();
+    expect(
+      tester
+          .widget<ChoiceChip>(
+            find.byKey(const Key('cooking-voice-mode-hands-free')),
+          )
+          .selected,
+      isTrue,
+    );
+    expect(find.text('조리 시작과 함께 음성을 들어요'), findsOneWidget);
+
+    await tester.tap(find.text('이 설정으로 조리 시작'));
+    await tester.pumpAndSettle();
+
+    final session = tester.widget<CookSessionScreen>(
+      find.byType(CookSessionScreen),
+    );
+    expect(session.handsFreeVoiceEnabled, isTrue);
+    expect(speech.startCount, 1);
   });
 
   testWidgets('재료 양 조절 결과를 조리 시작 스냅샷에 고정한다', (tester) async {
