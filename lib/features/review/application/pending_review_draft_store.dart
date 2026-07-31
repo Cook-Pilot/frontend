@@ -304,10 +304,21 @@ final class PendingReviewDraftStore {
 
   static Future<void> _removeBestEffort(SharedPreferences preferences) async {
     try {
-      await preferences.remove(storageKey);
+      final removed = await preferences.remove(storageKey);
+      if (removed) {
+        return;
+      }
     } on Object {
-      // 손상값을 읽기 결과로 노출하지 않는 것이 우선이다. 다음 load가 다시
-      // 정리를 시도하며, 실제 저장소 장애는 이후 save/clear에서 전달된다.
+      // false 반환과 예외 모두 아래에서 디스크 상태를 다시 읽는다.
+    }
+
+    try {
+      // remove는 플랫폼 결과보다 먼저 메모리 캐시를 지운다. 실패 시 손상값을
+      // 캐시에 복원해야 다음 load가 디스크 정리를 다시 시도할 수 있다.
+      await preferences.reload();
+    } on Object {
+      // 손상값을 읽기 결과로 노출하지 않는 것이 우선이다. best-effort 정리
+      // 오류는 숨기고, 실제 저장소 장애는 이후 save/clear에서 전달한다.
     }
   }
 }
