@@ -412,6 +412,9 @@ class CookSetupScreen extends StatefulWidget {
     this.recommendationDataSource,
     this.sessionAlarm,
     this.sessionSpeechInput,
+    this.pendingReviewDraftStore,
+    this.pendingReviewScreenBuilder,
+    this.cookSessionScreenBuilder,
   });
 
   final Recipe recipe;
@@ -419,6 +422,9 @@ class CookSetupScreen extends StatefulWidget {
   final RecommendationDataSource? recommendationDataSource;
   final TimerAlarmPort? sessionAlarm;
   final SpeechInputPort? sessionSpeechInput;
+  final PendingReviewDraftGateway? pendingReviewDraftStore;
+  final Widget Function(PendingReviewDraft draft)? pendingReviewScreenBuilder;
+  final WidgetBuilder? cookSessionScreenBuilder;
 
   @override
   State<CookSetupScreen> createState() => _CookSetupScreenState();
@@ -428,6 +434,7 @@ class _CookSetupScreenState extends State<CookSetupScreen> {
   late int servings;
   late final RecipeRepository _recipeRepository;
   late final RecommendationDataSource? _recommendationDataSource;
+  late final PendingReviewDraftGateway _pendingReviewDraftStore;
   late List<_IngredientSetupDraft> _ingredients;
   late List<CookStep> _steps;
   List<PersonalRecipeVersionSummary> _personalVersions = const [];
@@ -442,17 +449,84 @@ class _CookSetupScreenState extends State<CookSetupScreen> {
   bool _loadingRecommendations = false;
   String? _recommendationError;
   bool _handsFreeVoiceEnabled = false;
+  bool _startingCooking = false;
 
   @override
   void initState() {
     super.initState();
     _recipeRepository = widget.recipeRepository ?? RecipeRepository();
     _recommendationDataSource = widget.recommendationDataSource;
+    _pendingReviewDraftStore =
+        widget.pendingReviewDraftStore ?? PendingReviewDraftStore();
     servings = widget.recipe.baseServings.round().clamp(1, 99);
     _applySelectedRecipe();
     unawaited(_loadPersonalVersions());
     if (_recommendationDataSource != null) {
       unawaited(_loadRecommendations());
+    }
+  }
+
+  Future<void> _startCooking() async {
+    if (_loadingPersonalVersion || _startingCooking) {
+      return;
+    }
+    setState(() => _startingCooking = true);
+    try {
+      final PendingReviewDraft? pendingReviewDraft;
+      try {
+        pendingReviewDraft = await _pendingReviewDraftStore.load();
+      } on Object {
+        if (mounted) {
+          ScaffoldMessenger.of(context)
+            ..hideCurrentSnackBar()
+            ..showSnackBar(
+              const SnackBar(
+                content: Text('작성 중인 후기를 확인하지 못해 새 조리를 시작하지 않았어요. 다시 시도해 주세요.'),
+              ),
+            );
+        }
+        return;
+      }
+      if (!mounted) {
+        return;
+      }
+      if (pendingReviewDraft case final PendingReviewDraft draft) {
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(const SnackBar(content: Text('작성 중인 후기를 먼저 이어갈게요.')));
+        await Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (_) =>
+                widget.pendingReviewScreenBuilder?.call(draft) ??
+                ReviewScreen(
+                  initialDraft: draft,
+                  pendingReviewDraftStore: _pendingReviewDraftStore,
+                ),
+          ),
+        );
+        return;
+      }
+
+      final snapshot = _buildSnapshot();
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder:
+              widget.cookSessionScreenBuilder ??
+              (_) => CookSessionScreen(
+                recipe: snapshot.toExecutionRecipe(),
+                servings: servings,
+                setupSnapshot: snapshot,
+                alarm: widget.sessionAlarm,
+                advicePort: HttpExceptionAdvicePort(),
+                speechInput: widget.sessionSpeechInput,
+                handsFreeVoiceEnabled: _handsFreeVoiceEnabled,
+              ),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _startingCooking = false);
+      }
     }
   }
 
@@ -653,7 +727,7 @@ class _CookSetupScreenState extends State<CookSetupScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final setupLocked = _loadingPersonalVersion;
+    final setupLocked = _loadingPersonalVersion || _startingCooking;
     final visibleRecommendations = _recommendations
         .where(
           (item) => !_handledRecommendationIds.contains(item.recommendationId),
@@ -853,25 +927,14 @@ class _CookSetupScreenState extends State<CookSetupScreen> {
       ],
       bottom: PressableScale(
         child: FilledButton(
-          onPressed: setupLocked
-              ? null
-              : () {
-                  final snapshot = _buildSnapshot();
-                  Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (_) => CookSessionScreen(
-                        recipe: snapshot.toExecutionRecipe(),
-                        servings: servings,
-                        setupSnapshot: snapshot,
-                        alarm: widget.sessionAlarm,
-                        advicePort: HttpExceptionAdvicePort(),
-                        speechInput: widget.sessionSpeechInput,
-                        handsFreeVoiceEnabled: _handsFreeVoiceEnabled,
-                      ),
-                    ),
-                  );
-                },
-          child: Text(setupLocked ? '나 맞춤 버전 불러오는 중' : '이 설정으로 조리 시작'),
+          onPressed: setupLocked ? null : _startCooking,
+          child: Text(
+            _loadingPersonalVersion
+                ? '나 맞춤 버전 불러오는 중'
+                : _startingCooking
+                ? '작성 중 후기 확인 중'
+                : '이 설정으로 조리 시작',
+          ),
         ),
       ),
     );

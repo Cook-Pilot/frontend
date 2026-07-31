@@ -107,6 +107,122 @@ void main() {
     expect(find.text(_buildSetupSnapshot().title), findsOneWidget);
   });
 
+  testWidgets('조리 재개 직전에도 초안이 없으면 기존 조리 화면을 연다', (tester) async {
+    final activeSession = _buildActiveSession();
+    PersistedCookingSession? receivedSession;
+
+    await _pumpHome(
+      tester,
+      pendingReviewDraftLoader: () async => null,
+      cookingSessionLoader: () async => activeSession,
+      cookingScreenBuilder: (session, _) {
+        receivedSession = session;
+        return const Scaffold(body: Text('조리 재개 화면'));
+      },
+    );
+    await tester.tap(find.text('이어서 요리하기'));
+    await tester.pumpAndSettle();
+
+    expect(receivedSession, same(activeSession));
+    expect(find.text('조리 재개 화면'), findsOneWidget);
+    expect(find.text('후기 작성 이어가기'), findsNothing);
+  });
+
+  testWidgets('조리 재개 카드 표시 뒤 초안이 생기면 후기를 먼저 연다', (tester) async {
+    PendingReviewDraft? availableDraft;
+    PendingReviewDraft? receivedDraft;
+    var cookingRouteBuilds = 0;
+
+    await _pumpHome(
+      tester,
+      pendingReviewDraftLoader: () async => availableDraft,
+      cookingSessionLoader: () async => _buildActiveSession(),
+      reviewScreenBuilder: (draft) {
+        receivedDraft = draft;
+        return const Scaffold(body: Text('후기 재개 화면'));
+      },
+      cookingScreenBuilder: (_, _) {
+        cookingRouteBuilds += 1;
+        return const Scaffold(body: Text('열리면 안 되는 조리 화면'));
+      },
+    );
+    availableDraft = _buildDraft();
+
+    await tester.tap(find.text('이어서 요리하기'));
+    await tester.pumpAndSettle();
+
+    expect(receivedDraft, same(availableDraft));
+    expect(cookingRouteBuilds, 0);
+    expect(find.text('후기 재개 화면'), findsOneWidget);
+    expect(find.text('열리면 안 되는 조리 화면'), findsNothing);
+    expect(find.text('작성 중인 후기를 먼저 이어갈게요.'), findsOneWidget);
+  });
+
+  testWidgets('조리 재개 직전 초안 조회 오류는 조리 화면을 열지 않는다', (tester) async {
+    var pendingLoadAttempts = 0;
+    var cookingRouteBuilds = 0;
+
+    await _pumpHome(
+      tester,
+      pendingReviewDraftLoader: () async {
+        pendingLoadAttempts += 1;
+        if (pendingLoadAttempts > 2) {
+          throw StateError('pending review read failure');
+        }
+        return null;
+      },
+      cookingSessionLoader: () async => _buildActiveSession(),
+      cookingScreenBuilder: (_, _) {
+        cookingRouteBuilds += 1;
+        return const Scaffold(body: Text('열리면 안 되는 조리 화면'));
+      },
+    );
+
+    await tester.tap(find.text('이어서 요리하기'));
+    await tester.pumpAndSettle();
+
+    expect(pendingLoadAttempts, 3);
+    expect(cookingRouteBuilds, 0);
+    expect(find.text('저장된 진행 상황을 불러오지 못했어요.'), findsOneWidget);
+    expect(find.text('열리면 안 되는 조리 화면'), findsNothing);
+  });
+
+  testWidgets('조리 재개 직전 초안 확인 중 중복 탭은 한 번만 처리한다', (tester) async {
+    final guardLoad = Completer<PendingReviewDraft?>();
+    var pendingLoadAttempts = 0;
+    var cookingRouteBuilds = 0;
+
+    await _pumpHome(
+      tester,
+      pendingReviewDraftLoader: () {
+        pendingLoadAttempts += 1;
+        if (pendingLoadAttempts <= 2) {
+          return Future<PendingReviewDraft?>.value(null);
+        }
+        return guardLoad.future;
+      },
+      cookingSessionLoader: () async => _buildActiveSession(),
+      cookingScreenBuilder: (_, _) {
+        cookingRouteBuilds += 1;
+        return const Scaffold(body: Text('조리 재개 화면'));
+      },
+    );
+    final resumeCard = find.text('이어서 요리하기');
+    await tester.tap(resumeCard);
+    await tester.tap(resumeCard);
+    await tester.pump();
+
+    expect(pendingLoadAttempts, 3);
+    expect(find.text('후기 상태 확인 중'), findsOneWidget);
+
+    guardLoad.complete(null);
+    await tester.pumpAndSettle();
+
+    expect(pendingLoadAttempts, 3);
+    expect(cookingRouteBuilds, 1);
+    expect(find.text('조리 재개 화면'), findsOneWidget);
+  });
+
   testWidgets('후기 카드를 누르면 저장된 초안 객체를 그대로 후기 화면에 전달한다', (tester) async {
     final draft = _buildDraft();
     PendingReviewDraft? receivedDraft;
@@ -314,6 +430,7 @@ Future<void> _pumpHome(
   required HomePendingReviewDraftLoader pendingReviewDraftLoader,
   HomeCookingSessionLoader? cookingSessionLoader,
   HomeReviewScreenBuilder? reviewScreenBuilder,
+  HomeCookingScreenBuilder? cookingScreenBuilder,
   RecipeRepository? recipeRepository,
 }) async {
   await tester.pumpWidget(
@@ -324,6 +441,7 @@ Future<void> _pumpHome(
         pendingReviewDraftLoader: pendingReviewDraftLoader,
         cookingSessionLoader: cookingSessionLoader ?? () async => null,
         reviewScreenBuilder: reviewScreenBuilder,
+        cookingScreenBuilder: cookingScreenBuilder,
       ),
     ),
   );
