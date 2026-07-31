@@ -10,6 +10,7 @@ import '../cooking/application/timer_controller.dart';
 import '../cooking/domain/cooking_setup_snapshot.dart';
 import '../cooking/domain/cooking_session_state.dart';
 import '../cooking/domain/cooking_voice_router.dart';
+import '../cooking/presentation/cooking_voice_session_controller.dart';
 import '../cooking/presentation/native_speech_input.dart';
 import '../cooking/presentation/timer_alarm_provider.dart';
 import '../cooking/presentation/widgets/help_question_sheet.dart';
@@ -1492,15 +1493,7 @@ bool _sameIngredientName(String left, String right) {
   return normalize(left) == normalize(right);
 }
 
-enum _CookSpeechPhase {
-  idle,
-  starting,
-  listening,
-  stopping,
-  permissionDenied,
-  retryRequired,
-  unavailable,
-}
+typedef _CookSpeechPhase = CookingVoiceSpeechPhase;
 
 class CookSessionScreen extends StatefulWidget {
   const CookSessionScreen({
@@ -1510,6 +1503,7 @@ class CookSessionScreen extends StatefulWidget {
     this.setupSnapshot,
     this.restoredSession,
     this.alarm,
+    this.alarmResolver,
     this.advicePort,
     this.speechInput,
     this.handsFreeVoiceEnabled = false,
@@ -1524,6 +1518,9 @@ class CookSessionScreen extends StatefulWidget {
 
   /// 테스트에서 플랫폼 알림 초기화를 대체하기 위한 주입 지점.
   final TimerAlarmPort? alarm;
+
+  /// 권한 요청을 포함한 비동기 알림 초기화의 테스트 주입 지점.
+  final Future<TimerAlarmPort> Function()? alarmResolver;
 
   /// 도움 질문에 답하는 포트. AI 파트가 완성되면 실제 구현으로 교체한다.
   final ExceptionAdvicePort? advicePort;
@@ -1551,28 +1548,20 @@ class _CookSessionScreenState extends State<CookSessionScreen>
   // 도움 질문(음성 폴백) 상태. 답변은 현재 단계에 묶이므로 단계가 바뀌면 버린다.
   late final ExceptionAdvicePort _advice =
       widget.advicePort ?? DemoExceptionAdvicePort();
-  late final SpeechInputPort _speechInput =
-      widget.speechInput ?? NativeSpeechInput();
+  late final CookingVoiceSessionController _voiceSession;
   static const CookingVoiceRouter _voiceRouter = CookingVoiceRouter();
   String? _helpAnswer;
   bool _helpLoading = false;
   int _helpRequestVersion = 0;
 
-  _CookSpeechPhase _speechPhase = _CookSpeechPhase.idle;
   String? _voiceMessage;
-  int _speechSessionVersion = 0;
-  final Set<String> _seenUtteranceIds = <String>{};
-  Future<void>? _speechStopFuture;
-  late AppLifecycleState _appLifecycleState;
-  int _appLifecycleVersion = 0;
-  bool _restartSpeechOnResume = false;
   bool _disposed = false;
-  late bool _handsFreeAutoRearm;
 
   // 원래 디자인은 그대로 두고 시계(타이머)만 실제로 동작시킨다.
   // 기본 클럭이 WallAnchoredMonotonicClock이라 화면이 꺼져도 시간이 이어진다.
   final LocalTimerController _timer = LocalTimerController();
   TimerAlarmPort? _alarm;
+  late final Future<void> _alarmInitialization;
   TimerStatus _lastStatus = TimerStatus.idle;
 
   // 마지막으로 저장한 상태. 타이머가 틱마다 알림을 보내므로 의미 있는
@@ -1585,15 +1574,22 @@ class _CookSessionScreenState extends State<CookSessionScreen>
   // 조리 완료 후 화면 전환 중에도 타이머 콜백이 살아 있으므로,
   // 정리한 저장본을 다시 쓰지 않도록 완료 이후에는 저장을 막는다.
   bool _completed = false;
+  bool _closingSession = false;
+  bool _allowSessionPop = false;
 
   @override
   void initState() {
     super.initState();
-    _appLifecycleState =
-        WidgetsBinding.instance.lifecycleState ?? AppLifecycleState.resumed;
+    _voiceSession = CookingVoiceSessionController(
+      speechInput: widget.speechInput ?? NativeSpeechInput(),
+      handsFreeEnabled: widget.handsFreeVoiceEnabled,
+      initialLifecycleState:
+          WidgetsBinding.instance.lifecycleState ?? AppLifecycleState.resumed,
+      onStateChanged: _onSpeechStateChanged,
+      onTranscript: _handleSpeechUtterance,
+    );
     WidgetsBinding.instance.addObserver(this);
     _timer.addListener(_onTimerChanged);
-    _handsFreeAutoRearm = widget.handsFreeVoiceEnabled;
     final restored = widget.restoredSession;
     _sessionId = restored?.sessionId ?? generateUuidV4();
     _timerSecondsByStep.addAll(
@@ -1613,12 +1609,16 @@ class _CookSessionScreenState extends State<CookSessionScreen>
       _timer.restore(restored.timerSnapshotAt(DateTime.now()));
       _lastStatus = _timer.status;
     }
-    unawaited(_initAlarm());
+    _alarmInitialization = _initAlarm();
+    unawaited(_alarmInitialization);
     _persist();
-    if (_handsFreeAutoRearm) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (_handsFreeAutoRearm && mounted) {
-          unawaited(_startSpeechInput());
+    if (_voiceSession.shouldAutoStartHandsFree) {
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        // Notification and microphone permissions both drive app lifecycle
+        // transitions. Serialize them so two system dialogs cannot race.
+        await _alarmInitialization;
+        if (_voiceSession.shouldAutoStartHandsFree && mounted) {
+          await _voiceSession.startHandsFree();
         }
       });
     }
@@ -1626,265 +1626,72 @@ class _CookSessionScreenState extends State<CookSessionScreen>
 
   Future<void> _initAlarm() async {
     // 백그라운드 알림용 로컬 알림을 한 번 초기화(권한 요청 포함)한다.
-    final alarm = widget.alarm ?? await resolveTimerAlarm();
-    if (mounted) {
-      _alarm = alarm;
-      // 복원된 타이머가 이미 실행 중이면 종료 알림을 다시 예약한다.
-      _scheduleAlarm();
+    try {
+      final TimerAlarmPort alarm;
+      if (widget.alarm case final injected?) {
+        alarm = injected;
+      } else if (widget.alarmResolver case final resolver?) {
+        alarm = await resolver();
+      } else {
+        alarm = await resolveTimerAlarm();
+      }
+      if (mounted) {
+        _alarm = alarm;
+        // 복원된 타이머가 이미 실행 중이면 종료 알림을 다시 예약한다.
+        _scheduleAlarm();
+      }
+    } catch (_) {
+      // 알림 권한이나 플러그인 초기화가 실패해도 화면 타이머와 음성 조리는
+      // 계속 사용할 수 있다.
     }
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    _appLifecycleState = state;
-    final lifecycleVersion = ++_appLifecycleVersion;
     // 화면을 다시 켜면 잠든 사이 흐른 시간을 반영해 남은 시간을 재계산한다.
     if (state == AppLifecycleState.resumed) {
       _timer.sync();
-      final restartSpeech = _restartSpeechOnResume;
-      _restartSpeechOnResume = false;
-      if (restartSpeech) {
-        unawaited(_restartSpeechAfterStop(lifecycleVersion));
-      }
-      return;
     }
-    // 권한 다이얼로그와 Control Center는 모두 inactive를 만들 수 있어
-    // 화면에서는 안전하게 구분할 수 없다. starting 세션은 어느 쪽이든
-    // 즉시 닫고 resume 뒤 새 세션으로 시작한다. 이미 listening이었다면
-    // 프라이버시상 자동 재개하지 않는다.
-    _restartSpeechOnResume = state == AppLifecycleState.inactive
-        ? _restartSpeechOnResume || _speechPhase == _CookSpeechPhase.starting
-        : false;
-    // 핸즈프리 최초 권한 요청(starting + inactive)은 재개 뒤에도 원래
-    // 선택을 유지한다. 이미 듣던 중이거나 실제 백그라운드로 전환되면
-    // 자동 재청취를 끈다.
-    if (state != AppLifecycleState.inactive ||
-        _speechPhase != _CookSpeechPhase.starting) {
-      _handsFreeAutoRearm = false;
-    }
-    // 백그라운드에서는 마이크를 열어 두지 않는다. 세션 버전을 먼저
-    // 무효화해 stop 완료 전에 도착한 콜백도 화면을 바꾸지 못하게 한다.
-    final message = _speechIsActive ? '화면을 벗어나 음성 입력을 멈췄어요.' : null;
-    unawaited(_deactivateSpeechInput(forceStop: true, message: message));
+    _voiceSession.handleLifecycleStateChanged(state);
   }
 
   @override
   void dispose() {
     _disposed = true;
-    _speechSessionVersion++;
     WidgetsBinding.instance.removeObserver(this);
     _timer.removeListener(_onTimerChanged);
-    unawaited(_stopSpeechPort());
+    _voiceSession.dispose();
     unawaited(_alarm?.cancelScheduledAlarm() ?? Future<void>.value());
     _timer.dispose();
     super.dispose();
   }
 
-  bool get _speechIsActive =>
-      _speechPhase == _CookSpeechPhase.starting ||
-      _speechPhase == _CookSpeechPhase.listening ||
-      _speechPhase == _CookSpeechPhase.stopping;
+  _CookSpeechPhase get _speechPhase => _voiceSession.phase;
 
-  bool _isCurrentSpeechSession(int version) =>
-      !_disposed && mounted && !_completed && version == _speechSessionVersion;
-
-  Future<void> _stopSpeechPort() {
-    final pending = _speechStopFuture;
-    if (pending != null) {
-      return pending;
-    }
-    late final Future<void> stopFuture;
-    stopFuture = (() async {
-      try {
-        await _speechInput.stop();
-      } catch (_) {
-        // 조리 화면은 버튼만으로 계속 사용할 수 있어야 한다.
-      }
-    })();
-    _speechStopFuture = stopFuture;
-    unawaited(
-      stopFuture.whenComplete(() {
-        if (identical(_speechStopFuture, stopFuture)) {
-          _speechStopFuture = null;
-        }
-      }),
-    );
-    return stopFuture;
-  }
-
-  Future<void> _restartSpeechAfterStop(int lifecycleVersion) async {
-    final pendingStop = _speechStopFuture;
-    if (pendingStop != null) {
-      await pendingStop;
-    }
-    if (_appLifecycleState == AppLifecycleState.resumed &&
-        lifecycleVersion == _appLifecycleVersion) {
-      await _startSpeechInput();
-    }
-  }
+  bool get _speechIsActive => _voiceSession.isActive;
 
   Future<void> _deactivateSpeechInput({
     bool forceStop = false,
     String? message,
-  }) async {
-    final wasActive = _speechIsActive;
-    if (!wasActive && !forceStop) {
-      return;
-    }
-    final stopVersion = ++_speechSessionVersion;
-    if (!_disposed && mounted) {
-      setState(() {
-        _speechPhase = wasActive
-            ? _CookSpeechPhase.stopping
-            : _CookSpeechPhase.idle;
-        if (message != null) {
-          _voiceMessage = message;
-        }
-      });
-    }
-    await _stopSpeechPort();
-    if (!_disposed && mounted && stopVersion == _speechSessionVersion) {
-      setState(() => _speechPhase = _CookSpeechPhase.idle);
-    }
-  }
+    bool rearmHandsFree = false,
+  }) => rearmHandsFree
+      ? _voiceSession.deactivateAndRearmHandsFree(message: message)
+      : _voiceSession.deactivate(forceStop: forceStop, message: message);
 
-  void _toggleSpeechInput() {
-    if (_speechPhase == _CookSpeechPhase.starting ||
-        _speechPhase == _CookSpeechPhase.listening) {
-      _handsFreeAutoRearm = false;
-      unawaited(_deactivateSpeechInput(message: '음성 입력을 멈췄어요.'));
-      return;
-    }
-    if (_speechPhase != _CookSpeechPhase.stopping) {
-      _handsFreeAutoRearm = widget.handsFreeVoiceEnabled;
-      unawaited(_startSpeechInput());
-    }
-  }
+  void _toggleSpeechInput() => _voiceSession.toggle();
 
-  Future<void> _startSpeechInput() async {
-    if (_disposed ||
-        _completed ||
-        _speechIsActive ||
-        _appLifecycleState != AppLifecycleState.resumed) {
+  void _onSpeechStateChanged(_CookSpeechPhase _, String? message) {
+    if (_disposed || !mounted) {
       return;
     }
-    final version = ++_speechSessionVersion;
     setState(() {
-      _speechPhase = _CookSpeechPhase.starting;
-      _voiceMessage = '마이크를 준비하고 있어요.';
+      if (message != null) {
+        _voiceMessage = message;
+      }
     });
-
-    final pendingStop = _speechStopFuture;
-    if (pendingStop != null) {
-      await pendingStop;
-    }
-    if (!_isCurrentSpeechSession(version) ||
-        _appLifecycleState != AppLifecycleState.resumed) {
-      return;
-    }
-
-    try {
-      _speechInput.start(
-        onReady: () {
-          if (!_isCurrentSpeechSession(version)) {
-            return;
-          }
-          if (_appLifecycleState != AppLifecycleState.resumed) {
-            _restartSpeechOnResume =
-                _appLifecycleState == AppLifecycleState.inactive &&
-                _speechPhase == _CookSpeechPhase.starting;
-            unawaited(
-              _deactivateSpeechInput(
-                forceStop: true,
-                message: '화면을 벗어나 음성 입력을 멈췄어요.',
-              ),
-            );
-            return;
-          }
-          setState(() {
-            _speechPhase = _CookSpeechPhase.listening;
-            _voiceMessage = '듣고 있어요. “다음 단계”처럼 말해보세요.';
-          });
-        },
-        onUtterance: (utterance, utteranceId) {
-          _handleSpeechUtterance(
-            utterance,
-            utteranceId: utteranceId,
-            sessionVersion: version,
-          );
-        },
-        onFailure: (failure) {
-          _handleSpeechFailure(failure, sessionVersion: version);
-        },
-      );
-    } catch (_) {
-      _handleSpeechFailure(
-        SpeechInputFailure.unavailable,
-        sessionVersion: version,
-      );
-    }
   }
 
-  void _handleSpeechFailure(
-    SpeechInputFailure failure, {
-    required int sessionVersion,
-  }) {
-    if (!_isCurrentSpeechSession(sessionVersion)) {
-      return;
-    }
-    _restartSpeechOnResume = false;
-    _speechSessionVersion++;
-    final (phase, message) = switch (failure) {
-      SpeechInputFailure.permissionDenied => (
-        _CookSpeechPhase.permissionDenied,
-        '마이크 권한이 없어요. 직접 입력으로 질문할 수 있어요.',
-      ),
-      SpeechInputFailure.retryRequired => (
-        _CookSpeechPhase.retryRequired,
-        '음성을 인식하지 못했어요. 다시 시도하거나 직접 입력해주세요.',
-      ),
-      SpeechInputFailure.unavailable => (
-        _CookSpeechPhase.unavailable,
-        '이 기기에서는 음성 입력을 사용할 수 없어요. 직접 입력을 이용해주세요.',
-      ),
-    };
-    setState(() {
-      _speechPhase = phase;
-      _voiceMessage = message;
-    });
-    unawaited(_stopSpeechPort());
-  }
-
-  void _handleSpeechUtterance(
-    String utterance, {
-    required String? utteranceId,
-    required int sessionVersion,
-  }) {
-    if (!_isCurrentSpeechSession(sessionVersion)) {
-      return;
-    }
-    if (utteranceId != null && !_rememberUtteranceId(utteranceId)) {
-      return;
-    }
-    final transcript = utterance.trim();
-    if (transcript.isEmpty) {
-      _handleSpeechFailure(
-        SpeechInputFailure.retryRequired,
-        sessionVersion: sessionVersion,
-      );
-      return;
-    }
-
-    // 한 듣기 세션에서는 첫 유효 문장만 처리한다. 네이티브 STT가 동일한
-    // 최종 문장을 반복 전달하거나 stop 직후 늦은 콜백을 보내도 명령은
-    // 한 번만 실행된다.
-    _speechSessionVersion++;
-    setState(() {
-      _speechPhase = _CookSpeechPhase.idle;
-      _voiceMessage = '“$transcript”로 들었어요.';
-    });
-    final stopFuture = _stopSpeechPort();
-
+  void _handleSpeechUtterance(String transcript) {
     final intent = _voiceRouter.route(
       transcript,
       recipeTitle: widget.recipe.title,
@@ -1894,38 +1701,6 @@ class _CookSessionScreenState extends State<CookSessionScreen>
       currentStepInstruction: widget.recipe.steps[step - 1].instruction,
     );
     _applyVoiceIntent(intent, transcript: transcript);
-    unawaited(_rearmHandsFreeAfterCommand(stopFuture));
-  }
-
-  Future<void> _rearmHandsFreeAfterCommand(Future<void> completedStop) async {
-    await completedStop;
-    if (!_handsFreeAutoRearm ||
-        _disposed ||
-        _completed ||
-        !mounted ||
-        _speechIsActive) {
-      return;
-    }
-    await Future<void>.value();
-    if (!_handsFreeAutoRearm ||
-        _disposed ||
-        _completed ||
-        !mounted ||
-        _speechIsActive) {
-      return;
-    }
-    await _startSpeechInput();
-  }
-
-  bool _rememberUtteranceId(String utteranceId) {
-    if (!_seenUtteranceIds.add(utteranceId)) {
-      return false;
-    }
-    if (_seenUtteranceIds.length > 64) {
-      _seenUtteranceIds.clear();
-      _seenUtteranceIds.add(utteranceId);
-    }
-    return true;
   }
 
   void _applyVoiceIntent(VoiceIntent intent, {required String transcript}) {
@@ -1987,7 +1762,7 @@ class _CookSessionScreenState extends State<CookSessionScreen>
     // 화면 버튼으로 이동할 때도 진행 중인 음성 세션을 끊어, 이전 단계에서
     // 시작된 인식 결과가 새 단계에 적용되지 않도록 한다.
     if (_speechIsActive) {
-      unawaited(_deactivateSpeechInput());
+      unawaited(_deactivateSpeechInput(rearmHandsFree: true));
     }
     _helpRequestVersion++;
     setState(() {
@@ -2083,8 +1858,7 @@ class _CookSessionScreenState extends State<CookSessionScreen>
     }
     _completed = true;
     _helpRequestVersion++;
-    _speechSessionVersion++;
-    unawaited(_stopSpeechPort());
+    _voiceSession.complete();
     Navigator.of(context).pushReplacement(
       MaterialPageRoute<void>(
         builder: (_) => ReviewScreen(
@@ -2095,6 +1869,22 @@ class _CookSessionScreenState extends State<CookSessionScreen>
         ),
       ),
     );
+  }
+
+  void _closeCookingSession() {
+    if (!mounted || _closingSession) {
+      return;
+    }
+    _closingSession = true;
+    // Invalidate callbacks and begin closing the microphone before the route
+    // transition reveals the previous screen.
+    _voiceSession.complete();
+    setState(() => _allowSessionPop = true);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        Navigator.of(context).pop();
+      }
+    });
   }
 
   void _onTimerChanged() {
@@ -2195,7 +1985,7 @@ class _CookSessionScreenState extends State<CookSessionScreen>
   }
 
   Future<void> _openHelpSheet() async {
-    _handsFreeAutoRearm = false;
+    _voiceSession.disableAutomaticRearm();
     if (_speechIsActive) {
       unawaited(_deactivateSpeechInput(message: '음성 입력을 멈췄어요. 질문을 직접 입력해주세요.'));
     }
@@ -2313,10 +2103,10 @@ class _CookSessionScreenState extends State<CookSessionScreen>
     final isLast = step == widget.recipe.steps.length;
     final hasTimer = current.timerDuration > Duration.zero;
 
-    return Scaffold(
+    final screen = Scaffold(
       appBar: AppBar(
         leading: IconButton(
-          onPressed: () => Navigator.of(context).pop(),
+          onPressed: _closeCookingSession,
           icon: const Icon(Icons.close_rounded),
         ),
         title: Text(
@@ -2543,6 +2333,15 @@ class _CookSessionScreenState extends State<CookSessionScreen>
           ),
         ),
       ),
+    );
+    return PopScope(
+      canPop: _allowSessionPop,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) {
+          _closeCookingSession();
+        }
+      },
+      child: screen,
     );
   }
 
