@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:speech_to_text/speech_recognition_error.dart';
 import 'package:speech_to_text/speech_recognition_result.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 
@@ -54,24 +55,100 @@ abstract interface class NativeSpeechRecognitionDriver {
   Future<void> cancel();
 }
 
+enum _SpeechLifecycleEndState { inProgress, succeeded, failed }
+
+final class _SpeechLifecycleDrain {
+  final Completer<void> _completer = Completer<void>();
+  Timer? _probeTimer;
+  Timer? _settleTimer;
+  bool _doneSeen = false;
+  _SpeechLifecycleEndState _endState = _SpeechLifecycleEndState.inProgress;
+
+  Future<void> get done => _completer.future;
+
+  bool tryBeginFailedEndRetry() {
+    if (_endState != _SpeechLifecycleEndState.failed || _doneSeen) {
+      return false;
+    }
+    _endState = _SpeechLifecycleEndState.inProgress;
+    return true;
+  }
+
+  void observeRawCallback({required bool isDone}) {
+    if (_completer.isCompleted) {
+      return;
+    }
+    _doneSeen = _doneSeen || isDone;
+    _scheduleQuietCompletion();
+  }
+
+  void markEndSucceeded() {
+    if (_completer.isCompleted) {
+      return;
+    }
+    _endState = _SpeechLifecycleEndState.succeeded;
+    _scheduleQuietCompletion();
+  }
+
+  void markEndFailed() {
+    if (_completer.isCompleted) {
+      return;
+    }
+    _endState = _SpeechLifecycleEndState.failed;
+    _scheduleQuietCompletion();
+  }
+
+  void _scheduleQuietCompletion() {
+    if (!_doneSeen || _endState == _SpeechLifecycleEndState.inProgress) {
+      return;
+    }
+
+    // The first turn is only a probe. A callback queued immediately after
+    // `done` can otherwise sit behind a single zero-duration timer and arrive
+    // after the drain opens. The second turn settles only if the raw callback
+    // serial stayed quiet throughout both turns.
+    _probeTimer?.cancel();
+    _settleTimer?.cancel();
+    _probeTimer = Timer(Duration.zero, () {
+      _probeTimer = null;
+      _settleTimer = Timer(Duration.zero, () {
+        _settleTimer = null;
+        if (!_completer.isCompleted) {
+          _completer.complete();
+        }
+      });
+    });
+  }
+}
+
 /// Production driver backed by the device speech recognizer.
 final class SpeechToTextRecognitionDriver
     implements NativeSpeechRecognitionDriver {
-  factory SpeechToTextRecognitionDriver({SpeechToText? speech}) {
+  factory SpeechToTextRecognitionDriver({
+    SpeechToText? speech,
+    Duration lifecycleDrainTimeout = _defaultLifecycleDrainTimeout,
+  }) {
     if (speech != null) {
-      return SpeechToTextRecognitionDriver._(speech);
+      return SpeechToTextRecognitionDriver._(speech, lifecycleDrainTimeout);
     }
     return _shared;
   }
 
-  SpeechToTextRecognitionDriver._(this._speech);
+  SpeechToTextRecognitionDriver._(this._speech, this._lifecycleDrainTimeout);
 
+  static const Duration _defaultLifecycleDrainTimeout = Duration(seconds: 2);
   static final SpeechToTextRecognitionDriver _shared =
-      SpeechToTextRecognitionDriver._(SpeechToText());
+      SpeechToTextRecognitionDriver._(
+        SpeechToText(),
+        _defaultLifecycleDrainTimeout,
+      );
 
   final SpeechToText _speech;
+  final Duration _lifecycleDrainTimeout;
   NativeSpeechDriverErrorHandler? _onError;
   NativeSpeechDriverStatusHandler? _onStatus;
+  _SpeechLifecycleDrain? _lifecycleDrain;
+  bool _lifecycleActive = false;
 
   @override
   Future<bool> get hasPermission => _speech.hasPermission;
@@ -80,7 +157,11 @@ final class SpeechToTextRecognitionDriver
   Future<bool> initialize({
     required NativeSpeechDriverErrorHandler onError,
     required NativeSpeechDriverStatusHandler onStatus,
-  }) {
+  }) async {
+    // Never replace A's mutable forwarding slots until every raw callback
+    // caused by ending A has drained.
+    await _awaitPriorLifecycleDrain();
+
     // SpeechToText() is a process singleton. Once initialization succeeds it
     // returns early on later initialize calls without replacing its listeners.
     // Keep one shared driver and let the listener installed by the first call
@@ -88,20 +169,8 @@ final class SpeechToTextRecognitionDriver
     _onError = onError;
     _onStatus = onStatus;
     return _speech.initialize(
-      onError: (error) {
-        _onError?.call(
-          NativeSpeechDriverError(
-            code: error.errorMsg,
-            permanent: error.permanent,
-          ),
-        );
-      },
-      onStatus: (status) {
-        final mapped = _mapStatus(status);
-        if (mapped != null) {
-          _onStatus?.call(mapped);
-        }
-      },
+      onError: _handleRawError,
+      onStatus: _handleRawStatus,
     );
   }
 
@@ -110,29 +179,120 @@ final class SpeechToTextRecognitionDriver
     required String localeId,
     required NativeSpeechDriverResultHandler onResult,
   }) async {
-    await _speech.listen(
-      onResult: (SpeechRecognitionResult result) {
-        onResult(
-          NativeSpeechDriverResult(
-            transcript: result.recognizedWords,
-            isFinal: result.finalResult,
-          ),
-        );
-      },
-      listenOptions: SpeechListenOptions(
-        localeId: localeId,
-        partialResults: false,
-        cancelOnError: true,
-        listenMode: ListenMode.confirmation,
-      ),
-    );
+    await _awaitPriorLifecycleDrain();
+    _lifecycleActive = true;
+    try {
+      await _speech.listen(
+        onResult: (SpeechRecognitionResult result) {
+          onResult(
+            NativeSpeechDriverResult(
+              transcript: result.recognizedWords,
+              isFinal: result.finalResult,
+            ),
+          );
+        },
+        listenOptions: SpeechListenOptions(
+          localeId: localeId,
+          partialResults: false,
+          cancelOnError: true,
+          listenMode: ListenMode.confirmation,
+        ),
+      );
+    } on Object {
+      _lifecycleActive = false;
+      rethrow;
+    }
   }
 
   @override
-  Future<void> stop() => _speech.stop();
+  Future<void> stop() => _endLifecycle(_speech.stop);
 
   @override
-  Future<void> cancel() => _speech.cancel();
+  Future<void> cancel() => _endLifecycle(_speech.cancel);
+
+  void _handleRawError(SpeechRecognitionError error) {
+    _lifecycleDrain?.observeRawCallback(isDone: false);
+    _onError?.call(
+      NativeSpeechDriverError(code: error.errorMsg, permanent: error.permanent),
+    );
+  }
+
+  void _handleRawStatus(String status) {
+    final mapped = _mapStatus(status);
+    if (mapped == NativeSpeechDriverStatus.done) {
+      final existingDrain = _lifecycleDrain;
+      _lifecycleActive = false;
+      final drain = existingDrain ?? _ensureLifecycleDrain();
+      if (existingDrain == null) {
+        drain.markEndSucceeded();
+      }
+      drain.observeRawCallback(isDone: true);
+    } else {
+      // Even statuses unknown to this adapter are part of the serialized raw
+      // callback stream and extend an in-progress quiet drain.
+      _lifecycleDrain?.observeRawCallback(isDone: false);
+    }
+    if (mapped == null) {
+      return;
+    }
+    _onStatus?.call(mapped);
+  }
+
+  Future<void> _endLifecycle(Future<void> Function() end) async {
+    final priorDrain = _lifecycleDrain;
+    if (priorDrain != null) {
+      if (priorDrain.tryBeginFailedEndRetry()) {
+        await _runEndAndDrain(end, priorDrain);
+      } else {
+        await _awaitLifecycleDrain(priorDrain);
+      }
+      return;
+    }
+
+    if (!_lifecycleActive) {
+      await end();
+      await _awaitPriorLifecycleDrain();
+      return;
+    }
+
+    final drain = _ensureLifecycleDrain();
+    await _runEndAndDrain(end, drain);
+  }
+
+  Future<void> _runEndAndDrain(
+    Future<void> Function() end,
+    _SpeechLifecycleDrain drain,
+  ) async {
+    try {
+      await end();
+    } on Object {
+      // The end operation itself settled, but native terminal callbacks can
+      // still arrive afterward. Preserve the drain/tombstone so a retry cannot
+      // bind a new mutable forwarding slot ahead of those callbacks.
+      drain.markEndFailed();
+      rethrow;
+    }
+    drain.markEndSucceeded();
+    await _awaitLifecycleDrain(drain);
+  }
+
+  _SpeechLifecycleDrain _ensureLifecycleDrain() {
+    return _lifecycleDrain ??= _SpeechLifecycleDrain();
+  }
+
+  Future<void> _awaitPriorLifecycleDrain() async {
+    final drain = _lifecycleDrain;
+    if (drain != null) {
+      await _awaitLifecycleDrain(drain);
+    }
+  }
+
+  Future<void> _awaitLifecycleDrain(_SpeechLifecycleDrain drain) async {
+    await drain.done.timeout(_lifecycleDrainTimeout);
+    if (identical(_lifecycleDrain, drain)) {
+      _lifecycleDrain = null;
+    }
+  }
 
   static NativeSpeechDriverStatus? _mapStatus(String status) {
     return switch (status) {
@@ -145,6 +305,86 @@ final class SpeechToTextRecognitionDriver
   }
 }
 
+final class _NativeSpeechDriverLease {
+  _NativeSpeechDriverLease({required this.onRevoked});
+
+  final VoidCallback onRevoked;
+  bool initialized = false;
+}
+
+/// Serializes access and tracks ownership at the shared driver boundary.
+///
+/// `SpeechToText` is process-global, so adapter-local queues cannot protect a
+/// new screen from an old screen's cancel. Each driver identity gets one
+/// coordinator: ownership handoff retires the old callbacks, drains cancel,
+/// then lets the new session bind callbacks and listen.
+final class _NativeSpeechDriverCoordinator {
+  Future<void> _queue = Future<void>.value();
+  _NativeSpeechDriverLease? _owner;
+
+  bool owns(_NativeSpeechDriverLease lease) => identical(_owner, lease);
+
+  Future<void> startSession({
+    required NativeSpeechRecognitionDriver driver,
+    required _NativeSpeechDriverLease lease,
+    required bool Function() isCurrent,
+    required Future<void> Function() start,
+    required void Function(Object error) onHandoffFailure,
+  }) {
+    return _enqueue(() async {
+      if (!isCurrent()) {
+        return;
+      }
+
+      final previousOwner = _owner;
+      if (previousOwner != null && !identical(previousOwner, lease)) {
+        previousOwner.onRevoked();
+        if (previousOwner.initialized) {
+          try {
+            await driver.cancel();
+          } on Object catch (error) {
+            if (isCurrent()) {
+              onHandoffFailure(error);
+            }
+            return;
+          }
+        }
+        _owner = null;
+      }
+
+      if (!isCurrent()) {
+        return;
+      }
+      _owner = lease;
+      await start();
+    });
+  }
+
+  Future<void> endSession({
+    required NativeSpeechRecognitionDriver driver,
+    required _NativeSpeechDriverLease lease,
+    required bool cancelDriver,
+  }) {
+    return _enqueue(() async {
+      // A stale screen must never cancel the driver after a newer screen has
+      // acquired it.
+      if (!identical(_owner, lease)) {
+        return;
+      }
+      if (cancelDriver && lease.initialized) {
+        await driver.cancel();
+      }
+      _owner = null;
+    });
+  }
+
+  Future<void> _enqueue(Future<void> Function() operation) {
+    final result = _queue.then((_) => operation());
+    _queue = result.then<void>((_) {}, onError: (Object _, StackTrace _) {});
+    return result;
+  }
+}
+
 /// Native Korean speech recognizer for an active cooking screen.
 ///
 /// A start request owns a generation. Stop/cancel and subsequent starts
@@ -154,15 +394,20 @@ final class NativeSpeechInput implements SpeechInputPort {
   NativeSpeechInput({
     NativeSpeechRecognitionDriver? driver,
     this.localeId = 'ko_KR',
-  }) : _driver = driver ?? SpeechToTextRecognitionDriver();
+  }) : _driver = driver ?? SpeechToTextRecognitionDriver() {
+    _driverCoordinator = _driverCoordinators[_driver] ??=
+        _NativeSpeechDriverCoordinator();
+  }
+
+  static final Expando<_NativeSpeechDriverCoordinator> _driverCoordinators =
+      Expando<_NativeSpeechDriverCoordinator>('native speech driver');
 
   final NativeSpeechRecognitionDriver _driver;
   final String localeId;
+  late final _NativeSpeechDriverCoordinator _driverCoordinator;
 
-  Future<void> _driverQueue = Future<void>.value();
   int _generation = 0;
   int _utteranceSequence = 0;
-  bool _initialized = false;
   bool _sessionOpen = false;
   bool _startPending = false;
   bool _listening = false;
@@ -171,6 +416,7 @@ final class NativeSpeechInput implements SpeechInputPort {
   SpeechUtteranceHandler? _onUtterance;
   SpeechInputFailureHandler? _onFailure;
   SpeechInputReadyHandler? _onReady;
+  _NativeSpeechDriverLease? _session;
 
   @override
   void start({
@@ -191,72 +437,92 @@ final class NativeSpeechInput implements SpeechInputPort {
     _onUtterance = onUtterance;
     _onFailure = onFailure;
 
-    unawaited(_enqueueDriverOperation(() => _startRecognition(generation)));
+    late final _NativeSpeechDriverLease session;
+    session = _NativeSpeechDriverLease(
+      onRevoked: () => _revokeSession(generation, session),
+    );
+    _session = session;
+
+    unawaited(
+      _driverCoordinator.startSession(
+        driver: _driver,
+        lease: session,
+        isCurrent: () => _isLocallyCurrent(generation, session),
+        start: () => _startRecognition(generation, session),
+        onHandoffFailure: (error) {
+          _reportHandoffFailure(
+            generation,
+            session,
+            _classifyThrownError(error),
+          );
+        },
+      ),
+    );
   }
 
-  Future<void> _startRecognition(int generation) async {
-    if (!_isCurrent(generation)) {
+  Future<void> _startRecognition(
+    int generation,
+    _NativeSpeechDriverLease session,
+  ) async {
+    if (!_isCurrent(generation, session)) {
       return;
     }
 
-    if (!_initialized) {
-      final bool available;
-      try {
-        available = await _driver.initialize(
-          onError: _handleDriverError,
-          onStatus: _handleDriverStatus,
-        );
-      } on Object catch (error) {
-        _reportFailure(
-          generation,
-          _classifyThrownError(error, duringInitialization: true),
-          resetInitialization: true,
-          cancelDriver: false,
-        );
-        return;
-      }
-      if (!_isCurrent(generation)) {
-        return;
-      }
-      if (!available) {
-        final permissionGranted = await _readPermission();
-        if (!_isCurrent(generation)) {
-          return;
-        }
-        _reportFailure(
-          generation,
-          permissionGranted
-              ? SpeechInputFailure.unavailable
-              : SpeechInputFailure.permissionDenied,
-          resetInitialization: true,
-          cancelDriver: false,
-        );
-        return;
-      }
-      _initialized = true;
-    }
-
+    final bool available;
     try {
-      await _driver.listen(
-        localeId: localeId,
-        onResult: (result) => _handleResult(generation, result),
+      // Rebind on every recognition session. The production driver forwards
+      // the process-global plugin callbacks to these generation-scoped
+      // handlers even when SpeechToText.initialize returns early.
+      available = await _driver.initialize(
+        onError: (error) => _handleDriverError(generation, session, error),
+        onStatus: (status) => _handleDriverStatus(generation, session, status),
       );
     } on Object catch (error) {
       _reportFailure(
         generation,
-        _classifyThrownError(error),
-        resetInitialization: _looksUnavailable(error.toString()),
+        session,
+        _classifyThrownError(error, duringInitialization: true),
+        cancelDriver: false,
       );
       return;
     }
-    if (!_isCurrent(generation)) {
+    if (!_isCurrent(generation, session)) {
+      return;
+    }
+    if (!available) {
+      final permissionGranted = await _readPermission();
+      if (!_isCurrent(generation, session)) {
+        return;
+      }
+      _reportFailure(
+        generation,
+        session,
+        permissionGranted
+            ? SpeechInputFailure.unavailable
+            : SpeechInputFailure.permissionDenied,
+        cancelDriver: false,
+      );
+      return;
+    }
+    session.initialized = true;
+
+    try {
+      await _driver.listen(
+        localeId: localeId,
+        onResult: (result) => _handleResult(generation, session, result),
+      );
+    } on Object catch (error) {
+      _reportFailure(generation, session, _classifyThrownError(error));
+      return;
+    }
+    if (!_isCurrent(generation, session)) {
       return;
     }
 
     // The plugin normally reports `listening` before this future completes.
     // Some platform recognizers only complete the call, so this is the
     // readiness fallback and is guarded against duplicate delivery.
-    _deliverReady(generation);
+    _deliverReady(generation, session);
   }
 
   Future<bool> _readPermission() async {
@@ -267,8 +533,14 @@ final class NativeSpeechInput implements SpeechInputPort {
     }
   }
 
-  void _handleResult(int generation, NativeSpeechDriverResult result) {
-    if (!_isCurrent(generation) || !result.isFinal || _finalDelivered) {
+  void _handleResult(
+    int generation,
+    _NativeSpeechDriverLease session,
+    NativeSpeechDriverResult result,
+  ) {
+    if (!_isCurrent(generation, session) ||
+        !result.isFinal ||
+        _finalDelivered) {
       return;
     }
     final transcript = result.transcript.trim();
@@ -281,48 +553,51 @@ final class NativeSpeechInput implements SpeechInputPort {
     _onUtterance?.call(transcript, utteranceId);
   }
 
-  void _handleDriverError(NativeSpeechDriverError error) {
-    if (!_sessionOpen) {
+  void _handleDriverError(
+    int generation,
+    _NativeSpeechDriverLease session,
+    NativeSpeechDriverError error,
+  ) {
+    if (!_isCurrent(generation, session)) {
       return;
     }
-    final failure = _classifyDriverError(error);
-    _reportFailure(
-      _generation,
-      failure,
-      resetInitialization:
-          failure == SpeechInputFailure.permissionDenied ||
-          failure == SpeechInputFailure.unavailable,
-    );
+    _reportFailure(generation, session, _classifyDriverError(error));
   }
 
-  void _handleDriverStatus(NativeSpeechDriverStatus status) {
-    if (!_sessionOpen) {
+  void _handleDriverStatus(
+    int generation,
+    _NativeSpeechDriverLease session,
+    NativeSpeechDriverStatus status,
+  ) {
+    if (!_isCurrent(generation, session)) {
       return;
     }
-    final generation = _generation;
     switch (status) {
       case NativeSpeechDriverStatus.listening:
-        _deliverReady(generation);
+        _deliverReady(generation, session);
       case NativeSpeechDriverStatus.notListening:
         _listening = false;
       case NativeSpeechDriverStatus.done:
         final deliveredFinal = _finalDelivered;
         final onFailure = _onFailure;
         _invalidateCurrentSession();
+        unawaited(
+          _driverCoordinator.endSession(
+            driver: _driver,
+            lease: session,
+            cancelDriver: false,
+          ),
+        );
         if (!deliveredFinal) {
           onFailure?.call(SpeechInputFailure.retryRequired);
         }
       case NativeSpeechDriverStatus.unavailable:
-        _reportFailure(
-          generation,
-          SpeechInputFailure.unavailable,
-          resetInitialization: true,
-        );
+        _reportFailure(generation, session, SpeechInputFailure.unavailable);
     }
   }
 
-  void _deliverReady(int generation) {
-    if (!_isCurrent(generation) || _readyDelivered) {
+  void _deliverReady(int generation, _NativeSpeechDriverLease session) {
+    if (!_isCurrent(generation, session) || _readyDelivered) {
       return;
     }
     _readyDelivered = true;
@@ -333,38 +608,62 @@ final class NativeSpeechInput implements SpeechInputPort {
 
   void _reportFailure(
     int generation,
+    _NativeSpeechDriverLease session,
     SpeechInputFailure failure, {
-    bool resetInitialization = false,
     bool cancelDriver = true,
   }) {
-    if (!_isCurrent(generation)) {
+    if (!_isCurrent(generation, session)) {
       return;
     }
     final onFailure = _onFailure;
-    final shouldCancelDriver = cancelDriver && _initialized;
     _invalidateCurrentSession();
-    if (resetInitialization) {
-      _initialized = false;
+    unawaited(
+      _driverCoordinator.endSession(
+        driver: _driver,
+        lease: session,
+        cancelDriver: cancelDriver,
+      ),
+    );
+    onFailure?.call(failure);
+  }
+
+  void _reportHandoffFailure(
+    int generation,
+    _NativeSpeechDriverLease session,
+    SpeechInputFailure failure,
+  ) {
+    if (!_isLocallyCurrent(generation, session)) {
+      return;
     }
-    if (shouldCancelDriver) {
-      unawaited(_enqueueDriverOperation(_driver.cancel));
-    }
+    final onFailure = _onFailure;
+    _invalidateCurrentSession();
     onFailure?.call(failure);
   }
 
   @override
-  Future<void> stop() => _endRecognition(cancel: true);
+  Future<void> stop() => _endRecognition();
 
   /// Cancels recognition without asking the platform for a final transcript.
-  Future<void> cancel() => _endRecognition(cancel: true);
+  Future<void> cancel() => _endRecognition();
 
-  Future<void> _endRecognition({required bool cancel}) {
-    final shouldEndDriver = _initialized && _sessionOpen;
+  Future<void> _endRecognition() {
+    final session = _session;
+    final shouldEndDriver = session != null && _sessionOpen;
     _invalidateCurrentSession();
     if (!shouldEndDriver) {
       return Future<void>.value();
     }
-    return _enqueueDriverOperation(cancel ? _driver.cancel : _driver.stop);
+    return _driverCoordinator.endSession(
+      driver: _driver,
+      lease: session,
+      cancelDriver: true,
+    );
+  }
+
+  void _revokeSession(int generation, _NativeSpeechDriverLease session) {
+    if (_isLocallyCurrent(generation, session)) {
+      _invalidateCurrentSession();
+    }
   }
 
   void _invalidateCurrentSession() {
@@ -377,18 +676,15 @@ final class NativeSpeechInput implements SpeechInputPort {
     _onReady = null;
     _onUtterance = null;
     _onFailure = null;
+    _session = null;
   }
 
-  bool _isCurrent(int generation) => _sessionOpen && generation == _generation;
+  bool _isLocallyCurrent(int generation, _NativeSpeechDriverLease session) =>
+      _sessionOpen && generation == _generation && identical(_session, session);
 
-  Future<void> _enqueueDriverOperation(Future<void> Function() operation) {
-    final result = _driverQueue.then((_) => operation());
-    _driverQueue = result.then<void>(
-      (_) {},
-      onError: (Object _, StackTrace _) {},
-    );
-    return result;
-  }
+  bool _isCurrent(int generation, _NativeSpeechDriverLease session) =>
+      _isLocallyCurrent(generation, session) &&
+      _driverCoordinator.owns(session);
 
   static SpeechInputFailure _classifyDriverError(
     NativeSpeechDriverError error,
