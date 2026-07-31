@@ -66,6 +66,35 @@ void main() {
     expect(find.text('이어서 요리하기'), findsNothing);
   });
 
+  testWidgets('활성 세션 조회 실패 중 새 후기 초안이 생겨도 후기를 우선 표시한다', (tester) async {
+    final activeLoad = Completer<PersistedCookingSession?>();
+    final draft = _buildDraft();
+    var pendingLoadAttempts = 0;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildCookPilotTheme(),
+        home: HomeScreen(
+          recipeRepository: _EmptyRecipeRepository(),
+          pendingReviewDraftLoader: () async {
+            pendingLoadAttempts += 1;
+            return pendingLoadAttempts == 1 ? null : draft;
+          },
+          cookingSessionLoader: () => activeLoad.future,
+        ),
+      ),
+    );
+    await tester.pump();
+
+    activeLoad.completeError(StateError('active session read failure'));
+    await tester.pumpAndSettle();
+
+    expect(pendingLoadAttempts, 2);
+    expect(find.text('후기 작성 이어가기'), findsOneWidget);
+    expect(find.text('저장된 진행 상황을 불러오지 못했어요.'), findsNothing);
+    expect(find.text('이어서 요리하기'), findsNothing);
+  });
+
   testWidgets('후기 초안이 없고 활성 조리 세션만 있으면 조리 이어가기를 표시한다', (tester) async {
     await _pumpHome(
       tester,
@@ -208,6 +237,47 @@ void main() {
     expect(find.text('후기 작성 이어가기'), findsOneWidget);
 
     firstLoad.complete(null);
+    await tester.pumpAndSettle();
+
+    expect(find.text('후기 작성 이어가기'), findsOneWidget);
+    expect(find.text(latestDraft.setupSnapshot.title), findsOneWidget);
+    expect(find.text('이어서 요리하기'), findsNothing);
+  });
+
+  testWidgets('두 번째 초안 조회가 늦게 끝나도 최신 복구 결과를 덮어쓰지 않는다', (tester) async {
+    final delayedSecondLoad = Completer<PendingReviewDraft?>();
+    final latestDraft = _buildDraft();
+    var loadAttempts = 0;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildCookPilotTheme(),
+        home: HomeScreen(
+          recipeRepository: _EmptyRecipeRepository(),
+          pendingReviewDraftLoader: () {
+            loadAttempts += 1;
+            if (loadAttempts == 1) {
+              return Future<PendingReviewDraft?>.value(null);
+            }
+            if (loadAttempts == 2) {
+              return delayedSecondLoad.future;
+            }
+            return Future<PendingReviewDraft?>.value(latestDraft);
+          },
+          cookingSessionLoader: () async => null,
+        ),
+      ),
+    );
+    await tester.pump();
+    expect(loadAttempts, 2);
+
+    await tester.drag(find.byType(ListView), const Offset(0, 500));
+    await tester.pumpAndSettle();
+
+    expect(loadAttempts, 3);
+    expect(find.text('후기 작성 이어가기'), findsOneWidget);
+
+    delayedSecondLoad.complete(null);
     await tester.pumpAndSettle();
 
     expect(find.text('후기 작성 이어가기'), findsOneWidget);

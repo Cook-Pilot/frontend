@@ -187,15 +187,30 @@ class _HomeScreenState extends State<HomeScreen> {
         return;
       }
 
-      final resumableCooking = await _findResumableCooking(generation);
+      _ResumableCooking? resumableCooking;
+      Object? resumableCookingError;
+      StackTrace? resumableCookingStackTrace;
+      try {
+        resumableCooking = await _findResumableCooking(generation);
+      } on Object catch (error, stackTrace) {
+        resumableCookingError = error;
+        resumableCookingStackTrace = stackTrace;
+      }
       if (!_isCurrentRecovery(generation)) {
         return;
       }
       // The active-session lookup can outlive cooking completion. Re-read the
-      // draft so a review created while that lookup was running still wins.
+      // draft even when that lookup failed, so a review created while it was
+      // running still wins.
       final latestPendingReviewDraft = await _pendingReviewDraftLoader();
       if (!_isCurrentRecovery(generation)) {
         return;
+      }
+      if (latestPendingReviewDraft == null && resumableCookingError != null) {
+        Error.throwWithStackTrace(
+          resumableCookingError,
+          resumableCookingStackTrace!,
+        );
       }
       setState(() {
         _recoveryLoading = false;
