@@ -1516,6 +1516,9 @@ class _CookSessionScreenState extends State<CookSessionScreen>
   int _speechSessionVersion = 0;
   final Set<String> _seenUtteranceIds = <String>{};
   Future<void>? _speechStopFuture;
+  late AppLifecycleState _appLifecycleState;
+  int _appLifecycleVersion = 0;
+  bool _restartSpeechOnResume = false;
   bool _disposed = false;
 
   // 원래 디자인은 그대로 두고 시계(타이머)만 실제로 동작시킨다.
@@ -1538,6 +1541,8 @@ class _CookSessionScreenState extends State<CookSessionScreen>
   @override
   void initState() {
     super.initState();
+    _appLifecycleState =
+        WidgetsBinding.instance.lifecycleState ?? AppLifecycleState.resumed;
     WidgetsBinding.instance.addObserver(this);
     _timer.addListener(_onTimerChanged);
     final restored = widget.restoredSession;
@@ -1575,18 +1580,25 @@ class _CookSessionScreenState extends State<CookSessionScreen>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    _appLifecycleState = state;
+    final lifecycleVersion = ++_appLifecycleVersion;
     // 화면을 다시 켜면 잠든 사이 흐른 시간을 반영해 남은 시간을 재계산한다.
     if (state == AppLifecycleState.resumed) {
       _timer.sync();
+      final restartSpeech = _restartSpeechOnResume;
+      _restartSpeechOnResume = false;
+      if (restartSpeech) {
+        unawaited(_restartSpeechAfterStop(lifecycleVersion));
+      }
       return;
     }
-    // 최초 마이크 권한 다이얼로그로 포커스만 잠깐 잃었을 때 starting
-    // 세션을 무효화하면, 사용자가 허용해도 듣기가 시작되지 않는다.
-    // 이미 듣는 중인 inactive 상태는 프라이버시를 위해 아래에서 멈춘다.
-    if (state == AppLifecycleState.inactive &&
-        _speechPhase == _CookSpeechPhase.starting) {
-      return;
-    }
+    // 권한 다이얼로그와 Control Center는 모두 inactive를 만들 수 있어
+    // 화면에서는 안전하게 구분할 수 없다. starting 세션은 어느 쪽이든
+    // 즉시 닫고 resume 뒤 새 세션으로 시작한다. 이미 listening이었다면
+    // 프라이버시상 자동 재개하지 않는다.
+    _restartSpeechOnResume = state == AppLifecycleState.inactive
+        ? _restartSpeechOnResume || _speechPhase == _CookSpeechPhase.starting
+        : false;
     // 백그라운드에서는 마이크를 열어 두지 않는다. 세션 버전을 먼저
     // 무효화해 stop 완료 전에 도착한 콜백도 화면을 바꾸지 못하게 한다.
     final message = _speechIsActive ? '화면을 벗어나 음성 입력을 멈췄어요.' : null;
@@ -1637,6 +1649,17 @@ class _CookSessionScreenState extends State<CookSessionScreen>
     return stopFuture;
   }
 
+  Future<void> _restartSpeechAfterStop(int lifecycleVersion) async {
+    final pendingStop = _speechStopFuture;
+    if (pendingStop != null) {
+      await pendingStop;
+    }
+    if (_appLifecycleState == AppLifecycleState.resumed &&
+        lifecycleVersion == _appLifecycleVersion) {
+      await _startSpeechInput();
+    }
+  }
+
   Future<void> _deactivateSpeechInput({
     bool forceStop = false,
     String? message,
@@ -1674,7 +1697,10 @@ class _CookSessionScreenState extends State<CookSessionScreen>
   }
 
   Future<void> _startSpeechInput() async {
-    if (_disposed || _completed || _speechIsActive) {
+    if (_disposed ||
+        _completed ||
+        _speechIsActive ||
+        _appLifecycleState != AppLifecycleState.resumed) {
       return;
     }
     final version = ++_speechSessionVersion;
@@ -1687,7 +1713,8 @@ class _CookSessionScreenState extends State<CookSessionScreen>
     if (pendingStop != null) {
       await pendingStop;
     }
-    if (!_isCurrentSpeechSession(version)) {
+    if (!_isCurrentSpeechSession(version) ||
+        _appLifecycleState != AppLifecycleState.resumed) {
       return;
     }
 
@@ -1695,6 +1722,18 @@ class _CookSessionScreenState extends State<CookSessionScreen>
       _speechInput.start(
         onReady: () {
           if (!_isCurrentSpeechSession(version)) {
+            return;
+          }
+          if (_appLifecycleState != AppLifecycleState.resumed) {
+            _restartSpeechOnResume =
+                _appLifecycleState == AppLifecycleState.inactive &&
+                _speechPhase == _CookSpeechPhase.starting;
+            unawaited(
+              _deactivateSpeechInput(
+                forceStop: true,
+                message: '화면을 벗어나 음성 입력을 멈췄어요.',
+              ),
+            );
             return;
           }
           setState(() {
@@ -1728,6 +1767,7 @@ class _CookSessionScreenState extends State<CookSessionScreen>
     if (!_isCurrentSpeechSession(sessionVersion)) {
       return;
     }
+    _restartSpeechOnResume = false;
     _speechSessionVersion++;
     final (phase, message) = switch (failure) {
       SpeechInputFailure.permissionDenied => (
