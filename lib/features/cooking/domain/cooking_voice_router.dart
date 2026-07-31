@@ -97,20 +97,44 @@ final class CookingVoiceRouter {
     '끓',
   ];
 
-  static const _koreanMinuteValues = <String, int>{
-    '십분': 10,
-    '구분': 9,
-    '팔분': 8,
-    '칠분': 7,
-    '육분': 6,
-    '오분': 5,
-    '사분': 4,
-    '삼분': 3,
-    '세분': 3,
-    '이분': 2,
-    '두분': 2,
-    '일분': 1,
-    '한분': 1,
+  static const _finishPhrases = <String>[
+    '조리완료',
+    '요리완료',
+    '조리끝',
+    '요리끝',
+    '다끝났',
+    '전부끝났',
+    '완성했',
+    '완료했',
+  ];
+
+  static const _timerExtensionSignals = <String>['더', '추가', '연장', '늘려'];
+
+  static const _koreanNativeNumberPrefixes = <String>{
+    '열',
+    '스물',
+    '서른',
+    '마흔',
+    '쉰',
+    '예순',
+    '일흔',
+    '여든',
+    '아흔',
+  };
+
+  static const _koreanSingleMinuteValues = <String, int>{
+    '구': 9,
+    '팔': 8,
+    '칠': 7,
+    '육': 6,
+    '오': 5,
+    '사': 4,
+    '삼': 3,
+    '세': 3,
+    '이': 2,
+    '두': 2,
+    '일': 1,
+    '한': 1,
   };
 
   VoiceIntent route(
@@ -137,68 +161,22 @@ final class CookingVoiceRouter {
       ..._contextTokens(currentStepInstruction),
     };
 
-    if (_isExplicitCookingProblem(text, hasIngredientContext) ||
-        (_hasQuestionSignal(text) &&
+    final hasQuestionSignal = _hasQuestionSignal(text);
+    final extensionSeconds = _extensionSeconds(transcript, text);
+    final mutatingIntent = _mutatingIntent(text, extensionSeconds);
+
+    // A tentative question must reach the coach before any local command that
+    // mutates the cooking session. The command candidate keeps this gate
+    // narrow: unrelated questions do not become cooking exceptions.
+    if ((hasQuestionSignal && mutatingIntent != null) ||
+        _isExplicitCookingProblem(text, hasIngredientContext) ||
+        (hasQuestionSignal &&
             (_hasCookingContext(text, dynamicContextTokens) ||
                 hasIngredientContext))) {
       return const VoiceIntent(VoiceIntentType.exceptionQuestion);
     }
 
-    if (text == '재개' ||
-        _hasAny(text, const [
-          '다시시작',
-          '타이머재개',
-          '재개해',
-          '계속해',
-          '타이머계속',
-          '이어서진행',
-        ])) {
-      return const VoiceIntent(VoiceIntentType.resumeTimer);
-    }
-
-    if (_hasAny(text, const ['일시정지', '타이머정지', '타이머멈춰', '잠깐멈춰', '잠깐', '멈춰'])) {
-      return const VoiceIntent(VoiceIntentType.pauseTimer);
-    }
-
-    if (_isTimerExtension(text)) {
-      return VoiceIntent(
-        VoiceIntentType.extendTimer,
-        seconds: _extensionSeconds(text),
-      );
-    }
-
-    if (_hasAny(text, const [
-      '타이머시작',
-      '타이머켜',
-      '시간재기',
-      '조리시작',
-      '요리시작',
-      '시작했어',
-      '시작했어요',
-    ])) {
-      return const VoiceIntent(VoiceIntentType.startTimer);
-    }
-
-    // An explicit whole-cook completion wins over a step-level "됐어".
-    if (_hasAny(text, const [
-      '조리완료',
-      '요리완료',
-      '조리끝',
-      '요리끝',
-      '다끝났',
-      '전부끝났',
-      '완성했',
-      '완료했',
-    ])) {
-      return const VoiceIntent(VoiceIntentType.finish);
-    }
-
-    if (_isNextCommand(text)) {
-      return const VoiceIntent(VoiceIntentType.next);
-    }
-    if (text == '이전' || _hasAny(text, const ['이전으로', '이전단계', '전단계', '뒤로'])) {
-      return const VoiceIntent(VoiceIntentType.previous);
-    }
+    if (mutatingIntent != null) return mutatingIntent;
     if (_hasAny(text, const ['다시말', '반복', '한번더읽', '한번더말', '못들었'])) {
       return const VoiceIntent(VoiceIntentType.repeat);
     }
@@ -351,6 +329,56 @@ final class CookingVoiceRouter {
     return false;
   }
 
+  VoiceIntent? _mutatingIntent(String text, int? extensionSeconds) {
+    if (text == '재개' ||
+        _hasAny(text, const [
+          '다시시작',
+          '타이머재개',
+          '재개해',
+          '계속해',
+          '타이머계속',
+          '이어서진행',
+        ])) {
+      return const VoiceIntent(VoiceIntentType.resumeTimer);
+    }
+
+    if (_hasAny(text, const ['일시정지', '타이머정지', '타이머멈춰', '잠깐멈춰', '잠깐', '멈춰'])) {
+      return const VoiceIntent(VoiceIntentType.pauseTimer);
+    }
+
+    if (extensionSeconds != null) {
+      return VoiceIntent(
+        VoiceIntentType.extendTimer,
+        seconds: extensionSeconds,
+      );
+    }
+
+    if (_hasAny(text, const [
+      '타이머시작',
+      '타이머켜',
+      '시간재기',
+      '조리시작',
+      '요리시작',
+      '시작했어',
+      '시작했어요',
+    ])) {
+      return const VoiceIntent(VoiceIntentType.startTimer);
+    }
+
+    // An explicit whole-cook completion wins over a step-level "됐어".
+    if (_hasAny(text, _finishPhrases)) {
+      return const VoiceIntent(VoiceIntentType.finish);
+    }
+
+    if (_isNextCommand(text)) {
+      return const VoiceIntent(VoiceIntentType.next);
+    }
+    if (text == '이전' || _hasAny(text, const ['이전으로', '이전단계', '전단계', '뒤로'])) {
+      return const VoiceIntent(VoiceIntentType.previous);
+    }
+    return null;
+  }
+
   bool _isNextCommand(String text) {
     if (_hasAny(text, const [
       '다음단계',
@@ -365,30 +393,75 @@ final class CookingVoiceRouter {
     return const {'다음', '넘어가', '다했어', '됐어'}.contains(text);
   }
 
-  bool _isTimerExtension(String text) {
-    final hasDuration =
-        RegExp(r'\d+(분|초)').hasMatch(text) ||
-        _koreanMinuteValues.keys.any(text.contains) ||
-        text.contains('반분');
-    return hasDuration && _hasAny(text, const ['더', '추가', '연장', '늘려']);
+  int? _extensionSeconds(String transcript, String text) {
+    if (!_hasAny(text, _timerExtensionSignals)) return null;
+
+    final source = transcript.toLowerCase();
+    var seconds = 0;
+    var hasDuration = false;
+
+    for (final match in RegExp(r'(\d+)\s*분').allMatches(source)) {
+      final minutes = int.tryParse(match.group(1)!);
+      if (minutes == null) continue;
+      seconds += minutes * 60;
+      hasDuration = true;
+    }
+    for (final match in RegExp(r'(\d+)\s*초').allMatches(source)) {
+      final parsedSeconds = int.tryParse(match.group(1)!);
+      if (parsedSeconds == null) continue;
+      seconds += parsedSeconds;
+      hasDuration = true;
+    }
+
+    if (text.contains('반분')) {
+      seconds += 30;
+      hasDuration = true;
+    }
+
+    // Keep a Korean quantity intact up to "분", including whitespace between
+    // Sino-Korean parts. This lets "십 이 분" parse as twelve minutes instead
+    // of matching its "이 분" suffix.
+    final koreanMinutePattern = RegExp(
+      r'(^|[^공영일이삼사오육칠팔구십백천만억조한두세네넷다섯여섯곱덟홉열스물른마흔쉰예순일흔여든아흔])'
+      r'((?:[일이삼사오육칠팔구십백천만]+\s*)+|한|두|세)\s*분',
+    );
+    for (final match in koreanMinutePattern.allMatches(source)) {
+      final quantityStart = match.start + match.group(1)!.length;
+      if (_hasSpacedNativeNumberPrefix(source, quantityStart)) continue;
+
+      final quantity = match.group(2)!.replaceAll(RegExp(r'\s+'), '');
+      final minutes = _parseKoreanMinuteQuantity(quantity);
+      if (minutes == null) continue;
+      seconds += minutes * 60;
+      hasDuration = true;
+    }
+
+    return hasDuration ? _boundedSeconds(seconds) : null;
   }
 
-  int _extensionSeconds(String text) {
-    final minuteMatch = RegExp(r'(\d+)분').firstMatch(text);
-    if (minuteMatch != null) {
-      return _boundedSeconds(int.parse(minuteMatch.group(1)!) * 60);
-    }
+  int? _parseKoreanMinuteQuantity(String quantity) {
+    final singleValue = _koreanSingleMinuteValues[quantity];
+    if (singleValue != null) return singleValue;
 
-    final secondMatch = RegExp(r'(\d+)초').firstMatch(text);
-    if (secondMatch != null) {
-      return _boundedSeconds(int.parse(secondMatch.group(1)!));
-    }
+    final compound = RegExp(
+      r'^([이삼사오육칠팔구])?십([일이삼사오육칠팔구])?$',
+    ).firstMatch(quantity);
+    if (compound == null) return null;
 
-    if (text.contains('반분')) return 30;
-    for (final entry in _koreanMinuteValues.entries) {
-      if (text.contains(entry.key)) return entry.value * 60;
-    }
-    return 60;
+    final tens = compound.group(1) == null
+        ? 1
+        : _koreanSingleMinuteValues[compound.group(1)!]!;
+    final ones = compound.group(2) == null
+        ? 0
+        : _koreanSingleMinuteValues[compound.group(2)!]!;
+    return (tens * 10) + ones;
+  }
+
+  bool _hasSpacedNativeNumberPrefix(String source, int quantityStart) {
+    final prefix = source.substring(0, quantityStart).trimRight();
+    final previousWord = RegExp(r'([가-힣]+)$').firstMatch(prefix)?.group(1);
+    return previousWord != null &&
+        _koreanNativeNumberPrefixes.contains(previousWord);
   }
 
   int _boundedSeconds(int seconds) => seconds.clamp(15, 600);

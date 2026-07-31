@@ -45,6 +45,15 @@ void main() {
       );
     });
 
+    test('keeps direct mutating commands local', () {
+      expect(routeOf('요리 시작해'), const VoiceIntent(VoiceIntentType.startTimer));
+      expect(routeOf('다음 단계로 가줘'), const VoiceIntent(VoiceIntentType.next));
+      expect(
+        routeOf('1분 더 해줘'),
+        const VoiceIntent(VoiceIntentType.extendTimer, seconds: 60),
+      );
+    });
+
     test('parses and bounds timer extensions', () {
       expect(
         routeOf('30초 더'),
@@ -68,6 +77,61 @@ void main() {
       );
     });
 
+    test('adds mixed minute and second units before applying bounds', () {
+      expect(
+        routeOf('1분 30초 더'),
+        const VoiceIntent(VoiceIntentType.extendTimer, seconds: 90),
+      );
+      expect(
+        routeOf('30초 1분 더'),
+        const VoiceIntent(VoiceIntentType.extendTimer, seconds: 90),
+      );
+      expect(
+        routeOf('한 분 30초 더'),
+        const VoiceIntent(VoiceIntentType.extendTimer, seconds: 90),
+      );
+      expect(
+        routeOf('9분 59초 더'),
+        const VoiceIntent(VoiceIntentType.extendTimer, seconds: 599),
+      );
+      expect(
+        routeOf('10분 30초 더'),
+        const VoiceIntent(VoiceIntentType.extendTimer, seconds: 600),
+      );
+      expect(
+        routeOf('0분 5초 더'),
+        const VoiceIntent(VoiceIntentType.extendTimer, seconds: 15),
+      );
+    });
+
+    test('matches complete Korean minute quantities', () {
+      expect(
+        routeOf('타이머 두 분 더'),
+        const VoiceIntent(VoiceIntentType.extendTimer, seconds: 120),
+      );
+      expect(
+        routeOf('십이 분 더'),
+        const VoiceIntent(VoiceIntentType.extendTimer, seconds: 600),
+      );
+      expect(
+        routeOf('십일 분 더'),
+        const VoiceIntent(VoiceIntentType.extendTimer, seconds: 600),
+      );
+      expect(
+        routeOf('이십 분 더'),
+        const VoiceIntent(VoiceIntentType.extendTimer, seconds: 600),
+      );
+      expect(
+        routeOf('십 이 분 더'),
+        const VoiceIntent(VoiceIntentType.extendTimer, seconds: 600),
+      );
+      expect(routeOf('열두 분 더'), const VoiceIntent(VoiceIntentType.ignore));
+      expect(routeOf('열 두 분 더'), const VoiceIntent(VoiceIntentType.ignore));
+      expect(routeOf('스물 세 분 더'), const VoiceIntent(VoiceIntentType.ignore));
+      expect(routeOf('백이 분 더'), const VoiceIntent(VoiceIntentType.ignore));
+      expect(routeOf('백 이 분 더'), const VoiceIntent(VoiceIntentType.ignore));
+    });
+
     test('explicit whole-cook completion wins over a step-level cue', () {
       expect(
         routeOf('조리 완료, 이제 됐어'),
@@ -77,6 +141,37 @@ void main() {
   });
 
   group('CookingVoiceRouter contextual questions', () {
+    test('routes tentative mutating commands to the coach', () {
+      const questions = ['요리 시작해도 돼?', '다음 단계로 가도 돼?', '1분 더 해도 돼?'];
+
+      for (final question in questions) {
+        expect(
+          routeOf(question),
+          const VoiceIntent(VoiceIntentType.exceptionQuestion),
+          reason: question,
+        );
+      }
+
+      expect(
+        routeOf('지금 뭐 해야 해?'),
+        const VoiceIntent(VoiceIntentType.currentStep),
+      );
+      expect(routeOf('오늘 시작해도 돼?'), const VoiceIntent(VoiceIntentType.ignore));
+      expect(routeOf('다음 주에 가도 돼?'), const VoiceIntent(VoiceIntentType.ignore));
+    });
+
+    test('routes tentative completion questions to the coach', () {
+      const questions = ['조리 완료해도 돼?', '요리 끝내도 되나요?', '조리 완료인가?'];
+
+      for (final question in questions) {
+        expect(
+          routeOf(question),
+          const VoiceIntent(VoiceIntentType.exceptionQuestion),
+          reason: question,
+        );
+      }
+    });
+
     test('question and cooking context win over substring commands', () {
       expect(
         routeOf('다음에 소금 넣는 게 맞아?'),
