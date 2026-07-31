@@ -148,6 +148,16 @@ void main() {
       expect(await store.load(), isNull);
     });
 
+    test('저장소를 열지 못한 오류를 세션 없음으로 숨기지 않는다', () async {
+      final failingStore = CookingSessionStore(
+        preferencesLoader: () async {
+          throw StateError('preferences unavailable');
+        },
+      );
+
+      await expectLater(failingStore.load(), throwsStateError);
+    });
+
     test('손상된 저장값은 null을 돌려주고 정리한다', () async {
       SharedPreferences.setMockInitialValues(<String, Object>{
         'cookpilot.active_cooking_session.v1': '{broken json',
