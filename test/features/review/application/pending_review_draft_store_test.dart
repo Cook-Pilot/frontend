@@ -435,6 +435,82 @@ void main() {
       }
     });
 
+    test('손상값 remove가 false면 캐시를 복원하고 다음 load가 다시 정리한다', () async {
+      const corruptedValue = '{broken json';
+      final platform = _FailingRemoveSharedPreferencesStore(const {
+        'flutter.${PendingReviewDraftStore.storageKey}': corruptedValue,
+      });
+      final originalPlatform = SharedPreferencesStorePlatform.instance;
+      addTearDown(() {
+        SharedPreferencesStorePlatform.instance = originalPlatform;
+      });
+      SharedPreferencesStorePlatform.instance = platform;
+      final preferences = await SharedPreferences.getInstance();
+      final store = PendingReviewDraftStore(
+        preferencesLoader: () async => preferences,
+      );
+
+      expect(await store.load(), isNull);
+      expect(
+        preferences.getString(PendingReviewDraftStore.storageKey),
+        corruptedValue,
+        reason: '실패한 remove가 먼저 지운 메모리 캐시를 디스크 값으로 복원한다.',
+      );
+
+      expect(await store.load(), isNull);
+      expect(
+        preferences.getString(PendingReviewDraftStore.storageKey),
+        corruptedValue,
+      );
+      expect(platform.removedKeys, const [
+        'flutter.${PendingReviewDraftStore.storageKey}',
+        'flutter.${PendingReviewDraftStore.storageKey}',
+      ]);
+      expect(
+        platform.getAllCalls,
+        3,
+        reason: '초기 load와 두 번의 실패한 정리 뒤 각각 디스크를 다시 읽는다.',
+      );
+    });
+
+    test('손상값 remove가 예외여도 캐시를 복원하고 다음 load가 다시 정리한다', () async {
+      const corruptedValue = '{still broken json';
+      final platform = _FailingRemoveSharedPreferencesStore(const {
+        'flutter.${PendingReviewDraftStore.storageKey}': corruptedValue,
+      }, removeError: StateError('platform remove failed'));
+      final originalPlatform = SharedPreferencesStorePlatform.instance;
+      addTearDown(() {
+        SharedPreferencesStorePlatform.instance = originalPlatform;
+      });
+      SharedPreferencesStorePlatform.instance = platform;
+      final preferences = await SharedPreferences.getInstance();
+      final store = PendingReviewDraftStore(
+        preferencesLoader: () async => preferences,
+      );
+
+      expect(await store.load(), isNull);
+      expect(
+        preferences.getString(PendingReviewDraftStore.storageKey),
+        corruptedValue,
+        reason: 'remove 예외를 숨기기 전에 메모리 캐시를 디스크 값으로 복원한다.',
+      );
+
+      expect(await store.load(), isNull);
+      expect(
+        preferences.getString(PendingReviewDraftStore.storageKey),
+        corruptedValue,
+      );
+      expect(platform.removedKeys, const [
+        'flutter.${PendingReviewDraftStore.storageKey}',
+        'flutter.${PendingReviewDraftStore.storageKey}',
+      ]);
+      expect(
+        platform.getAllCalls,
+        3,
+        reason: '초기 load와 두 번의 remove 예외 뒤 각각 디스크를 다시 읽는다.',
+      );
+    });
+
     test('clear 후에는 복원할 초안이 없다', () async {
       final store = PendingReviewDraftStore();
       await store.save(buildDraft());
