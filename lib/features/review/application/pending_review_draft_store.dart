@@ -23,8 +23,19 @@ final class PendingReviewDraft {
     required String comment,
     required String nextTimeNote,
     required bool approvedPersonalVersionCreation,
+    String? acceptedReviewId,
   }) {
     _requireCanonicalUuid(clientSessionId, 'clientSessionId');
+    if (acceptedReviewId != null) {
+      _requireCanonicalUuid(acceptedReviewId, 'acceptedReviewId');
+      if (!approvedPersonalVersionCreation) {
+        throw ArgumentError.value(
+          acceptedReviewId,
+          'acceptedReviewId',
+          'requires approvedPersonalVersionCreation',
+        );
+      }
+    }
     _validateSetupSnapshot(setupSnapshot);
     if (rating < minimumRating || rating > maximumRating) {
       throw ArgumentError.value(
@@ -56,6 +67,7 @@ final class PendingReviewDraft {
       comment: comment,
       nextTimeNote: nextTimeNote,
       approvedPersonalVersionCreation: approvedPersonalVersionCreation,
+      acceptedReviewId: acceptedReviewId,
     );
   }
 
@@ -68,16 +80,17 @@ final class PendingReviewDraft {
     required this.comment,
     required this.nextTimeNote,
     required this.approvedPersonalVersionCreation,
+    required this.acceptedReviewId,
   });
 
-  static const currentSchemaVersion = 1;
+  static const currentSchemaVersion = 2;
   static const minimumRating = 1;
   static const maximumRating = 5;
   static const maximumCommentCodePoints = 1000;
   static const maximumNextTimeNoteCodePoints = 500;
   static const maximumTimerSeconds = 2147483647;
 
-  static const _jsonFields = <String>{
+  static const _v1JsonFields = <String>{
     'schemaVersion',
     'clientSessionId',
     'cookedAt',
@@ -88,6 +101,7 @@ final class PendingReviewDraft {
     'nextTimeNote',
     'approvedPersonalVersionCreation',
   };
+  static const _v2JsonFields = <String>{..._v1JsonFields, 'acceptedReviewId'};
 
   static const _setupSnapshotJsonFields = <String>{
     'schemaVersion',
@@ -137,12 +151,14 @@ final class PendingReviewDraft {
   final String comment;
   final String nextTimeNote;
   final bool approvedPersonalVersionCreation;
+  final String? acceptedReviewId;
 
   PendingReviewDraft copyWith({
     int? rating,
     String? comment,
     String? nextTimeNote,
     bool? approvedPersonalVersionCreation,
+    String? acceptedReviewId,
   }) {
     return PendingReviewDraft(
       clientSessionId: clientSessionId,
@@ -155,6 +171,7 @@ final class PendingReviewDraft {
       approvedPersonalVersionCreation:
           approvedPersonalVersionCreation ??
           this.approvedPersonalVersionCreation,
+      acceptedReviewId: acceptedReviewId ?? this.acceptedReviewId,
     );
   }
 
@@ -170,15 +187,25 @@ final class PendingReviewDraft {
     'comment': comment,
     'nextTimeNote': nextTimeNote,
     'approvedPersonalVersionCreation': approvedPersonalVersionCreation,
+    'acceptedReviewId': acceptedReviewId,
   };
 
-  /// 저장소 입력을 엄격히 읽는다. 현재 최상위 스키마의 필드가 빠지거나
-  /// 추가돼도, 또는 중첩 실행 스냅샷이 유효하지 않아도 복구값으로 사용하지
-  /// 않는다.
+  /// 저장소 입력을 엄격히 읽는다. v1은 서버가 수락한 후기 ID가 없는 v2
+  /// draft로 마이그레이션한다. 각 버전의 필드가 빠지거나 추가돼도, 또는
+  /// 중첩 실행 스냅샷이 유효하지 않아도 복구값으로 사용하지 않는다.
   static PendingReviewDraft? fromJson(Map<String, Object?> json) {
-    if (json.length != _jsonFields.length ||
-        !_jsonFields.every(json.containsKey) ||
-        json['schemaVersion'] != currentSchemaVersion) {
+    final expectedFields = switch (json['schemaVersion']) {
+      1 => _v1JsonFields,
+      currentSchemaVersion => _v2JsonFields,
+      _ => null,
+    };
+    if (expectedFields == null ||
+        json.length != expectedFields.length ||
+        !expectedFields.every(json.containsKey)) {
+      return null;
+    }
+    final acceptedReviewIdValue = json['acceptedReviewId'];
+    if (acceptedReviewIdValue != null && acceptedReviewIdValue is! String) {
       return null;
     }
     if (json case {
@@ -228,6 +255,7 @@ final class PendingReviewDraft {
           comment: comment,
           nextTimeNote: nextTimeNote,
           approvedPersonalVersionCreation: approved,
+          acceptedReviewId: acceptedReviewIdValue as String?,
         );
       } on Object {
         return null;
