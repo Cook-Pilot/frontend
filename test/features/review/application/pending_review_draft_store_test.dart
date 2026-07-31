@@ -225,6 +225,64 @@ void main() {
       expect(restored.comment, '장애 뒤 최신 초안');
     });
 
+    test('플랫폼 저장 실패 뒤 캐시를 이전 영속 초안으로 복원한다', () async {
+      final previousDraft = buildDraft(rating: 2, comment: '이전 영속 초안');
+      final platform = _FalseSetSharedPreferencesStore({
+        'flutter.${PendingReviewDraftStore.storageKey}': jsonEncode(
+          previousDraft.toJson(),
+        ),
+      });
+      final originalPlatform = SharedPreferencesStorePlatform.instance;
+      addTearDown(() {
+        SharedPreferencesStorePlatform.instance = originalPlatform;
+      });
+      SharedPreferencesStorePlatform.instance = platform;
+      final preferences = await SharedPreferences.getInstance();
+      final store = PendingReviewDraftStore(
+        preferencesLoader: () async => preferences,
+      );
+
+      await expectLater(
+        store.save(buildDraft(rating: 5, comment: '저장되지 않은 최신 초안')),
+        throwsA(
+          isA<StateError>().having(
+            (error) => error.message,
+            'message',
+            '후기 초안을 로컬에 저장하지 못했습니다.',
+          ),
+        ),
+      );
+
+      final restored = await store.load();
+      expect(restored, isNotNull);
+      expect(restored!.rating, 2);
+      expect(restored.comment, '이전 영속 초안');
+      expect(platform.setKeys, const [
+        'flutter.${PendingReviewDraftStore.storageKey}',
+      ]);
+    });
+
+    test('플랫폼 저장 실패 뒤 영속 초안이 없으면 캐시도 비운다', () async {
+      final platform = _FalseSetSharedPreferencesStore(const {});
+      final originalPlatform = SharedPreferencesStorePlatform.instance;
+      addTearDown(() {
+        SharedPreferencesStorePlatform.instance = originalPlatform;
+      });
+      SharedPreferencesStorePlatform.instance = platform;
+      final preferences = await SharedPreferences.getInstance();
+      final store = PendingReviewDraftStore(
+        preferencesLoader: () async => preferences,
+      );
+
+      await expectLater(store.save(buildDraft()), throwsStateError);
+
+      expect(await store.load(), isNull);
+      expect(
+        preferences.containsKey(PendingReviewDraftStore.storageKey),
+        isFalse,
+      );
+    });
+
     test('저장소를 열지 못한 오류를 초안 없음으로 숨기지 않는다', () async {
       final store = PendingReviewDraftStore(
         preferencesLoader: () async {
@@ -371,6 +429,37 @@ final class _FalseRemoveSharedPreferencesStore
   @override
   Future<bool> setValue(String valueType, String key, Object value) async =>
       true;
+}
+
+final class _FalseSetSharedPreferencesStore
+    extends SharedPreferencesStorePlatform {
+  _FalseSetSharedPreferencesStore(Map<String, Object> persistedValues)
+    : _persistedValues = Map<String, Object>.from(persistedValues);
+
+  final Map<String, Object> _persistedValues;
+  final List<String> setKeys = [];
+
+  @override
+  Future<bool> clear() async {
+    _persistedValues.clear();
+    return true;
+  }
+
+  @override
+  Future<Map<String, Object>> getAll() async =>
+      Map<String, Object>.from(_persistedValues);
+
+  @override
+  Future<bool> remove(String key) async {
+    _persistedValues.remove(key);
+    return true;
+  }
+
+  @override
+  Future<bool> setValue(String valueType, String key, Object value) async {
+    setKeys.add(key);
+    return false;
+  }
 }
 
 const clientSessionId = '40000000-0000-0000-0000-000000000001';
