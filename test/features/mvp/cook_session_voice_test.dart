@@ -1,8 +1,10 @@
 import 'dart:async';
 
 import 'package:cookpilot/features/cooking/application/cooking_ports.dart';
+import 'package:cookpilot/features/cooking/application/cooking_session_store.dart';
 import 'package:cookpilot/features/mvp/cook_flow_screens.dart';
 import 'package:cookpilot/features/recipe/domain/recipe.dart';
+import 'package:cookpilot/features/review/application/pending_review_draft_store.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -57,6 +59,8 @@ void main() {
     bool handsFreeVoiceEnabled = false,
     TimerAlarmPort? alarm = const SilentTimerAlarm(),
     Future<TimerAlarmPort> Function()? alarmResolver,
+    PendingReviewDraftGateway? pendingReviewDraftStore,
+    CookingSessionGateway? cookingSessionStore,
   }) async {
     // The cooking controls live in one scrollable screen. Give the widget test
     // enough vertical room to build both the timer and voice controls so these
@@ -73,6 +77,8 @@ void main() {
           advicePort: advicePort,
           speechInput: speechInput,
           handsFreeVoiceEnabled: handsFreeVoiceEnabled,
+          pendingReviewDraftStore: pendingReviewDraftStore,
+          cookingSessionStore: cookingSessionStore,
         ),
       ),
     );
@@ -574,7 +580,13 @@ void main() {
       ],
       hasPersonalVersion: false,
     );
-    await pumpSession(tester, speechInput: speech, testRecipe: oneStepRecipe);
+    await pumpSession(
+      tester,
+      speechInput: speech,
+      testRecipe: oneStepRecipe,
+      pendingReviewDraftStore: _MemoryPendingReviewDraftStore(),
+      cookingSessionStore: _MemoryCookingSessionStore(),
+    );
 
     await tapVoiceButton(tester);
     speech.emitUtterance('다음 단계', utteranceId: 'last-next');
@@ -590,4 +602,39 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(ReviewScreen), findsOneWidget);
   });
+}
+
+final class _MemoryPendingReviewDraftStore
+    implements PendingReviewDraftGateway {
+  PendingReviewDraft? _draft;
+
+  @override
+  Future<void> save(PendingReviewDraft draft) async {
+    _draft = draft;
+  }
+
+  @override
+  Future<PendingReviewDraft?> load() async => _draft;
+
+  @override
+  Future<void> clear() async {
+    _draft = null;
+  }
+}
+
+final class _MemoryCookingSessionStore implements CookingSessionGateway {
+  PersistedCookingSession? _session;
+
+  @override
+  Future<void> save(PersistedCookingSession session) async {
+    _session = session;
+  }
+
+  @override
+  Future<PersistedCookingSession?> load() async => _session;
+
+  @override
+  Future<void> clear() async {
+    _session = null;
+  }
 }
