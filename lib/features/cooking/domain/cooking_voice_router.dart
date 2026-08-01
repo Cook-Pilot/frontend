@@ -270,6 +270,7 @@ final class CookingVoiceRouter {
     }
 
     if (_isUnsafeRawMeatProblem(text, lowerTranscript)) return true;
+    if (_hasAssumedPreparationConsumption(lowerTranscript)) return true;
     if (_isSaltyProblem(text, lowerTranscript, ingredientTokens)) return true;
     if (_isMissingIngredientProblem(text, hasIngredientContext)) return true;
 
@@ -321,6 +322,41 @@ final class CookingVoiceRouter {
         end: segment.end,
       )) {
         return true;
+      }
+    }
+    return false;
+  }
+
+  bool _hasAssumedPreparationConsumption(String source) {
+    final assumptions = RegExp(
+      r'(?:익힌|구운|볶은|삶은|데친|조리한|요리한)\s*'
+      r'(?:셈\s*(?:으로)?\s*치|'
+      r'(?:걸|것)\s*(?:로|으로)\s*(?:알|생각|착각|믿|보)|'
+      r'줄\s*(?:로)?\s*(?:알|생각|착각|믿))',
+    ).allMatches(source);
+    final consumptions = _rawConsumptionMatches(source).toList();
+    for (final assumption in assumptions) {
+      final boundary = _nextHardBoundaryOutsideQuotes(source, assumption.end);
+      final end = boundary ?? source.length;
+      for (final consumption in consumptions) {
+        if (consumption.start < assumption.end) continue;
+        if (consumption.start >= end ||
+            consumption.start - assumption.end > 40) {
+          break;
+        }
+        if (_hasDifferentConsumptionTarget(
+          source.substring(assumption.end, consumption.start),
+        )) {
+          continue;
+        }
+        if (!_isSafeConsumptionEvent(
+          source,
+          consumption,
+          start: assumption.start,
+          end: end,
+        )) {
+          return true;
+        }
       }
     }
     return false;
@@ -509,7 +545,8 @@ final class CookingVoiceRouter {
           RegExp(r'^[가-힣a-z0-9]*$').hasMatch(gap) &&
           !RegExp(
             r'(?:안|못|않|말|척|예정|야|려고|필요|'
-            r'줄(?:알|착각|믿)|것으로(?:알|착각|믿)|것같|'
+            r'셈(?:으로)?치|(?:걸|것)(?:로|으로)(?:알|생각|착각|믿|보)|'
+            r'줄(?:로)?(?:알|생각|착각|믿)|것같|'
             r'듯(?:싶|하)|거라(?:고)?(?:알|생각|착각|믿))',
           ).hasMatch(gap)) {
         return true;
@@ -896,7 +933,7 @@ final class CookingVoiceRouter {
             allowCopular: true,
           ),
         ) ||
-        dynamicTokens.any(text.contains);
+        _hasIngredientContext(lowerTranscript, dynamicTokens);
   }
 
   bool _hasIngredientContext(String transcript, Iterable<String> tokens) {
@@ -1056,8 +1093,9 @@ final class CookingVoiceRouter {
   bool _isIngredientCookingContinuation(String value) {
     final continuation = value.replaceFirst(RegExp(r'^[\s,，]+'), '');
     return RegExp(
-      r'^(?:(?:더|좀|조금|약간|많이|적게|얼마나|어떻게|다|전부|모두|'
-      r'이미|거의|완전히)\s*)*'
+      r'^(?:(?:(?:더|좀|조금|약간|많이|적게|얼마나|어떻게|다|전부|모두|'
+      r'이미|거의|완전히)|'
+      r'몇\s*(?:개|그램|킬로|큰술|작은술|컵|쪽|알|단|줌|스푼)?)\s*)*'
       r'(?:넣|추가|빼|제외|사용|준비|손질|썰|다듬|씻|볶|굽|구우|'
       r'익|삶|데치|끓|섞|갈|다지|자르|먹|양념|없|부족|모자라|'
       r'떨어졌|다썼|상했|상한|탔|짜|싱거|괜찮|어때)',
@@ -1269,11 +1307,30 @@ final class CookingVoiceRouter {
 
   bool _isFinishCommand(String text) {
     final command = text.replaceFirst(RegExp(r'^(?:이제|드디어|정말)'), '');
+    if (_isNegatedFinishCommand(command)) return false;
     if (_explicitFinishPhrases.any(command.startsWith)) return true;
     return RegExp(
-      r'^(?:(?:조리|요리|다|전부|모두))?(?:완성|완료)했'
+      r'^(?:(?:조리|요리)(?:가|는|은)?|다|전부|모두)?(?:완성|완료)'
+      r'(?:했|됐|되었)'
       r'(?:어(?:요)?|다|습니다|네(?:요)?|지(?:요)?|죠)?[.!?。！？]*$',
     ).hasMatch(command);
+  }
+
+  bool _isNegatedFinishCommand(String command) {
+    for (final completion in RegExp(r'완성|완료|끝').allMatches(command)) {
+      final tail = command.substring(completion.end);
+      if (RegExp(
+            r'^(?:이|가|은|는|도)?(?:아직|전혀|절대|아예)?'
+            r'(?:(?:안|못)(?:했|됐|끝냈|끝났)|하지않|되지않|끝내지않)',
+          ).hasMatch(tail) ||
+          RegExp(
+            r'^(?:했|됐|났|낸|한|된|난)?(?:다는)?'
+            r'(?:건|게|것(?:이|은)?)(?:전혀|절대|아예)?아니',
+          ).hasMatch(tail)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   bool _isNextCommand(String text) {
@@ -1456,9 +1513,10 @@ final class CookingVoiceRouter {
 
     final gap = source
         .substring(previousSignal.end, marker.start)
-        .replaceAll(RegExp(r'[\s,，]'), '');
+        .replaceAll(RegExp(r'[\s,，.!?。！？;；]'), '');
     return gap.isEmpty ||
-        _isExtensionSignalSuffix(previousSignal.group(0)!, gap);
+        _isExtensionSignalSuffix(previousSignal.group(0)!, gap) ||
+        RegExp(r'^(?:그건|그거는|그걸|그것은|그것을)$').hasMatch(gap);
   }
 
   bool _isNegatedReplacementMarker(String source, RegExpMatch marker) {

@@ -126,6 +126,10 @@ void main() {
         const VoiceIntent(VoiceIntentType.extendTimer, seconds: 30),
       );
       expect(
+        routeOf('1분 더, 그건 말고 30초 더'),
+        const VoiceIntent(VoiceIntentType.extendTimer, seconds: 30),
+      );
+      expect(
         routeOf('1분 더하지 말고 30초 더'),
         const VoiceIntent(VoiceIntentType.extendTimer, seconds: 30),
       );
@@ -151,6 +155,10 @@ void main() {
       );
       expect(
         routeOf('1분 더, 아니 30초 더'),
+        const VoiceIntent(VoiceIntentType.extendTimer, seconds: 30),
+      );
+      expect(
+        routeOf('1분 더 해줘. 아니, 30초 더'),
         const VoiceIntent(VoiceIntentType.extendTimer, seconds: 30),
       );
       expect(
@@ -260,6 +268,16 @@ void main() {
     test('requires whole-cook context for generic completion phrases', () {
       expect(routeOf('완료했어'), const VoiceIntent(VoiceIntentType.finish));
       expect(routeOf('요리 완성했어요'), const VoiceIntent(VoiceIntentType.finish));
+      expect(routeOf('요리는 완료했어'), const VoiceIntent(VoiceIntentType.finish));
+      expect(routeOf('조리가 완료됐어'), const VoiceIntent(VoiceIntentType.finish));
+
+      for (final negatedCompletion in const ['조리 완료는 아직 안 했어', '조리 끝난 건 아니야']) {
+        expect(
+          routeOf(negatedCompletion),
+          const VoiceIntent(VoiceIntentType.ignore),
+          reason: negatedCompletion,
+        );
+      }
 
       for (final partialCompletion in const [
         '재료 손질 완료했어',
@@ -494,6 +512,7 @@ void main() {
         '가지 어떻게 썰어?',
         '가지가 없어',
         '가지는요?',
+        '양파는 몇 개 넣어?',
       ]) {
         expect(
           routeWithEggplant(cookingQuestion),
@@ -501,6 +520,14 @@ void main() {
           reason: cookingQuestion,
         );
       }
+
+      final recipeTitleHomonym = router.route(
+        '오늘 어떻게 집에 가지?',
+        recipeTitle: '가지 볶음',
+        ingredientNames: const ['양파'],
+        currentStepInstruction: '팬을 달군다',
+      );
+      expect(recipeTitleHomonym, const VoiceIntent(VoiceIntentType.ignore));
     });
 
     test('does not mistake 진짜 for a salty problem', () {
@@ -620,6 +647,9 @@ void main() {
         '생고기를 구운 줄 알고 먹었어',
         '생고기를 익힌 줄 착각하고 먹었어',
         '생고기를 조리한 것으로 알고 먹었어',
+        '생고기를 익힌 셈 치고 먹었어',
+        '익힌 걸로 생각하고 먹었어',
+        '익힌 줄로 알고 먹었어',
         '생고기를 먹으려 해',
         '생고기를 먹어도 돼?',
         '생고기를 먹으면 괜찮을까?',
@@ -668,6 +698,7 @@ void main() {
         '생고기를 먹은 건 절대 아니야',
         '고기를 생으로 안 먹었어',
         '생고기가 위험하지 않아',
+        '익힌 셈 치고 밥을 먹었어',
       ]) {
         expect(
           routeOf(ordinaryStep),
