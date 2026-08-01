@@ -276,6 +276,10 @@ void main() {
       expect(routeOf('조리가 완료됐어'), const VoiceIntent(VoiceIntentType.finish));
       expect(routeOf('조리 완료됐다고 했어'), const VoiceIntent(VoiceIntentType.finish));
       expect(routeOf('조리 끝났다고 했어'), const VoiceIntent(VoiceIntentType.finish));
+      expect(
+        routeOf('조리 완료됐다는 말을 들었어'),
+        const VoiceIntent(VoiceIntentType.finish),
+      );
 
       for (final negatedCompletion in const [
         '조리 완료는 아직 안 했어',
@@ -286,6 +290,10 @@ void main() {
         '요리 완성했다고 한 건 아니야',
         '조리 완료되었다고 한 건 아니야',
         '조리 끝났다고 한 건 아니야',
+        '조리 완료됐다는 말은 아니야',
+        '조리 완료됐다는 말이 아니야',
+        '조리 완료됐다고 했던 건 아니야',
+        '조리 완료됐다고 말했던 건 아니야',
       ]) {
         expect(
           routeOf(negatedCompletion),
@@ -448,6 +456,12 @@ void main() {
         ingredientNames: const ['물', '쌀', '파'],
         currentStepInstruction: '쌀을 씻는다',
       );
+      final joinedGreenOnionQuantityQuestion = router.route(
+        '파몇개?',
+        recipeTitle: '밥',
+        ingredientNames: const ['물', '쌀', '파'],
+        currentStepInstruction: '쌀을 씻는다',
+      );
 
       expect(
         waterQuestion,
@@ -480,6 +494,10 @@ void main() {
       );
       expect(
         joinedPrefixedGreenOnionAlsoQuestion,
+        const VoiceIntent(VoiceIntentType.exceptionQuestion),
+      );
+      expect(
+        joinedGreenOnionQuantityQuestion,
         const VoiceIntent(VoiceIntentType.exceptionQuestion),
       );
     });
@@ -827,6 +845,12 @@ void main() {
         ingredientNames: const ['물', '쌀', '파'],
         currentStepInstruction: '쌀을 씻는다',
       );
+      final joinedWaveQuantityQuestion = router.route(
+        '파도몇개야?',
+        recipeTitle: '밥',
+        ingredientNames: const ['물', '쌀', '파'],
+        currentStepInstruction: '쌀을 씻는다',
+      );
       final fileQuestion = router.route(
         '파일까요?',
         recipeTitle: '밥',
@@ -867,6 +891,10 @@ void main() {
       expect(waveQuestion, const VoiceIntent(VoiceIntentType.ignore));
       expect(waveSubjectQuestion, const VoiceIntent(VoiceIntentType.ignore));
       expect(waveOnlyQuestion, const VoiceIntent(VoiceIntentType.ignore));
+      expect(
+        joinedWaveQuantityQuestion,
+        const VoiceIntent(VoiceIntentType.ignore),
+      );
       expect(fileQuestion, const VoiceIntent(VoiceIntentType.ignore));
       expect(diggingQuestion, const VoiceIntent(VoiceIntentType.ignore));
       expect(

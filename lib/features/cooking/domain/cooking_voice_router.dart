@@ -943,8 +943,12 @@ final class CookingVoiceRouter {
     final normalized = _normalize(transcript);
     final lower = transcript.toLowerCase();
     for (final token in tokens) {
+      final isKorean = RegExp(r'^[가-힣]+$').hasMatch(token);
+      if (isKorean && _hasIngredientQuantityContext(lower, token)) {
+        return true;
+      }
       if (token.runes.length >= 2) {
-        if (RegExp(r'^[가-힣]+$').hasMatch(token)) {
+        if (isKorean) {
           if (_hasMultiKoreanContextToken(lower, token)) return true;
         } else if (normalized.contains(token)) {
           return true;
@@ -955,6 +959,42 @@ final class CookingVoiceRouter {
       // "물 더 넣어", "물이 없어" and "파를 썰어" while preventing a
       // recipe containing "파" from treating "파티 어때?" as cooking context.
       if (_hasSingleKoreanWordToken(lower, token)) return true;
+    }
+    return false;
+  }
+
+  bool _hasIngredientQuantityContext(String lower, String token) {
+    for (final candidate in RegExp(RegExp.escape(token)).allMatches(lower)) {
+      final joinedPrefix = _hangulWordPrefix(lower, candidate.start);
+      if (joinedPrefix.isNotEmpty &&
+          !_hasAllowedSingleTokenCollisionPrefix(lower, candidate.start)) {
+        continue;
+      }
+
+      final wordSuffix = _hangulWordSuffix(lower, candidate.end);
+      if (token.runes.length == 1 &&
+          _singleTokenLexicalRoots(token).any(wordSuffix.startsWith)) {
+        continue;
+      }
+      if (_isIngredientQuantityQuestion(wordSuffix)) return true;
+
+      if (wordSuffix.isEmpty) {
+        if (_isIngredientQuantityQuestion(lower.substring(candidate.end))) {
+          return true;
+        }
+        continue;
+      }
+
+      final particleEnd = _koreanNominalParticleEnd(token, wordSuffix);
+      if (particleEnd == null) continue;
+      final continuation = wordSuffix.substring(particleEnd);
+      if (_isIngredientQuantityQuestion(continuation)) return true;
+      if (continuation.isEmpty &&
+          _isIngredientQuantityQuestion(
+            lower.substring(candidate.end + wordSuffix.length),
+          )) {
+        return true;
+      }
     }
     return false;
   }
@@ -976,27 +1016,20 @@ final class CookingVoiceRouter {
             candidate.end + wordSuffix.length,
           );
           if (continuation == '요' ||
-              _isIngredientCookingContinuation(continuation) ||
-              _isIngredientQuantityQuestion(continuation)) {
+              _isIngredientCookingContinuation(continuation)) {
             return true;
           }
           if (continuation.isEmpty &&
               (_isIngredientCookingContinuation(followingText) ||
-                  _isIngredientQuantityQuestion(followingText) ||
                   RegExp(r'^\s*(?:요\s*)?[?？]').hasMatch(followingText))) {
             return true;
           }
         }
-        if (_isIngredientCookingContinuation(wordSuffix) ||
-            _isIngredientQuantityQuestion(wordSuffix)) {
-          return true;
-        }
+        if (_isIngredientCookingContinuation(wordSuffix)) return true;
         continue;
       }
 
-      final followingText = lower.substring(candidate.end);
-      if (_isIngredientCookingContinuation(followingText) ||
-          _isIngredientQuantityQuestion(followingText)) {
+      if (_isIngredientCookingContinuation(lower.substring(candidate.end))) {
         return true;
       }
     }
@@ -1341,10 +1374,17 @@ final class CookingVoiceRouter {
             r'(?:(?:안|못)(?:했|됐|끝냈|끝났)|하지않|되지않|끝내지않)',
           ).hasMatch(tail) ||
           RegExp(
-            r'^(?:(?:이|가|은|는|도)?(?:했|됐|되었|났|낸|한|된|난)?'
-            r'(?:(?:다고|다는)(?:말)?(?:했|한)?)?|'
-            r'(?:이?라고)(?:말)?(?:했|한))'
+            r'^(?:이|가|은|는|도)?'
+            r'(?:되었던|됐던|했던|났던|되었|했|됐|났|낸|한|된|난)?'
             r'(?:건|게|것(?:이|은)?)(?:전혀|절대|아예)?아니',
+          ).hasMatch(tail) ||
+          RegExp(
+            r'^(?:이|가|은|는|도)?'
+            r'(?:되었던|됐던|했던|났던|되었|했|됐|났|낸|한|된|난)?'
+            r'(?:이라는|라는|이?라고|다고|다는)'
+            r'(?:(?:말)?(?:했던|했|한)?'
+            r'(?:건|게|것(?:이|은)?)(?:전혀|절대|아예)?아니|'
+            r'말(?:은|이|도)?(?:전혀|절대|아예)?아니)',
           ).hasMatch(tail)) {
         return true;
       }
