@@ -247,6 +247,33 @@ void main() {
       }
     });
 
+    test('재료 baselineUnit의 DB 비호환 문자를 거부한다', () {
+      for (final invalidUnit in <String>[
+        '앞\u0000뒤',
+        String.fromCharCode(0xd800),
+        String.fromCharCode(0xdc00),
+      ]) {
+        expect(
+          () => buildDraft(
+            setupSnapshot: buildSetupSnapshot(
+              ingredientBaselineUnit: invalidUnit,
+            ),
+          ),
+          throwsArgumentError,
+          reason: 'baselineUnit의 DB 비호환 문자는 모델 생성에서 거부해야 한다.',
+        );
+        final corrupted = _mutatedDraftJson(
+          (setupSnapshot, ingredient, step) =>
+              ingredient['baselineUnit'] = invalidUnit,
+        );
+        expect(
+          PendingReviewDraft.fromJson(corrupted),
+          isNull,
+          reason: 'baselineUnit의 DB 비호환 문자는 저장값 복원에서 거부해야 한다.',
+        );
+      }
+    });
+
     test('실행 단계 기본 타이머는 null과 지원 범위 경계만 허용한다', () {
       for (final timerSeconds in <int?>[
         null,
@@ -1522,6 +1549,7 @@ CookingSetupSnapshot buildSetupSnapshot({
   double baseServings = 2,
   double? ingredientAmount = 1,
   double? ingredientBaselineAmount = 1,
+  String? ingredientBaselineUnit,
   String ingredientName = '두부',
   String ingredientUnit = '모',
   String stepInstruction = '두부를 부친다.',
@@ -1545,6 +1573,7 @@ CookingSetupSnapshot buildSetupSnapshot({
         name: ingredientName,
         amount: ingredientAmount,
         baselineAmount: ingredientBaselineAmount,
+        baselineUnit: ingredientBaselineUnit,
         unit: ingredientUnit,
         isRequired: true,
       ),

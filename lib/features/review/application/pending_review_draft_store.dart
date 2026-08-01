@@ -531,6 +531,13 @@ void _validateSetupSnapshot(CookingSetupSnapshot snapshot) {
       ingredient.unit,
       field: 'setupSnapshot.ingredients.unit',
     );
+    final baselineUnit = ingredient.baselineUnit;
+    if (baselineUnit != null) {
+      _validateDatabaseText(
+        baselineUnit,
+        field: 'setupSnapshot.ingredients.baselineUnit',
+      );
+    }
     final amount = ingredient.amount;
     if (amount != null && (!amount.isFinite || amount < 0)) {
       throw ArgumentError.value(
