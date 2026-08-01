@@ -15,7 +15,7 @@
 
 이 PR은 backend #37의 새 엔드포인트가 배포되어야 동작한다. 기존 개인 버전을
 먼저 조회해 다른 사용자의 버전 정보를 노출할 수 있었던 ownership P1과 입력
-validation 지적은 backend #37에서 수정됐고 CI도 통과했다. 서버 PR의 승인·병합과
+validation 지적은 backend #37에서 수정됐고 CI를 통과해 머지됐다. 서버
 배포가 끝난 뒤 이 프론트 흐름을 함께 활성화한다.
 
 ## HTTP 계약
@@ -93,9 +93,18 @@ status만 `PersonalVersionCreated` marker로 바꾼다. 빈 `201` body도 같은
 요청이 `204`가 되거나 이번 조리에서 새로 바꾼 값만 전송된다.
 
 `MODIFY`에는 실제로 달라진 `name`, `amount`, `unit`, `required`만 넣는다.
+원본에 숫자 수량이 있던 재료의 수량을 미지정으로 지우면 `amount: null`을
+명시적으로 보낸다. 수량은 그대로이고 이름·단위·필수 여부만 바뀌 MODIFY에는
+`amount` 키 자체를 넣지 않아 삭제 의도와 미변경을 구분한다.
 현재 CookSetup UI가 단위와 필수 여부를 직접 편집하지 않더라도, 선택한 기존 개인
 버전에 이미 있던 변경은 다음 누적 버전에서 원본으로 되돌아가면 안 되므로 그대로
 재전송한다. `ADD`는 새 재료를 복원할 수 있도록 네 값을 모두 보낸다.
+수량이 미지정이면 `amount: null`을 명시해 ADD payload의 완전한 형태를 유지한다.
+
+다만 머지된 backend #37의 현재 `IngredientAdjustment` 모델은 생략된 `amount`와
+명시적 `null`을 모두 Java `null`로 읽고, MODIFY의 `null` 수량을 원본값 유지로
+해석한다. 따라서 이 클라이언트 JSON은 삭제 의도를 보존하지만, 실제 수량 삭제를
+반영하려면 백엔드도 키 존재 여부를 보존하는 후속 계약으로 확장해야 한다.
 
 양 비교에는 화면의 변경 요약과 같은 작은 부동소수점 오차 허용값을 사용한다.
 snapshot의 양은 이미 조리 인분 기준이며, 백엔드는 저장된 후기의
@@ -151,6 +160,7 @@ focused 테스트는 다음을 확인한다.
 - `ADD` / `REMOVE` / `MODIFY` 매핑과 무변경 제외
 - 개인 버전 합성 결과의 누적 `ADD` / `REMOVE` / `MODIFY` 보존
 - 원본 수량 `null`과 개인 버전 숫자 수량의 누적 `MODIFY` 및 JSON 왕복 보존
+- 숫자 수량을 미지정으로 지울 때의 `amount: null`과 수량 미변경의 키 생략 구분
 - 빈 `stepAdjustments`와 타이머 비포함
 - `createdAt: null` 또는 빈 body인 `201` 생성 marker
 - `204` 변경 없음

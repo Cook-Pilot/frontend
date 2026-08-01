@@ -26,6 +26,7 @@ final class PersonalVersionIngredientAdjustment {
     this.originalIngredientId,
     this.name,
     this.amount,
+    required this.includeAmount,
     this.unit,
     this.required,
   });
@@ -34,6 +35,9 @@ final class PersonalVersionIngredientAdjustment {
   final PersonalVersionIngredientAdjustmentType type;
   final String? name;
   final double? amount;
+
+  /// `amount` 값이 null이어도 JSON 키를 명시할지 구분한다.
+  final bool includeAmount;
   final String? unit;
   final bool? required;
   final int sortOrder;
@@ -43,7 +47,7 @@ final class PersonalVersionIngredientAdjustment {
       'originalIngredientId': originalIngredientId,
     'type': type.apiValue,
     if (name != null) 'name': name,
-    if (amount != null) 'amount': amount,
+    if (includeAmount) 'amount': amount,
     if (unit != null) 'unit': unit,
     if (required != null) 'required': required,
     'sortOrder': sortOrder,
@@ -212,6 +216,7 @@ PersonalVersionIngredientAdjustment? _mapIngredient(
       type: PersonalVersionIngredientAdjustmentType.add,
       name: ingredient.name,
       amount: ingredient.amount,
+      includeAmount: true,
       unit: ingredient.unit,
       required: ingredient.isRequired,
       sortOrder: sortOrder,
@@ -221,6 +226,7 @@ PersonalVersionIngredientAdjustment? _mapIngredient(
     return PersonalVersionIngredientAdjustment(
       originalIngredientId: originalIngredientId,
       type: PersonalVersionIngredientAdjustmentType.remove,
+      includeAmount: false,
       sortOrder: sortOrder,
     );
   }
@@ -243,6 +249,7 @@ PersonalVersionIngredientAdjustment? _mapIngredient(
     type: PersonalVersionIngredientAdjustmentType.modify,
     name: changedName ? ingredient.name : null,
     amount: changedAmount ? ingredient.amount : null,
+    includeAmount: changedAmount,
     unit: changedUnit ? ingredient.unit : null,
     required: changedRequired ? ingredient.isRequired : null,
     sortOrder: sortOrder,
