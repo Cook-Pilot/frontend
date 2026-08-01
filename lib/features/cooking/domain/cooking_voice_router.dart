@@ -114,6 +114,7 @@ final class CookingVoiceRouter {
     '이거',
     '이게',
     '이건',
+    '맛',
     '간',
     '국',
   ];
@@ -364,18 +365,45 @@ final class CookingVoiceRouter {
       }
     }
     if (surface == '짠') {
+      if (_isJjaCreationAttributive(
+        lowerTranscript,
+        match,
+        hasTasteLead: hasTasteLead,
+      )) {
+        return true;
+      }
       if (wordSuffix.startsWith('돌이') ||
           wordSuffix.startsWith('해') ||
           wordSuffix.startsWith('하')) {
         return true;
       }
     }
-    if (surface.startsWith('짭') && wordSuffix.isNotEmpty) {
-      return true;
+    if (surface.startsWith('짭')) {
+      final isComposableFormalEnding = surface == '짭니다' && wordSuffix == '만';
+      if (wordSuffix.isNotEmpty && !isComposableFormalEnding) return true;
     }
 
     if (wordPrefix.isEmpty) return false;
     return !_tasteDegreeMarkers.any(wordPrefix.endsWith) && !hasTasteLead;
+  }
+
+  bool _isJjaCreationAttributive(
+    String lowerTranscript,
+    RegExpMatch predicate, {
+    required bool hasTasteLead,
+  }) {
+    if (hasTasteLead ||
+        _hangulWordSuffix(lowerTranscript, predicate.end).isNotEmpty) {
+      return false;
+    }
+    final localPrefix = lowerTranscript.substring(0, predicate.start);
+    final subject = RegExp(r'([가-힣]+)\s*$').firstMatch(localPrefix)?.group(1);
+    if (subject == null || !RegExp(r'(?:이|가|은|는)$').hasMatch(subject)) {
+      return false;
+    }
+    return RegExp(
+      r'^\s+[가-힣]+',
+    ).hasMatch(lowerTranscript.substring(predicate.end));
   }
 
   bool _isJjaPresentEnding(String wordSuffix) {
@@ -387,7 +415,7 @@ final class CookingVoiceRouter {
       r'줘(?:요)?|주세요|주라|려고|려면|면서|도록|는데(?:요)?|도|거나|'
       r'져(?:요)?|졌(?:어(?:요)?|다|네(?:요)?|는데(?:요)?|지만(?:요)?|고|'
       r'습니다|습니까)|더라(?:고(?:요)?)?|던데(?:요)?|더니|대요|'
-      r'다고(?:요)?)?$',
+      r'구나(?:요)?|다고(?:요)?)?$',
     ).hasMatch(wordSuffix);
   }
 
@@ -492,9 +520,14 @@ final class CookingVoiceRouter {
     final primary = _alternation(primaryParticles);
     final auxiliary = _alternation(auxiliaryParticles);
     final degree = _alternation(_tasteDegreeMarkers);
+    final particleSequence = '(?:$primary)(?:$auxiliary){0,2}';
+    final degreeSequence = '(?:$degree)(?:더)?';
+    const attachedAdverbial = r'[가-힣]{1,8}(?:게|히|으로|로)';
     return RegExp(
-      '^(?:(?:$primary)(?:$auxiliary){0,2})?'
-      '(?:(?:$degree)(?:더)?)?\$',
+      '^(?:$degreeSequence|'
+      '$particleSequence(?:$degreeSequence)?|'
+      '$particleSequence(?:$attachedAdverbial){1,2}'
+      '(?:$degreeSequence)?)\$',
     ).hasMatch(wordSuffix);
   }
 
@@ -597,7 +630,8 @@ final class CookingVoiceRouter {
     final degrees = _alternation(_tasteDegreeMarkers);
     return RegExp(
       '(^|[^가-힣a-z0-9])(?:$subjects)'
-      '(?:이|가|은|는|도|만)?\\s*(?:(?:$degrees)\\s*)?\$',
+      '(?:(?:이|가|은|는|도|만)){0,2}\\s*'
+      '(?:(?:$degrees)\\s*)?\$',
     ).hasMatch(prefix);
   }
 
@@ -815,15 +849,39 @@ final class CookingVoiceRouter {
       clauseStart = boundary.end;
     }
     final rawClausePrefix = prefix.substring(clauseStart);
-    if (rawClausePrefix.trim().isNotEmpty &&
-        !RegExp(r'[\s,，]$').hasMatch(rawClausePrefix)) {
-      return false;
-    }
     final clausePrefix = rawClausePrefix.replaceAll(RegExp(r'[\s,，]+'), '');
     if (clausePrefix.isEmpty) return true;
+    final separatedPrefix = RegExp(r'[\s,，]$').hasMatch(rawClausePrefix);
+    const unambiguousMarkers = <String>[
+      '지금',
+      '이제',
+      '현재',
+      '우선',
+      '먼저',
+      '여기',
+      '이거',
+      '이것',
+      '그거',
+      '그것',
+      '저거',
+      '저것',
+      '이쪽',
+      '그쪽',
+      '저쪽',
+      '조금',
+      '약간',
+    ];
+    const shortMarkers = <String>['이', '그', '저', '좀', '더'];
+    final unambiguous = _alternation(unambiguousMarkers);
+    final allMarkers = _alternation({...unambiguousMarkers, ...shortMarkers});
+    if (separatedPrefix) {
+      return RegExp('^(?:$allMarkers){1,3}\$').hasMatch(clausePrefix);
+    }
+
+    // A joined prefix must begin with an unambiguous multi-syllable marker;
+    // this admits "지금불..." while keeping lexical words such as "이불" closed.
     return RegExp(
-      r'^(?:(?:지금|이제|현재|우선|먼저|여기|이거|이것|그거|그것|'
-      r'저거|저것|이쪽|그쪽|저쪽|이|그|저|좀|조금|약간|더)){1,3}$',
+      '^(?:$unambiguous)(?:$allMarkers){0,2}\$',
     ).hasMatch(clausePrefix);
   }
 

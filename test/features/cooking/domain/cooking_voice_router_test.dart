@@ -214,6 +214,7 @@ void main() {
         '불의 세기 괜찮아?',
         '불의세기 괜찮아?',
         '지금 불의세기 괜찮아?',
+        '지금불의세기괜찮아?',
         '불의 강도를 줄여야 할까?',
         '불만 줄여야 할까?',
         '불만줄여야 할까?',
@@ -294,6 +295,12 @@ void main() {
         ingredientNames: const ['물', '쌀', '파'],
         currentStepInstruction: '쌀을 씻는다',
       );
+      final joinedPrefixedGreenOnionAlsoQuestion = router.route(
+        '지금파도넣어야해?',
+        recipeTitle: '밥',
+        ingredientNames: const ['물', '쌀', '파'],
+        currentStepInstruction: '쌀을 씻는다',
+      );
 
       expect(
         waterQuestion,
@@ -322,6 +329,10 @@ void main() {
       );
       expect(
         joinedGreenOnionAlsoQuestion,
+        const VoiceIntent(VoiceIntentType.exceptionQuestion),
+      );
+      expect(
+        joinedPrefixedGreenOnionAlsoQuestion,
         const VoiceIntent(VoiceIntentType.exceptionQuestion),
       );
     });
@@ -353,9 +364,12 @@ void main() {
       const problems = [
         '물이 아직 안 끓어',
         '국이 너무 짜',
+        '맛이 짜',
+        '국이 짜구나',
         '국물이 뭔가 짜',
         '소스가 뭔가 좀 짜',
         '국이 짭니다',
+        '국이 짭니다만',
         '국이 짭니까?',
         '국물이 짜졌어',
         '국물이 짜졌습니다',
@@ -396,8 +410,28 @@ void main() {
         ingredientNames: const ['김치', '두부'],
         currentStepInstruction: '김치와 두부를 끓인다',
       );
+      final stackedParticleKimchi = router.route(
+        '김치만은 짜',
+        recipeTitle: '김치찌개',
+        ingredientNames: const ['김치', '두부'],
+        currentStepInstruction: '김치와 두부를 끓인다',
+      );
+      final attributiveKimchi = router.route(
+        '김치가 짠 반찬이야',
+        recipeTitle: '김치찌개',
+        ingredientNames: const ['김치', '두부'],
+        currentStepInstruction: '김치와 두부를 끓인다',
+      );
 
       expect(saltyKimchi, const VoiceIntent(VoiceIntentType.exceptionQuestion));
+      expect(
+        stackedParticleKimchi,
+        const VoiceIntent(VoiceIntentType.exceptionQuestion),
+      );
+      expect(
+        attributiveKimchi,
+        const VoiceIntent(VoiceIntentType.exceptionQuestion),
+      );
       expect(lexicalKimchi, const VoiceIntent(VoiceIntentType.ignore));
     });
 
@@ -573,6 +607,8 @@ void main() {
         '내일 계획조금 짜줘',
         '내일계획을약간짜줘',
         '내일일정을빠르게좀짜줘',
+        '내일일정을빠르게좀짜',
+        '내일계획을아주빠르게조금짜',
         '내일 일정 빠르게 짜줘',
         '일정을 고객 회의와 이동 시간을 충분히 고려해서 조금 여유 있게 짜줘',
         '일정을 진짜 좀 잘 짜줘',
@@ -595,6 +631,7 @@ void main() {
         '코드 좀 짜 줘',
         '문서 구조 좀 짜주세요',
         '기획서 좀 짜 주라',
+        '내가 짠 코드가 좀 이상해',
         '다음 주 계획을 미리 다시 짜',
         '인간은 짠해',
         '오늘 시간이 없어',
