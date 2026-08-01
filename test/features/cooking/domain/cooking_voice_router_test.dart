@@ -210,8 +210,11 @@ void main() {
       const questions = [
         '지금 불 줄여야 할까?',
         '불이 너무 센 것 같아?',
+        '불로 조절해도 돼?',
         '간이 맞아?',
         '팬이 너무 뜨거워?',
+        '팬에서 계속 구워도 돼?',
+        '팬으로는 괜찮아?',
         '고기 다 익었어?',
         '소스가 묽은데 어떻게 해야 해?',
         '토마토는 얼마나 더 익혀?',
@@ -240,12 +243,22 @@ void main() {
         ingredientNames: const ['물', '쌀', '파'],
         currentStepInstruction: '쌀을 씻는다',
       );
+      final waterMethodQuestion = router.route(
+        '물로 농도 맞춰도 돼?',
+        recipeTitle: '밥',
+        ingredientNames: const ['물', '쌀', '파'],
+        currentStepInstruction: '약불에서 익힌다',
+      );
 
       expect(
         waterQuestion,
         const VoiceIntent(VoiceIntentType.exceptionQuestion),
       );
       expect(riceProblem, const VoiceIntent(VoiceIntentType.exceptionQuestion));
+      expect(
+        waterMethodQuestion,
+        const VoiceIntent(VoiceIntentType.exceptionQuestion),
+      );
     });
 
     test(
@@ -321,6 +334,7 @@ void main() {
         '불가능한 일인데 어때?',
         '불이익은 어때?',
         '팬클럽은 어때?',
+        '불의의 사고는 어때?',
       ];
 
       for (final question in unrelatedQuestions) {
@@ -354,6 +368,7 @@ void main() {
         '내일 일정을 조금 짜줘',
         '내일 일정을 약간 더 구체적으로 짜줘',
         '내일 일정 빠르게 짜줘',
+        '일정을 고객 회의와 이동 시간을 충분히 고려해서 조금 여유 있게 짜줘',
         '다음 주 계획을 미리 다시 짜',
         '오늘 시간이 없어',
         '다음 주에 장 보러 가자',
@@ -373,6 +388,8 @@ void main() {
       for (final statement in const [
         '일정을 미리 짜고 보니 국이 너무 짜',
         '일정을 정리하다 보니 소스가 약간 짜',
+        '일정을 짜. 이거 너무 짜',
+        '계획대로 국이 너무 짜',
       ]) {
         expect(
           routeOf(statement),

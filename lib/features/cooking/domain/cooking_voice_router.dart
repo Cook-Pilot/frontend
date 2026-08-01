@@ -100,11 +100,22 @@ final class CookingVoiceRouter {
 
   static const _planningObjectStems = <String>['계획', '일정', '각본', '전략'];
 
-  // A planning noun may occur earlier in the transcript, so do not let it
-  // hide a later cooking use of "짜" after the speaker has moved to a food or
-  // a new clause. Generic adverbs are deliberately not enumerated: natural
-  // requests freely insert words such as "좀", "조금", or "빠르게".
-  static const _planningBreakMarkers = <String>[
+  static const _planningClauseMarkers = <String>[
+    '그런데',
+    '그러나',
+    '하지만',
+    '반면',
+    '보니까',
+    '보니',
+    '했는데',
+    '는데',
+    '더니',
+    '다가',
+  ];
+
+  // A planning object and a later food noun can share a clause. In that case
+  // the latter "짜" describes taste rather than the plan.
+  static const _planningFoodMarkers = <String>[
     '간이',
     '국이',
     '국물',
@@ -114,14 +125,7 @@ final class CookingVoiceRouter {
     '육수',
     '반찬',
     '음식',
-    '먹어',
-    '보니',
-    '보니까',
-    '했는데',
-    '인데',
-    '지만',
-    '다가',
-    '그런데',
+    '요리',
   ];
 
   static const _finishPhrases = <String>[
@@ -323,23 +327,39 @@ final class CookingVoiceRouter {
   }
 
   bool _isPlanningVerbUse(String text, int verbIndex) {
-    for (final stem in _planningObjectStems) {
-      final markerIndex = text.lastIndexOf(stem, verbIndex);
-      if (markerIndex < 0) continue;
-
-      var between = text.substring(markerIndex + stem.length, verbIndex);
-      if (between.startsWith('을') || between.startsWith('를')) {
-        between = between.substring(1);
-      }
-
-      // Keep the association local, but allow arbitrary natural modifiers.
-      // A food/clause marker means this "짜" belongs to a later thought.
-      if (between.runes.length <= 20 &&
-          !_hasAny(between, _planningBreakMarkers)) {
-        return true;
+    var clauseStart = 0;
+    final prefix = text.substring(0, verbIndex);
+    for (final match in RegExp(r'[.!?。！？;；]').allMatches(prefix)) {
+      clauseStart = match.end;
+    }
+    for (final marker in _planningClauseMarkers) {
+      final markerIndex = text.lastIndexOf(marker, verbIndex);
+      if (markerIndex >= 0) {
+        clauseStart = _max(clauseStart, markerIndex + marker.length);
       }
     }
-    return false;
+    if (verbIndex > 0) {
+      final previousVerbIndex = text.lastIndexOf('짜', verbIndex - 1);
+      if (previousVerbIndex >= 0) {
+        clauseStart = _max(clauseStart, previousVerbIndex + 1);
+      }
+    }
+
+    var objectIndex = -1;
+    var objectEnd = -1;
+    for (final stem in _planningObjectStems) {
+      final markerIndex = text.lastIndexOf(stem, verbIndex);
+      if (markerIndex >= clauseStart && markerIndex > objectIndex) {
+        objectIndex = markerIndex;
+        objectEnd = markerIndex + stem.length;
+      }
+    }
+    if (objectIndex < 0) return false;
+
+    // Do not cap modifier length: the clause boundary scopes the association,
+    // so long natural planning requests stay valid without hiding later food.
+    final between = text.substring(objectEnd, verbIndex);
+    return !_hasAny(between, _planningFoodMarkers);
   }
 
   bool _isMissingIngredientProblem(String text, bool hasIngredientContext) {
@@ -391,17 +411,94 @@ final class CookingVoiceRouter {
 
   bool _hasSingleKoreanWordToken(String lower, String token) {
     final codePoint = token.runes.single;
-    final hasFinalConsonant = (codePoint - 0xAC00) % 28 != 0;
-    final particles = hasFinalConsonant
-        ? '으로|이|은|을|도|만|과|에|의'
-        : '로|가|는|를|도|만|와|에|의';
+    final finalConsonant = (codePoint - 0xAC00) % 28;
+    final hasFinalConsonant = finalConsonant != 0;
+    // ㄹ 받침은 모음 끝 명사와 마찬가지로 "로"를 쓴다(불로, 물로).
+    final directional = !hasFinalConsonant || finalConsonant == 8 ? '로' : '으로';
+    final particles = <String>{
+      '$directional부터',
+      '$directional까지',
+      '$directional서는',
+      '$directional서',
+      '$directional써',
+      '$directional는',
+      '$directional도',
+      '$directional만',
+      directional,
+      '에게서는',
+      '한테서는',
+      '에서부터',
+      '에게서도',
+      '한테서도',
+      '에서는',
+      '에서도',
+      '에서만',
+      '에게서',
+      '한테서',
+      '에게는',
+      '한테는',
+      '에게도',
+      '한테도',
+      '부터는',
+      '부터도',
+      '까지는',
+      '까지도',
+      '께서도',
+      '께서는',
+      '에는',
+      '에도',
+      '에만',
+      '에서',
+      '에게',
+      '한테',
+      '께서',
+      '께',
+      '부터',
+      '까지',
+      '처럼',
+      '보다',
+      '조차',
+      '마저',
+      '밖에',
+      '마다',
+      '만큼',
+      '에',
+      '의',
+      '도',
+      '만',
+      if (hasFinalConsonant) ...[
+        '이라도',
+        '이라면',
+        '이라고',
+        '이랑',
+        '이',
+        '은',
+        '을',
+        '과',
+        '아',
+      ],
+      if (!hasFinalConsonant) ...[
+        '라도',
+        '라면',
+        '라고',
+        '랑',
+        '가',
+        '는',
+        '를',
+        '와',
+        '야',
+      ],
+    }.toList()..sort((left, right) => right.length.compareTo(left.length));
+    final particlePattern = particles.map(RegExp.escape).join('|');
     final pattern = RegExp(
       '(^|[^가-힣a-z0-9])${RegExp.escape(token)}'
-      '(?:$particles)?'
+      '(?:$particlePattern)?'
       r'(?=$|[^가-힣a-z0-9])',
     );
     return pattern.hasMatch(lower);
   }
+
+  int _max(int left, int right) => left > right ? left : right;
 
   VoiceIntent? _mutatingIntent(String text, int? extensionSeconds) {
     if (text == '재개' ||
