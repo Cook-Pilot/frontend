@@ -160,7 +160,7 @@ void main() {
       );
     });
 
-    test('재료 amount와 baselineAmount는 null 또는 finite 값만 허용한다', () {
+    test('재료 amount와 baselineAmount는 null 또는 음이 아닌 finite 값만 허용한다', () {
       CookingSetupSnapshot snapshotWith(String field, double? value) {
         return buildSetupSnapshot(
           ingredientAmount: field == 'amount' ? value : 1,
@@ -169,7 +169,7 @@ void main() {
       }
 
       for (final field in const <String>['amount', 'baselineAmount']) {
-        for (final value in <double?>[null, 1.5]) {
+        for (final value in <double?>[null, 0, 1.5]) {
           final draft = buildDraft(setupSnapshot: snapshotWith(field, value));
 
           expect(
@@ -180,6 +180,7 @@ void main() {
         }
 
         for (final value in <double>[
+          -1,
           double.nan,
           double.infinity,
           double.negativeInfinity,
@@ -198,6 +199,46 @@ void main() {
             reason: '$field의 $value 값은 저장값 복원에서 거부해야 한다.',
           );
         }
+      }
+    });
+
+    test('후기 payload에 포함되는 스냅샷 문자열의 NUL을 거부한다', () {
+      CookingSetupSnapshot snapshotWithNul(String field) {
+        return buildSetupSnapshot(
+          ingredientName: field == 'name' ? '두\u0000부' : '두부',
+          ingredientUnit: field == 'unit' ? '\u0000모' : '모',
+          stepInstruction: field == 'instruction'
+              ? '두부를\u0000부친다.'
+              : '두부를 부친다.',
+          stepCautionNote: field == 'cautionNote'
+              ? '기름이\u0000튈 수 있다.'
+              : '기름이 튈 수 있다.',
+        );
+      }
+
+      for (final field in const <String>[
+        'name',
+        'unit',
+        'instruction',
+        'cautionNote',
+      ]) {
+        expect(
+          () => buildDraft(setupSnapshot: snapshotWithNul(field)),
+          throwsArgumentError,
+          reason: '$field의 NUL은 모델 생성에서 거부해야 한다.',
+        );
+        final corrupted = _mutatedDraftJson((setupSnapshot, ingredient, step) {
+          if (field == 'name' || field == 'unit') {
+            ingredient[field] = '앞\u0000뒤';
+          } else {
+            step[field] = '앞\u0000뒤';
+          }
+        });
+        expect(
+          PendingReviewDraft.fromJson(corrupted),
+          isNull,
+          reason: '$field의 NUL은 저장값 복원에서 거부해야 한다.',
+        );
       }
     });
 
@@ -1355,6 +1396,10 @@ CookingSetupSnapshot buildSetupSnapshot({
   double baseServings = 2,
   double? ingredientAmount = 1,
   double? ingredientBaselineAmount = 1,
+  String ingredientName = '두부',
+  String ingredientUnit = '모',
+  String stepInstruction = '두부를 부친다.',
+  String stepCautionNote = '기름이 튈 수 있다.',
   int targetServings = 2,
   bool includeStep = true,
 }) {
@@ -1371,10 +1416,10 @@ CookingSetupSnapshot buildSetupSnapshot({
       CookingSetupIngredient(
         originalIngredientId: '11000000-0000-0000-0000-000000000001',
         originalName: '두부',
-        name: '두부',
+        name: ingredientName,
         amount: ingredientAmount,
         baselineAmount: ingredientBaselineAmount,
-        unit: '모',
+        unit: ingredientUnit,
         isRequired: true,
       ),
     ],
@@ -1383,9 +1428,9 @@ CookingSetupSnapshot buildSetupSnapshot({
             CookingSetupStep(
               originalStepId: '12000000-0000-0000-0000-000000000001',
               stepIndex: stepIndex,
-              instruction: '두부를 부친다.',
+              instruction: stepInstruction,
               timerSeconds: stepTimerSeconds,
-              cautionNote: '기름이 튈 수 있다.',
+              cautionNote: stepCautionNote,
               imageUrl: '',
             ),
           ]

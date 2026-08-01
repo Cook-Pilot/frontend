@@ -485,20 +485,29 @@ void _validateSetupSnapshot(CookingSetupSnapshot snapshot) {
         'setupSnapshot.ingredients.originalIngredientId',
       );
     }
+    _validateDatabaseText(
+      ingredient.name,
+      field: 'setupSnapshot.ingredients.name',
+    );
+    _validateDatabaseText(
+      ingredient.unit,
+      field: 'setupSnapshot.ingredients.unit',
+    );
     final amount = ingredient.amount;
-    if (amount != null && !amount.isFinite) {
+    if (amount != null && (!amount.isFinite || amount < 0)) {
       throw ArgumentError.value(
         amount,
         'setupSnapshot.ingredients.amount',
-        'must be finite when present',
+        'must be nonnegative and finite when present',
       );
     }
     final baselineAmount = ingredient.baselineAmount;
-    if (baselineAmount != null && !baselineAmount.isFinite) {
+    if (baselineAmount != null &&
+        (!baselineAmount.isFinite || baselineAmount < 0)) {
       throw ArgumentError.value(
         baselineAmount,
         'setupSnapshot.ingredients.baselineAmount',
-        'must be finite when present',
+        'must be nonnegative and finite when present',
       );
     }
   }
@@ -515,6 +524,17 @@ void _validateSetupSnapshot(CookingSetupSnapshot snapshot) {
       _requireCanonicalUuid(
         originalStepId,
         'setupSnapshot.steps.originalStepId',
+      );
+    }
+    _validateDatabaseText(
+      step.instruction,
+      field: 'setupSnapshot.steps.instruction',
+    );
+    final cautionNote = step.cautionNote;
+    if (cautionNote != null) {
+      _validateDatabaseText(
+        cautionNote,
+        field: 'setupSnapshot.steps.cautionNote',
       );
     }
     final timerSeconds = step.timerSeconds;
@@ -562,6 +582,18 @@ void _validateReviewText(
   required int maximumCodePoints,
   required String field,
 }) {
+  _validateDatabaseText(
+    value,
+    field: field,
+    maximumCodePoints: maximumCodePoints,
+  );
+}
+
+void _validateDatabaseText(
+  String value, {
+  required String field,
+  int? maximumCodePoints,
+}) {
   var codePointCount = 0;
   for (var index = 0; index < value.length; index += 1) {
     final codeUnit = value.codeUnitAt(index);
@@ -581,7 +613,7 @@ void _validateReviewText(
       throw ArgumentError.value(value, field, 'contains invalid Unicode');
     }
     codePointCount += 1;
-    if (codePointCount > maximumCodePoints) {
+    if (maximumCodePoints != null && codePointCount > maximumCodePoints) {
       throw ArgumentError.value(
         value,
         field,
