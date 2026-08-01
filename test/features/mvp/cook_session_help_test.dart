@@ -133,14 +133,51 @@ void main() {
     expect(find.textContaining('답변을 불러오지 못했어요'), findsOneWidget);
   });
 
-  testWidgets('500자를 넘는 STT 질문은 서버로 보내지 않고 길이 안내를 표시한다', (tester) async {
+  testWidgets('직접 입력한 supplementary emoji 251개는 500자 이내로 전송한다', (tester) async {
+    final advice = FakeExceptionAdvicePort();
+    await pumpSession(tester, advicePort: advice);
+    final question = '😀' * 251;
+
+    expect(question.characters, hasLength(251));
+    expect(question.length, 502);
+
+    await submitQuestion(tester, question);
+
+    expect(advice.requests.single.utterance, question);
+    expect(find.textContaining('500자 이하'), findsNothing);
+  });
+
+  testWidgets('STT supplementary emoji 251개도 500자 이내로 전송한다', (tester) async {
     final advice = FakeExceptionAdvicePort();
     final speech = FakeSpeechInput();
     await pumpSession(tester, advicePort: advice, speechInput: speech);
+    final question = '물이 안 끓어요 ${'😀' * 251}';
+
+    expect(question.characters.length, lessThanOrEqualTo(500));
+    expect(question.length, greaterThan(500));
 
     await tester.tap(find.byKey(const Key('voice-input-toggle')));
     await tester.pump();
-    speech.emitUtterance('물이 안 끓어요 ${'가' * 500}', utteranceId: 'too-long');
+    speech.emitUtterance(question, utteranceId: 'emoji-within-limit');
+    await tester.pump();
+
+    expect(advice.requests.single.utterance, question);
+    expect(find.textContaining('500자 이하'), findsNothing);
+  });
+
+  testWidgets('501 grapheme STT 질문은 서버로 보내지 않고 길이 안내를 표시한다', (tester) async {
+    final advice = FakeExceptionAdvicePort();
+    final speech = FakeSpeechInput();
+    await pumpSession(tester, advicePort: advice, speechInput: speech);
+    const prefix = '물이 안 끓어요 ';
+    final question =
+        '$prefix${'😀' * (maxExceptionAdviceQuestionLength - prefix.characters.length + 1)}';
+
+    expect(question.characters, hasLength(501));
+
+    await tester.tap(find.byKey(const Key('voice-input-toggle')));
+    await tester.pump();
+    speech.emitUtterance(question, utteranceId: 'too-long');
     await tester.pump();
 
     expect(advice.requests, isEmpty);

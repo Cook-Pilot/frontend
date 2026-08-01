@@ -2135,7 +2135,8 @@ class _CookSessionScreenState extends State<CookSessionScreen>
         normalizedQuestion.isEmpty) {
       return;
     }
-    if (normalizedQuestion.length > maxExceptionAdviceQuestionLength) {
+    if (normalizedQuestion.characters.length >
+        maxExceptionAdviceQuestionLength) {
       setState(() {
         _helpLoading = false;
         _helpAnswer = '질문은 $maxExceptionAdviceQuestionLength자 이하로 줄여주세요.';
