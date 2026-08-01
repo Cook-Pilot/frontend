@@ -12,6 +12,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../helpers/cooking_fakes.dart';
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -160,6 +162,120 @@ void main() {
       saveGate.complete();
       await _pumpAsyncWork(tester);
       expect(find.byType(ReviewScreen), findsOneWidget);
+    });
+
+    testWidgets('실행 중 타이머는 완료 저장을 기다리는 즉시 정지하고 알람을 취소한다', (tester) async {
+      final saveGate = Completer<void>();
+      final pendingStore = _FakePendingReviewDraftStore(saveGate: saveGate);
+      final alarm = FakeTimerAlarm();
+      tester.view.physicalSize = const Size(1200, 1600);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      await _pumpLastCookingStep(
+        tester,
+        pendingStore: pendingStore,
+        recipe: _timedRecipe,
+        alarm: alarm,
+      );
+
+      await tester.tap(find.text('타이머 시작'));
+      await tester.pump();
+      expect(alarm.scheduledAt, hasLength(1));
+
+      await tester.tap(find.text('조리 완료'));
+      await tester.pump();
+      final scheduledCount = alarm.scheduledAt.length;
+
+      expect(find.text('완료 저장 중'), findsOneWidget);
+      expect(alarm.cancelCount, 1);
+      expect(alarm.signalCount, 0);
+
+      await tester.pump(const Duration(seconds: 61));
+      expect(alarm.scheduledAt, hasLength(scheduledCount));
+      expect(alarm.signalCount, 0);
+
+      saveGate.complete();
+      await _pumpAsyncWork(tester);
+      expect(find.byType(ReviewScreen), findsOneWidget);
+    });
+
+    testWidgets('완료 중 늦게 초기화된 알람은 예약하지 않고 즉시 취소한다', (tester) async {
+      final saveGate = Completer<void>();
+      final pendingStore = _FakePendingReviewDraftStore(saveGate: saveGate);
+      final alarmResolution = Completer<TimerAlarmPort>();
+      final alarm = FakeTimerAlarm();
+      tester.view.physicalSize = const Size(1200, 1600);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      await _pumpLastCookingStep(
+        tester,
+        pendingStore: pendingStore,
+        recipe: _timedRecipe,
+        alarm: null,
+        alarmResolver: () => alarmResolution.future,
+      );
+
+      await tester.tap(find.text('타이머 시작'));
+      await tester.pump();
+      await tester.tap(find.text('조리 완료'));
+      await tester.pump();
+
+      alarmResolution.complete(alarm);
+      await _pumpAsyncWork(tester);
+
+      expect(find.text('완료 저장 중'), findsOneWidget);
+      expect(alarm.scheduledAt, isEmpty);
+      expect(alarm.cancelCount, 1);
+      expect(alarm.signalCount, 0);
+
+      await tester.pump(const Duration(seconds: 61));
+      expect(alarm.scheduledAt, isEmpty);
+      expect(alarm.signalCount, 0);
+
+      saveGate.complete();
+      await _pumpAsyncWork(tester);
+      expect(find.byType(ReviewScreen), findsOneWidget);
+    });
+
+    testWidgets('완료 저장 실패와 재시도 사이에도 타이머 알람은 다시 울리지 않는다', (tester) async {
+      final pendingStore = _FakePendingReviewDraftStore(
+        saveFailuresRemaining: 1,
+      );
+      final alarm = FakeTimerAlarm();
+      tester.view.physicalSize = const Size(1200, 1600);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      await _pumpLastCookingStep(
+        tester,
+        pendingStore: pendingStore,
+        recipe: _timedRecipe,
+        alarm: alarm,
+      );
+
+      await tester.tap(find.text('타이머 시작'));
+      await tester.pump();
+      expect(alarm.scheduledAt, hasLength(1));
+
+      await tester.tap(find.text('조리 완료'));
+      await _pumpAsyncWork(tester);
+      final scheduledCount = alarm.scheduledAt.length;
+
+      expect(find.byType(ReviewScreen), findsNothing);
+      expect(alarm.cancelCount, 1);
+      expect(alarm.signalCount, 0);
+
+      await tester.pump(const Duration(seconds: 61));
+      expect(alarm.scheduledAt, hasLength(scheduledCount));
+      expect(alarm.signalCount, 0);
+
+      await tester.tap(find.text('조리 완료'));
+      await _pumpAsyncWork(tester);
+      expect(find.byType(ReviewScreen), findsOneWidget);
+      expect(alarm.scheduledAt, hasLength(scheduledCount));
+      expect(alarm.signalCount, 0);
     });
   });
 
@@ -819,6 +935,8 @@ Future<void> _pumpLastCookingStep(
   required PendingReviewDraftGateway pendingStore,
   CookingSessionGateway? cookingSessionStore,
   Recipe recipe = _recipe,
+  TimerAlarmPort? alarm = const SilentTimerAlarm(),
+  Future<TimerAlarmPort> Function()? alarmResolver,
 }) async {
   await tester.pumpWidget(
     MaterialApp(
@@ -828,7 +946,8 @@ Future<void> _pumpLastCookingStep(
         setupSnapshot: _snapshot(),
         pendingReviewDraftStore: pendingStore,
         cookingSessionStore: cookingSessionStore,
-        alarm: SilentTimerAlarm(),
+        alarm: alarm,
+        alarmResolver: alarmResolver,
       ),
     ),
   );

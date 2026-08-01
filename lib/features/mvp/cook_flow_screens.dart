@@ -1810,11 +1810,13 @@ class _CookSessionScreenState extends State<CookSessionScreen>
         _alarmRegistration = registration;
         alarm = await registration.alarm;
       }
-      if (mounted) {
-        _alarm = alarm;
-        // 복원된 타이머가 이미 실행 중이면 종료 알림을 다시 예약한다.
-        _scheduleAlarm();
+      if (!mounted || _completionLocked || _completed || _disposed) {
+        await _cancelAlarmBestEffort(alarm);
+        return;
       }
+      _alarm = alarm;
+      // 복원된 타이머가 이미 실행 중이면 종료 알림을 다시 예약한다.
+      _scheduleAlarm();
     } catch (_) {
       // 알림 권한이나 플러그인 초기화가 실패해도 화면 타이머와 음성 조리는
       // 계속 사용할 수 있다.
@@ -2131,6 +2133,12 @@ class _CookSessionScreenState extends State<CookSessionScreen>
       _finishError = null;
     });
     _completed = true;
+    // draft 저장을 기다리는 동안 타이머가 만료되거나, 늦게 초기화된 OS
+    // 알림이 다시 예약되지 않도록 완료 시작 시점에 즉시 정지·취소한다.
+    if (_timer.status == TimerStatus.running) {
+      _timer.pause();
+    }
+    unawaited(_cancelAlarmBestEffort(_alarm));
     // 저장을 기다리는 동안 늦은 음성·도움 응답이 frozen draft의 문맥을
     // 바꾸지 못하게 최초 완료 요청 시점에 즉시 무효화한다.
     _helpRequestVersion++;
@@ -2197,6 +2205,10 @@ class _CookSessionScreenState extends State<CookSessionScreen>
 
   void _onTimerChanged() {
     final status = _timer.status;
+    if (_disposed || _completed || _completionLocked) {
+      _lastStatus = status;
+      return;
+    }
     if (status == TimerStatus.elapsed && _lastStatus != TimerStatus.elapsed) {
       _alarm?.signalTimerElapsed();
       unawaited(_alarm?.cancelScheduledAlarm() ?? Future<void>.value());
@@ -2271,12 +2283,26 @@ class _CookSessionScreenState extends State<CookSessionScreen>
   }
 
   void _scheduleAlarm() {
+    if (_disposed || _completed || _completionLocked || !mounted) {
+      return;
+    }
     if (_timer.status == TimerStatus.running &&
         _timer.remaining > Duration.zero) {
       unawaited(
         _alarm?.scheduleTimerElapsed(DateTime.now().add(_timer.remaining)) ??
             Future<void>.value(),
       );
+    }
+  }
+
+  Future<void> _cancelAlarmBestEffort(TimerAlarmPort? alarm) async {
+    if (alarm == null) {
+      return;
+    }
+    try {
+      await alarm.cancelScheduledAlarm();
+    } on Object {
+      // 알림 플러그인 취소 실패가 완료 저장이나 후기 전환을 막지 않는다.
     }
   }
 
