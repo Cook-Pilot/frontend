@@ -451,11 +451,11 @@ void _validateSetupSnapshot(CookingSetupSnapshot snapshot) {
       'must be a positive finite number',
     );
   }
-  if (snapshot.targetServings < 1) {
+  if (snapshot.targetServings < 1 || snapshot.targetServings > 99) {
     throw ArgumentError.value(
       snapshot.targetServings,
       'setupSnapshot.targetServings',
-      'must be at least 1',
+      'must be between 1 and 99',
     );
   }
   if (snapshot.steps.isEmpty) {

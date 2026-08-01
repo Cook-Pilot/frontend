@@ -152,6 +152,11 @@ void main() {
         throwsArgumentError,
       );
       expect(
+        () =>
+            buildDraft(setupSnapshot: buildSetupSnapshot(targetServings: 100)),
+        throwsArgumentError,
+      );
+      expect(
         () => buildDraft(
           setupSnapshot: buildSetupSnapshot(includeStep: false),
           timerSecondsByStep: const {},
@@ -285,6 +290,29 @@ void main() {
 
       expect(PendingReviewDraft.fromJson(missing), isNull);
       expect(PendingReviewDraft.fromJson(unknown), isNull);
+    });
+
+    test('현재 후기 실행 스냅샷은 UI 범위 밖 targetServings를 읽지 않는다', () {
+      for (final targetServings in const [0, 100]) {
+        final json = _mutatedDraftJson(
+          (setupSnapshot, ingredient, step) =>
+              setupSnapshot['targetServings'] = targetServings,
+        );
+
+        expect(
+          PendingReviewDraft.fromJson(json),
+          isNull,
+          reason: '$targetServings인분 저장값은 1~99 UI 범위 밖이다.',
+        );
+      }
+
+      for (final targetServings in const [1, 99]) {
+        final draft = buildDraft(
+          setupSnapshot: buildSetupSnapshot(targetServings: targetServings),
+        );
+
+        expect(PendingReviewDraft.fromJson(draft.toJson()), isNotNull);
+      }
     });
 
     test('현재 후기 실행 스냅샷은 모든 최상위 필드를 요구한다', () {
