@@ -274,12 +274,18 @@ void main() {
       expect(routeOf('요리 완성했어요'), const VoiceIntent(VoiceIntentType.finish));
       expect(routeOf('요리는 완료했어'), const VoiceIntent(VoiceIntentType.finish));
       expect(routeOf('조리가 완료됐어'), const VoiceIntent(VoiceIntentType.finish));
+      expect(routeOf('조리 완료됐다고 했어'), const VoiceIntent(VoiceIntentType.finish));
+      expect(routeOf('조리 끝났다고 했어'), const VoiceIntent(VoiceIntentType.finish));
 
       for (final negatedCompletion in const [
         '조리 완료는 아직 안 했어',
         '조리 끝난 건 아니야',
         '조리 완료라고 한 건 아니야',
         '조리 완료가 된 건 아니야',
+        '조리 완료됐다고 한 건 아니야',
+        '요리 완성했다고 한 건 아니야',
+        '조리 완료되었다고 한 건 아니야',
+        '조리 끝났다고 한 건 아니야',
       ]) {
         expect(
           routeOf(negatedCompletion),
@@ -523,6 +529,8 @@ void main() {
         '가지는요?',
         '양파는 몇 개 넣어?',
         '양파는 몇 개?',
+        '양파 몇 개?',
+        '양파몇개?',
       ]) {
         expect(
           routeWithEggplant(cookingQuestion),

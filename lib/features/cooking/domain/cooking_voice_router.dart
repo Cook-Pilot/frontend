@@ -987,11 +987,16 @@ final class CookingVoiceRouter {
             return true;
           }
         }
-        if (_isIngredientCookingContinuation(wordSuffix)) return true;
+        if (_isIngredientCookingContinuation(wordSuffix) ||
+            _isIngredientQuantityQuestion(wordSuffix)) {
+          return true;
+        }
         continue;
       }
 
-      if (_isIngredientCookingContinuation(lower.substring(candidate.end))) {
+      final followingText = lower.substring(candidate.end);
+      if (_isIngredientCookingContinuation(followingText) ||
+          _isIngredientQuantityQuestion(followingText)) {
         return true;
       }
     }
@@ -1336,7 +1341,8 @@ final class CookingVoiceRouter {
             r'(?:(?:안|못)(?:했|됐|끝냈|끝났)|하지않|되지않|끝내지않)',
           ).hasMatch(tail) ||
           RegExp(
-            r'^(?:(?:이|가|은|는|도)?(?:했|됐|났|낸|한|된|난)?(?:다는)?|'
+            r'^(?:(?:이|가|은|는|도)?(?:했|됐|되었|났|낸|한|된|난)?'
+            r'(?:(?:다고|다는)(?:말)?(?:했|한)?)?|'
             r'(?:이?라고)(?:말)?(?:했|한))'
             r'(?:건|게|것(?:이|은)?)(?:전혀|절대|아예)?아니',
           ).hasMatch(tail)) {
