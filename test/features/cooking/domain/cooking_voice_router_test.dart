@@ -215,6 +215,11 @@ void main() {
         '팬이 너무 뜨거워?',
         '팬에서 계속 구워도 돼?',
         '팬으로는 괜찮아?',
+        '팬은요?',
+        '팬에서요?',
+        '팬에서는요?',
+        '팬에서라도요?',
+        '팬에서라도 계속 구워도 돼?',
         '고기 다 익었어?',
         '소스가 묽은데 어떻게 해야 해?',
         '토마토는 얼마나 더 익혀?',
@@ -249,6 +254,18 @@ void main() {
         ingredientNames: const ['물', '쌀', '파'],
         currentStepInstruction: '약불에서 익힌다',
       );
+      final waterPoliteQuestion = router.route(
+        '물로요?',
+        recipeTitle: '밥',
+        ingredientNames: const ['물', '쌀', '파'],
+        currentStepInstruction: '약불에서 익힌다',
+      );
+      final waterAuxiliaryChainQuestion = router.route(
+        '물로만은요?',
+        recipeTitle: '밥',
+        ingredientNames: const ['물', '쌀', '파'],
+        currentStepInstruction: '약불에서 익힌다',
+      );
 
       expect(
         waterQuestion,
@@ -257,6 +274,14 @@ void main() {
       expect(riceProblem, const VoiceIntent(VoiceIntentType.exceptionQuestion));
       expect(
         waterMethodQuestion,
+        const VoiceIntent(VoiceIntentType.exceptionQuestion),
+      );
+      expect(
+        waterPoliteQuestion,
+        const VoiceIntent(VoiceIntentType.exceptionQuestion),
+      );
+      expect(
+        waterAuxiliaryChainQuestion,
         const VoiceIntent(VoiceIntentType.exceptionQuestion),
       );
     });
@@ -335,6 +360,10 @@ void main() {
         '불이익은 어때?',
         '팬클럽은 어때?',
         '불의의 사고는 어때?',
+        '불이익은요?',
+        '팬클럽은요?',
+        '불의의 사고는요?',
+        '불이익만은요?',
       ];
 
       for (final question in unrelatedQuestions) {
@@ -369,7 +398,22 @@ void main() {
         '내일 일정을 약간 더 구체적으로 짜줘',
         '내일 일정 빠르게 짜줘',
         '일정을 고객 회의와 이동 시간을 충분히 고려해서 조금 여유 있게 짜줘',
+        '일정을 진짜 좀 잘 짜줘',
+        '일정을 진짜로 좀 잘 짜줘',
+        '계획을 진짜 약간 여유 있게 짜줘',
+        '조금 전에 짠 일정 보여줘',
+        '어제 짰던 계획 좀 바꿔줘',
+        '어제 계획을 좀 짰어',
+        '조금 전에 짠 계획대로 해줘',
+        '계획을 음식 취향에 맞춰 좀 짜줘',
+        '계획을 음식 알레르기에 맞춰 약간 여유 있게 짜줘',
+        '일정을 요리 수업 시간에 맞춰 조금 여유 있게 짜줘',
+        '일정을 바꿔야 하는데 좀 새로 짜줘',
+        '계획을 검토했는데 약간 더 구체적으로 짜줘',
+        '일정을 짜고 좀 짜줘',
+        '일정을 짜고 좀 다시 짜줘',
         '다음 주 계획을 미리 다시 짜',
+        '인간은 짠해',
         '오늘 시간이 없어',
         '다음 주에 장 보러 가자',
         '다 됐다 이제',
@@ -390,6 +434,12 @@ void main() {
         '일정을 정리하다 보니 소스가 약간 짜',
         '일정을 짜. 이거 너무 짜',
         '계획대로 국이 너무 짜',
+        '계획대로 국 너무 짜',
+        '계획대로 국물 약간 짜',
+        '일정 얘기는 나중에 하고 이거 너무 짜',
+        '일정은 나중에 보고 국 너무 짰어',
+        '국이 짠 것 같아',
+        '소스가 좀 짰어',
       ]) {
         expect(
           routeOf(statement),

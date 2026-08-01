@@ -99,25 +99,9 @@ final class CookingVoiceRouter {
   static const _boundaryCookingContext = <String>['불', '간', '팬'];
 
   static const _planningObjectStems = <String>['계획', '일정', '각본', '전략'];
+  static const _planningNonTargetSuffixes = <String>['대로'];
 
-  static const _planningClauseMarkers = <String>[
-    '그런데',
-    '그러나',
-    '하지만',
-    '반면',
-    '보니까',
-    '보니',
-    '했는데',
-    '는데',
-    '더니',
-    '다가',
-  ];
-
-  // A planning object and a later food noun can share a clause. In that case
-  // the latter "짜" describes taste rather than the plan.
-  static const _planningFoodMarkers = <String>[
-    '간이',
-    '국이',
+  static const _tasteSubjectStems = <String>[
     '국물',
     '소스',
     '양념',
@@ -126,7 +110,15 @@ final class CookingVoiceRouter {
     '반찬',
     '음식',
     '요리',
+    '이것',
+    '이거',
+    '이게',
+    '이건',
+    '간',
+    '국',
   ];
+
+  static const _tasteDegreeMarkers = <String>['너무', '조금', '약간', '좀'];
 
   static const _finishPhrases = <String>[
     '조리완료',
@@ -274,7 +266,7 @@ final class CookingVoiceRouter {
       return true;
     }
 
-    if (_isSaltyProblem(text)) return true;
+    if (_isSaltyProblem(text, lowerTranscript)) return true;
     if (_isMissingIngredientProblem(text, hasIngredientContext)) return true;
 
     final describesBurning = _hasAny(text, const [
@@ -290,7 +282,7 @@ final class CookingVoiceRouter {
             hasIngredientContext);
   }
 
-  bool _isSaltyProblem(String text) {
+  bool _isSaltyProblem(String text, String lowerTranscript) {
     const contextMarkers = [
       '간이',
       '국이',
@@ -307,59 +299,80 @@ final class CookingVoiceRouter {
       '조금',
       '약간',
     ];
+    if (_hasExplicitTasteExpression(lowerTranscript)) return true;
     if (!_hasAny(text, contextMarkers)) return false;
-    if (_hasAny(text, const ['짠', '짰'])) return true;
 
-    var index = text.indexOf('짜');
-    while (index >= 0) {
-      final previous = index == 0 ? '' : text[index - 1];
-      final next = index + 1 >= text.length ? '' : text[index + 1];
-      final isKnownFalsePositive =
-          previous == '진' ||
-          previous == '가' ||
-          next == '증' ||
-          next == '장' ||
-          _isPlanningVerbUse(text, index);
-      if (!isKnownFalsePositive) return true;
-      index = text.indexOf('짜', index + 1);
+    for (final match in RegExp('짰|짠|짜').allMatches(text)) {
+      if (_isKnownNonPredicateJja(text, match) ||
+          _isPlanningPredicateUse(text, match)) {
+        continue;
+      }
+      return true;
     }
     return false;
   }
 
-  bool _isPlanningVerbUse(String text, int verbIndex) {
+  bool _isKnownNonPredicateJja(String text, RegExpMatch match) {
+    if (match.group(0) != '짜') return false;
+    final index = match.start;
+    final previous = index == 0 ? '' : text[index - 1];
+    final next = match.end >= text.length ? '' : text[match.end];
+    return previous == '진' || previous == '가' || next == '증' || next == '장';
+  }
+
+  bool _isPlanningPredicateUse(String text, RegExpMatch predicate) {
     var clauseStart = 0;
-    final prefix = text.substring(0, verbIndex);
+    final prefix = text.substring(0, predicate.start);
     for (final match in RegExp(r'[.!?。！？;；]').allMatches(prefix)) {
       clauseStart = match.end;
     }
-    for (final marker in _planningClauseMarkers) {
-      final markerIndex = text.lastIndexOf(marker, verbIndex);
-      if (markerIndex >= 0) {
-        clauseStart = _max(clauseStart, markerIndex + marker.length);
-      }
-    }
-    if (verbIndex > 0) {
-      final previousVerbIndex = text.lastIndexOf('짜', verbIndex - 1);
-      if (previousVerbIndex >= 0) {
-        clauseStart = _max(clauseStart, previousVerbIndex + 1);
-      }
-    }
 
     var objectIndex = -1;
-    var objectEnd = -1;
     for (final stem in _planningObjectStems) {
-      final markerIndex = text.lastIndexOf(stem, verbIndex);
-      if (markerIndex >= clauseStart && markerIndex > objectIndex) {
+      final markerIndex = text.lastIndexOf(stem, predicate.start);
+      if (markerIndex >= clauseStart &&
+          markerIndex > objectIndex &&
+          _isPlanningTargetAt(text, markerIndex, stem)) {
         objectIndex = markerIndex;
-        objectEnd = markerIndex + stem.length;
       }
     }
-    if (objectIndex < 0) return false;
+    if (objectIndex < 0) {
+      return _hasFollowingPlanningTarget(text, predicate);
+    }
 
-    // Do not cap modifier length: the clause boundary scopes the association,
-    // so long natural planning requests stay valid without hiding later food.
-    final between = text.substring(objectEnd, verbIndex);
-    return !_hasAny(between, _planningFoodMarkers);
+    return true;
+  }
+
+  bool _isPlanningTargetAt(String text, int index, String stem) {
+    final suffix = text.substring(index + stem.length);
+    return !_planningNonTargetSuffixes.any(suffix.startsWith);
+  }
+
+  bool _hasFollowingPlanningTarget(String text, RegExpMatch predicate) {
+    var clauseEnd = text.length;
+    final punctuation = RegExp(
+      r'[.!?。！？;；]',
+    ).firstMatch(text.substring(predicate.end));
+    if (punctuation != null) clauseEnd = predicate.end + punctuation.start;
+
+    for (final stem in _planningObjectStems) {
+      final objectIndex = text.indexOf(stem, predicate.end);
+      if (objectIndex < 0 || objectIndex >= clauseEnd) continue;
+      final between = text.substring(predicate.end, objectIndex);
+      if (between.runes.length <= 3 && !_hasAny(between, _tasteSubjectStems)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  bool _hasExplicitTasteExpression(String lowerTranscript) {
+    final subjects = _alternation(_tasteSubjectStems);
+    final degrees = _alternation(_tasteDegreeMarkers);
+    return RegExp(
+      '(^|[^가-힣a-z0-9])(?:$subjects)'
+      '(?:이|가|은|는|도|만)?\\s*(?:(?:$degrees)\\s*)?(?:짰|짠|짜)',
+    ).hasMatch(lowerTranscript);
   }
 
   bool _isMissingIngredientProblem(String text, bool hasIngredientContext) {
@@ -415,39 +428,12 @@ final class CookingVoiceRouter {
     final hasFinalConsonant = finalConsonant != 0;
     // ㄹ 받침은 모음 끝 명사와 마찬가지로 "로"를 쓴다(불로, 물로).
     final directional = !hasFinalConsonant || finalConsonant == 8 ? '로' : '으로';
-    final particles = <String>{
-      '$directional부터',
-      '$directional까지',
-      '$directional서는',
+    final primaryParticles = <String>{
       '$directional서',
       '$directional써',
-      '$directional는',
-      '$directional도',
-      '$directional만',
       directional,
-      '에게서는',
-      '한테서는',
-      '에서부터',
-      '에게서도',
-      '한테서도',
-      '에서는',
-      '에서도',
-      '에서만',
       '에게서',
       '한테서',
-      '에게는',
-      '한테는',
-      '에게도',
-      '한테도',
-      '부터는',
-      '부터도',
-      '까지는',
-      '까지도',
-      '께서도',
-      '께서는',
-      '에는',
-      '에도',
-      '에만',
       '에서',
       '에게',
       '한테',
@@ -488,17 +474,36 @@ final class CookingVoiceRouter {
         '와',
         '야',
       ],
-    }.toList()..sort((left, right) => right.length.compareTo(left.length));
-    final particlePattern = particles.map(RegExp.escape).join('|');
+    };
+    final auxiliaryParticles = <String>{
+      '이라도',
+      '이라면',
+      '라도',
+      '라면',
+      '부터',
+      '까지',
+      '조차',
+      '마저',
+      '은',
+      '는',
+      '도',
+      '만',
+    };
+    final primaryPattern = _alternation(primaryParticles);
+    final auxiliaryPattern = _alternation(auxiliaryParticles);
     final pattern = RegExp(
       '(^|[^가-힣a-z0-9])${RegExp.escape(token)}'
-      '(?:$particlePattern)?'
+      '(?:(?:$primaryPattern)?(?:$auxiliaryPattern){0,2}요?)?'
       r'(?=$|[^가-힣a-z0-9])',
     );
     return pattern.hasMatch(lower);
   }
 
-  int _max(int left, int right) => left > right ? left : right;
+  String _alternation(Iterable<String> values) {
+    final sorted = values.toSet().toList()
+      ..sort((left, right) => right.length.compareTo(left.length));
+    return sorted.map(RegExp.escape).join('|');
+  }
 
   VoiceIntent? _mutatingIntent(String text, int? extensionSeconds) {
     if (text == '재개' ||
