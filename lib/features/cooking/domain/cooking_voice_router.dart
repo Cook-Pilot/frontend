@@ -290,12 +290,15 @@ final class CookingVoiceRouter {
 
   bool _isUnsafeRawMeatProblem(String text) {
     const eatingPredicate = r'먹(?:었|어|으면|으려|을까|어도|은|는중)|섭취|삼켰';
+    const localClause = r'[^.!?。！？;；]{0,20}';
     final explicitlyRawConsumption = RegExp(
       '(?:고기|닭|돼지고기|소고기)(?:을|를)?생으로'
-      '.{0,20}(?:$eatingPredicate)',
+      '$localClause(?:$eatingPredicate)',
     ).firstMatch(text);
     if (explicitlyRawConsumption != null &&
-        !_isSafeMeatConsumptionClause(explicitlyRawConsumption.group(0)!)) {
+        !_isSafeMeatConsumptionClause(
+          _limitedConsumptionClause(text, explicitlyRawConsumption),
+        )) {
       return true;
     }
     if (!text.contains('생고기')) return false;
@@ -304,23 +307,58 @@ final class CookingVoiceRouter {
     // when the transcript says it was/will be consumed raw, is undercooked,
     // or explicitly describes the raw meat as unsafe.
     if (RegExp(
-      r'생고기.{0,20}(?:덜익|안익|설익|익지않|'
+      '생고기$localClause(?:덜익|안익|설익|익지않|'
       r'위험(?:해|하다|한|하네|해서|해요|합니다)|안전하지않|괜찮지않)',
     ).hasMatch(text)) {
       return true;
     }
 
     final consumption = RegExp(
-      '생고기.{0,20}(?:$eatingPredicate)',
+      '생고기$localClause(?:$eatingPredicate)',
     ).firstMatch(text);
     if (consumption == null) return false;
-    return !_isSafeMeatConsumptionClause(consumption.group(0)!);
+    return !_isSafeMeatConsumptionClause(
+      _limitedConsumptionClause(text, consumption),
+    );
+  }
+
+  String _limitedConsumptionClause(String text, RegExpMatch consumption) {
+    var end = consumption.end + 12;
+    if (end > text.length) end = text.length;
+    final trailing = text.substring(consumption.end, end);
+    final boundary = RegExp(r'[.!?。！？;；]').firstMatch(trailing);
+    if (boundary != null) end = consumption.end + boundary.start;
+    return text.substring(consumption.start, end);
   }
 
   bool _isSafeMeatConsumptionClause(String clause) {
-    return RegExp(
-      r'(?:안|않|말아)먹|(?:익혀|익힌|구워|볶아|삶아|데쳐|조리해|요리해)먹',
-    ).hasMatch(clause);
+    if (RegExp(r'(?:안|못)(?:먹|섭취|삼켰)').hasMatch(clause) ||
+        RegExp(
+          r'(?:먹은|섭취한|삼킨)(?:'
+          r'적(?:이|은|도)?(?:전혀|절대|한번도|아예)?없|'
+          r'(?:건|게|것(?:이|은)?)(?:전혀|절대|아예)?아니)',
+        ).hasMatch(clause)) {
+      return true;
+    }
+
+    final eating = RegExp(r'먹|섭취|삼켰').allMatches(clause).lastOrNull;
+    if (eating == null) return false;
+    final prepared = RegExp(
+      r'(?:익혀|익힌|구워|구운|볶아|볶은|삶아|삶은|데쳐|데친|'
+      r'조리해|조리한|요리해|요리한)',
+    );
+    for (final preparation in prepared.allMatches(
+      clause.substring(0, eating.start),
+    )) {
+      final prefix = clause.substring(0, preparation.start);
+      if (RegExp(r'(?:(?:안|못)다?|덜)$').hasMatch(prefix)) continue;
+      final gap = clause.substring(preparation.end, eating.start);
+      if (RegExp(r'^[가-힣a-z0-9]{0,8}$').hasMatch(gap) &&
+          !RegExp(r'(?:안|못|않|말|척|예정)').hasMatch(gap)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   bool _isSaltyProblem(
@@ -1158,7 +1196,10 @@ final class CookingVoiceRouter {
 
   bool _isRejectedExtensionSignal(String source, RegExpMatch signal) {
     final tail = _normalize(source.substring(signal.end));
-    return RegExp(r'^(?:(?:하|해|늘리|주)지)?(?:는)?(?:말고|말자|말아|않)').hasMatch(tail) ||
+    return RegExp(
+          r'^(?:(?:하|해|늘리|주)(?:는|지)?)?'
+          r'(?:는)?(?:말고|말자|말아|않|대신)',
+        ).hasMatch(tail) ||
         RegExp(r'^안(?:하|해|늘리|주|할)').hasMatch(tail);
   }
 

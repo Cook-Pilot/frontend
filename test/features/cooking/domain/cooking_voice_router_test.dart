@@ -130,6 +130,18 @@ void main() {
         const VoiceIntent(VoiceIntentType.extendTimer, seconds: 30),
       );
       expect(
+        routeOf('1분 더 대신 30초 더'),
+        const VoiceIntent(VoiceIntentType.extendTimer, seconds: 30),
+      );
+      expect(
+        routeOf('1분 더하는 대신 30초 더'),
+        const VoiceIntent(VoiceIntentType.extendTimer, seconds: 30),
+      );
+      expect(
+        routeOf('1분 추가 대신 30초 더'),
+        const VoiceIntent(VoiceIntentType.extendTimer, seconds: 30),
+      );
+      expect(
         routeOf('추가로 1분'),
         const VoiceIntent(VoiceIntentType.extendTimer, seconds: 60),
       );
@@ -484,6 +496,9 @@ void main() {
         '고기를 생으로 먹었어',
         '생고기가 덜 익었어',
         '생고기가 위험해',
+        '생고기를 못 익혀서 먹었어',
+        '생고기를 안 다 익힌 뒤 먹었어',
+        '생고기를 덜 익힌 뒤 먹었어',
       ]) {
         expect(
           routeOf(problem),
@@ -496,8 +511,19 @@ void main() {
         '생고기를 넣었어',
         '생고기를 팬에 올렸어',
         '생고기를 먹기 좋게 썰었어',
+        '생고기를 넣었어. 밥을 먹었어',
         '생고기를 익혀 먹었어',
+        '생고기를 구워서 먹었어',
+        '생고기를 익혀서 먹었어',
+        '생고기를 볶아서 먹었어',
+        '생고기를 다 익힌 뒤 먹었어',
+        '생고기를 완전히 익힌 다음에 먹었어',
         '생고기를 안 먹었어',
+        '생고기를 먹은 적이 없어',
+        '생고기를 먹은 건 아니야',
+        '생고기를 먹은 적이 전혀 없어',
+        '생고기를 먹은 적이 한 번도 없어',
+        '생고기를 먹은 건 절대 아니야',
         '고기를 생으로 안 먹었어',
         '생고기가 위험하지 않아',
       ]) {
