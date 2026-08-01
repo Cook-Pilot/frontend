@@ -651,6 +651,8 @@ void main() {
       speechInput: speech,
       testRecipe: oneStepRecipe,
       handsFreeVoiceEnabled: true,
+      pendingReviewDraftStore: _MemoryPendingReviewDraftStore(),
+      cookingSessionStore: _MemoryCookingSessionStore(),
     );
     expect(speech.startCount, 1);
 

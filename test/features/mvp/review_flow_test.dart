@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:cookpilot/features/cooking/application/cooking_ports.dart';
 import 'package:cookpilot/features/cooking/application/cooking_session_store.dart';
 import 'package:cookpilot/features/cooking/domain/cooking_setup_snapshot.dart';
+import 'package:cookpilot/features/cooking/presentation/timer_alarm_provider.dart';
 import 'package:cookpilot/features/mvp/cook_flow_screens.dart';
 import 'package:cookpilot/features/recipe/domain/recipe.dart';
 import 'package:cookpilot/features/review/application/pending_review_draft_store.dart';
@@ -205,6 +206,7 @@ void main() {
       final pendingStore = _FakePendingReviewDraftStore(saveGate: saveGate);
       final alarmResolution = Completer<TimerAlarmPort>();
       final alarm = FakeTimerAlarm();
+      var alarmRegistrationCancelled = false;
       tester.view.physicalSize = const Size(1200, 1600);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.resetPhysicalSize);
@@ -214,7 +216,10 @@ void main() {
         pendingStore: pendingStore,
         recipe: _timedRecipe,
         alarm: null,
-        alarmResolver: () => alarmResolution.future,
+        alarmResolver: (_) => TimerAlarmRegistration(
+          alarm: alarmResolution.future,
+          onCancel: () => alarmRegistrationCancelled = true,
+        ),
       );
 
       await tester.tap(find.text('타이머 시작'));
@@ -229,6 +234,7 @@ void main() {
       expect(alarm.scheduledAt, isEmpty);
       expect(alarm.cancelCount, 1);
       expect(alarm.signalCount, 0);
+      expect(alarmRegistrationCancelled, isTrue);
 
       await tester.pump(const Duration(seconds: 61));
       expect(alarm.scheduledAt, isEmpty);
@@ -936,7 +942,7 @@ Future<void> _pumpLastCookingStep(
   CookingSessionGateway? cookingSessionStore,
   Recipe recipe = _recipe,
   TimerAlarmPort? alarm = const SilentTimerAlarm(),
-  Future<TimerAlarmPort> Function()? alarmResolver,
+  TimerAlarmResolver? alarmResolver,
 }) async {
   await tester.pumpWidget(
     MaterialApp(
