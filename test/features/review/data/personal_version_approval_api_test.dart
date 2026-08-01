@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:cookpilot/features/cooking/domain/cooking_setup_snapshot.dart';
+import 'package:cookpilot/features/recipe/data/recipe_api.dart';
 import 'package:cookpilot/features/recipe/domain/recipe.dart';
 import 'package:cookpilot/features/review/data/personal_version_approval_api.dart';
 import 'package:cookpilot/features/user/data/beta_user_repository.dart';
@@ -350,6 +351,87 @@ void main() {
         'originalIngredientId': '11000000-0000-0000-0000-000000000002',
         'type': 'REMOVE',
         'sortOrder': 3,
+      },
+    ]);
+  });
+
+  test('origin 검증을 통과한 개인 버전은 downstream ADD REMOVE를 오염시키지 않는다', () {
+    final detail = PersonalRecipeVersionDetail.fromJson(<String, dynamic>{
+      'version': <String, dynamic>{
+        'id': versionId,
+        'versionNumber': 2,
+        'title': '덜 짠 라면 v2',
+        'summary': '소금 양 변경과 치즈 추가',
+        'createdAt': '2026-07-26T01:00:00Z',
+      },
+      'ingredients': <Object?>[
+        <String, dynamic>{
+          'originalIngredientId': '11000000-0000-0000-0000-000000000001',
+          'name': '물',
+          'amount': 500,
+          'unit': 'ml',
+          'required': true,
+          'origin': 'ORIGINAL',
+        },
+        <String, dynamic>{
+          'originalIngredientId': '11000000-0000-0000-0000-000000000002',
+          'name': '소금',
+          'amount': 2,
+          'unit': 'g',
+          'required': true,
+          'origin': 'MODIFIED',
+        },
+        <String, dynamic>{
+          'originalIngredientId': null,
+          'name': '치즈',
+          'amount': 1,
+          'unit': '장',
+          'required': false,
+          'origin': 'ADDED',
+        },
+      ],
+      'steps': <Object?>[],
+    });
+    final ingredients = buildOriginalAnchoredSetupIngredients(
+      baseIngredients: const <Ingredient>[
+        Ingredient(
+          originalIngredientId: '11000000-0000-0000-0000-000000000001',
+          name: '물',
+          amount: 500,
+          unit: 'ml',
+          isRequired: true,
+        ),
+        Ingredient(
+          originalIngredientId: '11000000-0000-0000-0000-000000000002',
+          name: '소금',
+          amount: 1,
+          unit: 'g',
+          isRequired: true,
+        ),
+      ],
+      composedIngredients: detail.ingredients,
+      scale: 1,
+    );
+
+    final request = PersonalVersionApprovalRequest.fromSnapshot(
+      snapshot: _snapshotWith(ingredients: ingredients),
+    ).toJson();
+    final setup = request['setup'] as Map<String, Object?>;
+
+    expect(setup['ingredientAdjustments'], <Map<String, Object?>>[
+      <String, Object?>{
+        'originalIngredientId': '11000000-0000-0000-0000-000000000002',
+        'type': 'MODIFY',
+        'amount': 2.0,
+        'sortOrder': 1,
+      },
+      <String, Object?>{
+        'type': 'ADD',
+        'name': '치즈',
+        'amount': 1.0,
+        'unit': '장',
+        'required': false,
+        'sortOrder': 2,
       },
     ]);
   });
