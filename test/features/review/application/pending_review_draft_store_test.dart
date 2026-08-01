@@ -38,6 +38,48 @@ void main() {
       expect(() => restored.timerSecondsByStep[0] = 10, throwsUnsupportedError);
     });
 
+    test('cookedAt은 직렬화된 canonical UTC 형식만 복원한다', () {
+      final canonicalJson = buildDraft().toJson();
+      expect(canonicalJson['cookedAt'], '2026-07-30T08:30:00.000Z');
+      expect(PendingReviewDraft.fromJson(canonicalJson), isNotNull);
+      expect(
+        PendingReviewDraft.fromJson(<String, Object?>{
+          ...canonicalJson,
+          'cookedAt': '2024-02-29T08:30:00.000Z',
+        }),
+        isNotNull,
+      );
+
+      final microsecondJson = buildDraft(
+        cookedAt: DateTime.utc(2026, 7, 30, 8, 30, 0, 123, 456),
+      ).toJson();
+      expect(microsecondJson['cookedAt'], '2026-07-30T08:30:00.123456Z');
+      expect(PendingReviewDraft.fromJson(microsecondJson), isNotNull);
+
+      const invalidValues = <String>[
+        '2026-01-42T08:30:00.000Z',
+        '2026-13-01T08:30:00.000Z',
+        '2025-02-29T08:30:00.000Z',
+        '2026-07-30T17:30:00.000+09:00',
+        '2026-07-30T08:30:00.000',
+        '2026-07-30 08:30:00.000Z',
+        '2026-07-30T08:30:00Z',
+        '2026-07-30T08:30:00.0Z',
+        '2026-07-30T08:30:00.123000Z',
+      ];
+
+      for (final value in invalidValues) {
+        expect(
+          PendingReviewDraft.fromJson(<String, Object?>{
+            ...canonicalJson,
+            'cookedAt': value,
+          }),
+          isNull,
+          reason: '$value 형식은 복원하지 않아야 한다.',
+        );
+      }
+    });
+
     test('후기 길이는 UTF-16 길이가 아닌 Unicode code point로 검사한다', () {
       final maximumComment = List.filled(
         PendingReviewDraft.maximumCommentCodePoints,
@@ -116,6 +158,43 @@ void main() {
         ),
         throwsArgumentError,
       );
+    });
+
+    test('실행 단계 기본 타이머는 null과 지원 범위 경계만 허용한다', () {
+      for (final timerSeconds in <int?>[
+        null,
+        0,
+        PendingReviewDraft.maximumTimerSeconds,
+      ]) {
+        final draft = buildDraft(
+          setupSnapshot: buildSetupSnapshot(stepTimerSeconds: timerSeconds),
+          timerSecondsByStep: const {},
+        );
+
+        final restored = PendingReviewDraft.fromJson(draft.toJson());
+
+        expect(restored, isNotNull);
+        expect(restored!.setupSnapshot.steps.single.timerSeconds, timerSeconds);
+      }
+
+      for (final timerSeconds in <int>[
+        -1,
+        PendingReviewDraft.maximumTimerSeconds + 1,
+      ]) {
+        expect(
+          () => buildDraft(
+            setupSnapshot: buildSetupSnapshot(stepTimerSeconds: timerSeconds),
+            timerSecondsByStep: const {},
+          ),
+          throwsArgumentError,
+        );
+        final corrupted = _mutatedDraftJson(
+          (setupSnapshot, ingredient, step) =>
+              step['timerSeconds'] = timerSeconds,
+        );
+        corrupted['timerSecondsByStep'] = <String, Object?>{};
+        expect(PendingReviewDraft.fromJson(corrupted), isNull);
+      }
     });
 
     test('현재 스키마의 필드가 빠지거나 추가된 JSON은 읽지 않는다', () {
@@ -837,6 +916,7 @@ const recipeId = '10000000-0000-0000-0000-000000000001';
 
 PendingReviewDraft buildDraft({
   String clientSessionIdValue = clientSessionId,
+  DateTime? cookedAt,
   CookingSetupSnapshot? setupSnapshot,
   Map<int, int> timerSecondsByStep = const {0: 180},
   int rating = 4,
@@ -846,7 +926,7 @@ PendingReviewDraft buildDraft({
 }) {
   return PendingReviewDraft(
     clientSessionId: clientSessionIdValue,
-    cookedAt: DateTime.utc(2026, 7, 30, 8, 30),
+    cookedAt: cookedAt ?? DateTime.utc(2026, 7, 30, 8, 30),
     setupSnapshot: setupSnapshot ?? buildSetupSnapshot(),
     timerSecondsByStep: timerSecondsByStep,
     rating: rating,
@@ -859,6 +939,7 @@ PendingReviewDraft buildDraft({
 CookingSetupSnapshot buildSetupSnapshot({
   String recipeIdValue = recipeId,
   int stepIndex = 0,
+  int? stepTimerSeconds = 120,
   double baseServings = 2,
   int targetServings = 2,
   bool includeStep = true,
@@ -889,7 +970,7 @@ CookingSetupSnapshot buildSetupSnapshot({
               originalStepId: '12000000-0000-0000-0000-000000000001',
               stepIndex: stepIndex,
               instruction: '두부를 부친다.',
-              timerSeconds: 120,
+              timerSeconds: stepTimerSeconds,
               cautionNote: '기름이 튈 수 있다.',
               imageUrl: '',
             ),
