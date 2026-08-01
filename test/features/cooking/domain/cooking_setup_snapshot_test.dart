@@ -156,6 +156,7 @@ void main() {
 
     expect(restored, isNotNull);
     expect(restored!.ingredients.single.omitted, isFalse);
+    expect(restored.ingredients.single.baselineAmount, 1);
   });
 
   test('지원하지 않는 미래 스냅샷 버전은 복원하지 않는다', () {

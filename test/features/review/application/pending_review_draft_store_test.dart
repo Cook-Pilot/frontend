@@ -125,6 +125,140 @@ void main() {
       expect(PendingReviewDraft.fromJson(missing), isNull);
       expect(PendingReviewDraft.fromJson(unknown), isNull);
     });
+
+    test('현재 후기 실행 스냅샷은 모든 최상위 필드를 요구한다', () {
+      const fields = <String>[
+        'schemaVersion',
+        'recipeId',
+        'title',
+        'description',
+        'imageUrl',
+        'baseServings',
+        'targetServings',
+        'source',
+        'personalVersionId',
+        'ingredients',
+        'steps',
+      ];
+
+      for (final field in fields) {
+        final json = _mutatedDraftJson(
+          (setupSnapshot, ingredient, step) => setupSnapshot.remove(field),
+        );
+
+        expect(
+          PendingReviewDraft.fromJson(json),
+          isNull,
+          reason: 'setupSnapshot.$field 누락을 거부해야 한다.',
+        );
+      }
+    });
+
+    test('현재 후기 실행 스냅샷의 재료는 nullable 필드를 포함해 모두 요구한다', () {
+      const fields = <String>[
+        'originalIngredientId',
+        'originalName',
+        'name',
+        'amount',
+        'baselineAmount',
+        'unit',
+        'isRequired',
+        'omitted',
+      ];
+
+      for (final field in fields) {
+        final json = _mutatedDraftJson(
+          (setupSnapshot, ingredient, step) => ingredient.remove(field),
+        );
+
+        expect(
+          PendingReviewDraft.fromJson(json),
+          isNull,
+          reason: 'setupSnapshot.ingredients.$field 누락을 거부해야 한다.',
+        );
+      }
+    });
+
+    test('현재 후기 실행 스냅샷의 단계는 nullable 필드를 포함해 모두 요구한다', () {
+      const fields = <String>[
+        'originalStepId',
+        'stepIndex',
+        'instruction',
+        'timerSeconds',
+        'cautionNote',
+        'imageUrl',
+      ];
+
+      for (final field in fields) {
+        final json = _mutatedDraftJson(
+          (setupSnapshot, ingredient, step) => step.remove(field),
+        );
+
+        expect(
+          PendingReviewDraft.fromJson(json),
+          isNull,
+          reason: 'setupSnapshot.steps.$field 누락을 거부해야 한다.',
+        );
+      }
+    });
+
+    test('현재 후기 실행 스냅샷의 알 수 없는 중첩 필드를 거부한다', () {
+      final unknownSnapshot = _mutatedDraftJson(
+        (setupSnapshot, ingredient, step) =>
+            setupSnapshot['futureField'] = true,
+      );
+      final unknownIngredient = _mutatedDraftJson(
+        (setupSnapshot, ingredient, step) => ingredient['futureField'] = true,
+      );
+      final unknownStep = _mutatedDraftJson(
+        (setupSnapshot, ingredient, step) => step['futureField'] = true,
+      );
+
+      expect(PendingReviewDraft.fromJson(unknownSnapshot), isNull);
+      expect(PendingReviewDraft.fromJson(unknownIngredient), isNull);
+      expect(PendingReviewDraft.fromJson(unknownStep), isNull);
+    });
+
+    test('현재 후기 실행 스냅샷의 omitted는 null이 아닌 bool이어야 한다', () {
+      final json = _mutatedDraftJson(
+        (setupSnapshot, ingredient, step) => ingredient['omitted'] = null,
+      );
+
+      expect(PendingReviewDraft.fromJson(json), isNull);
+    });
+
+    test('현재 후기 실행 스냅샷은 필수 nullable 키의 null 값을 보존한다', () {
+      final json = _mutatedDraftJson((setupSnapshot, ingredient, step) {
+        setupSnapshot['personalVersionId'] = null;
+        ingredient['originalIngredientId'] = null;
+        ingredient['baselineAmount'] = null;
+        ingredient['omitted'] = true;
+        step['originalStepId'] = null;
+        step['timerSeconds'] = null;
+        step['cautionNote'] = null;
+      });
+
+      final restored = PendingReviewDraft.fromJson(json);
+
+      expect(restored, isNotNull);
+      expect(restored!.setupSnapshot.personalVersionId, isNull);
+      final ingredient = restored.setupSnapshot.ingredients.single;
+      expect(ingredient.originalIngredientId, isNull);
+      expect(ingredient.amount, 1);
+      expect(ingredient.baselineAmount, isNull);
+      expect(ingredient.omitted, isTrue);
+      final step = restored.setupSnapshot.steps.single;
+      expect(step.originalStepId, isNull);
+      expect(step.timerSeconds, isNull);
+      expect(step.cautionNote, isNull);
+
+      final nullableAmountJson = _mutatedDraftJson(
+        (setupSnapshot, ingredient, step) => ingredient['amount'] = null,
+      );
+      final nullableAmount = PendingReviewDraft.fromJson(nullableAmountJson);
+      expect(nullableAmount, isNotNull);
+      expect(nullableAmount!.setupSnapshot.ingredients.single.amount, isNull);
+    });
   });
 
   group('PendingReviewDraftStore', () {
@@ -766,3 +900,28 @@ CookingSetupSnapshot buildSetupSnapshot({
 
 Map<String, Object?> _deepCopy(Map<String, Object?> value) =>
     Map<String, Object?>.from(jsonDecode(jsonEncode(value)) as Map);
+
+Map<String, Object?> _mutatedDraftJson(
+  void Function(
+    Map<String, Object?> setupSnapshot,
+    Map<String, Object?> ingredient,
+    Map<String, Object?> step,
+  )
+  mutate,
+) {
+  final json = _deepCopy(buildDraft().toJson());
+  final setupSnapshot = Map<String, Object?>.from(
+    json['setupSnapshot']! as Map,
+  );
+  final ingredients = List<Object?>.from(setupSnapshot['ingredients']! as List);
+  final ingredient = Map<String, Object?>.from(ingredients.single! as Map);
+  ingredients[0] = ingredient;
+  setupSnapshot['ingredients'] = ingredients;
+  final steps = List<Object?>.from(setupSnapshot['steps']! as List);
+  final step = Map<String, Object?>.from(steps.single! as Map);
+  steps[0] = step;
+  setupSnapshot['steps'] = steps;
+  mutate(setupSnapshot, ingredient, step);
+  json['setupSnapshot'] = setupSnapshot;
+  return json;
+}
