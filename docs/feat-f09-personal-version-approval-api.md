@@ -81,8 +81,13 @@ status만 `PersonalVersionCreated` marker로 바꾼다. 빈 `201` body도 같은
 기본 레시피 상세 응답의 재료는 `id` 또는 호환 `originalIngredientId`에 nil이 아닌
 소문자 canonical UUID가 반드시 있어야 하며, 누락·잘못된 타입·잘못된 형식은 상세
 응답 전체를 거부한다. 따라서 식별자를 잃은 원본 재료가 신규 `ADD`로 흘러가 중복
-저장될 수 없다. 반면 개인 버전 합성 응답의 실제 추가 재료는
-`originalIngredientId: null`을 계속 허용한다.
+저장될 수 없다. 개인 버전 합성 응답은 `origin`을 필수로 읽어 `ORIGINAL`,
+`MODIFIED`, `ADDED` 중 하나와 정확히 일치할 때만 허용한다. `ORIGINAL`과
+`MODIFIED`에는 nil이 아닌 소문자 canonical `originalIngredientId`가 필요하고,
+`ADDED`에는 명시적인 `originalIngredientId: null`만 허용한다. origin의 누락,
+unknown 값, 잘못된 타입과 origin/ID 불일치는 상세 응답 전체를 거부한다. 따라서
+손상된 원본·수정 재료가 누적 `ADD`가 되고 매칭되지 않은 기본 재료가 `REMOVE`가
+되는 잘못된 분류는 snapshot 매핑 전에 차단된다.
 
 개인 버전을 선택하면 서버의 합성 결과만 snapshot에 그대로 복사하지 않는다. 합성
 결과의 `originalIngredientId`를 기본 레시피와 대조해 다음처럼 원본 기준을 복원한다.
@@ -166,7 +171,9 @@ flutter analyze
 focused 테스트는 다음을 확인한다.
 
 - 베타 사용자 헤더, URL, JSON 계약
-- 기본 레시피 재료 ID의 필수 canonical 검증과 개인 버전 ADD의 null origin 허용
+- 기본 레시피 재료 ID의 필수 canonical 검증
+- 개인 버전 재료 origin/ID 상관관계와 `ADDED`의 명시적 null ID 검증
+- 손상된 개인 버전 재료가 downstream `ADD`/`REMOVE`로 오염되지 않는 경계
 - PR #35 legacy draft 재료 필드의 current shape migration
 - `ADD` / `REMOVE` / `MODIFY` 매핑과 무변경 제외
 - 개인 버전 합성 결과의 누적 `ADD` / `REMOVE` / `MODIFY` 보존
