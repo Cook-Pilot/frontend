@@ -122,15 +122,13 @@ final class CookingVoiceRouter {
 
   static const _tasteDegreeMarkers = <String>['너무', '조금', '약간', '좀'];
 
-  static const _finishPhrases = <String>[
+  static const _explicitFinishPhrases = <String>[
     '조리완료',
     '요리완료',
     '조리끝',
     '요리끝',
     '다끝났',
     '전부끝났',
-    '완성했',
-    '완료했',
   ];
 
   static const _timerExtensionSignals = <String>['더', '추가', '연장', '늘려'];
@@ -509,7 +507,11 @@ final class CookingVoiceRouter {
       final gap = prefix.substring(preparation.end);
       if (gap.length <= 12 &&
           RegExp(r'^[가-힣a-z0-9]*$').hasMatch(gap) &&
-          !RegExp(r'(?:안|못|않|말|척|예정|야|려고|필요)').hasMatch(gap)) {
+          !RegExp(
+            r'(?:안|못|않|말|척|예정|야|려고|필요|'
+            r'줄(?:알|착각|믿)|것으로(?:알|착각|믿)|것같|'
+            r'듯(?:싶|하)|거라(?:고)?(?:알|생각|착각|믿))',
+          ).hasMatch(gap)) {
         return true;
       }
     }
@@ -902,7 +904,11 @@ final class CookingVoiceRouter {
     final lower = transcript.toLowerCase();
     for (final token in tokens) {
       if (token.runes.length >= 2) {
-        if (normalized.contains(token)) return true;
+        if (RegExp(r'^[가-힣]+$').hasMatch(token)) {
+          if (_hasMultiKoreanContextToken(lower, token)) return true;
+        } else if (normalized.contains(token)) {
+          return true;
+        }
         continue;
       }
       // A one-letter ingredient must begin a spoken word. This keeps
@@ -913,15 +919,54 @@ final class CookingVoiceRouter {
     return false;
   }
 
-  bool _hasSingleKoreanWordToken(
-    String lower,
-    String token, {
-    bool allowCopular = false,
-  }) {
-    final codePoint = token.runes.single;
-    final finalConsonant = (codePoint - 0xAC00) % 28;
+  bool _hasMultiKoreanContextToken(String lower, String token) {
+    for (final candidate in RegExp(RegExp.escape(token)).allMatches(lower)) {
+      final joinedPrefix = _hangulWordPrefix(lower, candidate.start);
+      if (joinedPrefix.isNotEmpty &&
+          !_hasAllowedSingleTokenCollisionPrefix(lower, candidate.start)) {
+        continue;
+      }
+
+      final wordSuffix = _hangulWordSuffix(lower, candidate.end);
+      if (wordSuffix.isNotEmpty) {
+        final particleEnd = _koreanNominalParticleEnd(token, wordSuffix);
+        if (particleEnd != null) {
+          final continuation = wordSuffix.substring(particleEnd);
+          final followingText = lower.substring(
+            candidate.end + wordSuffix.length,
+          );
+          if (continuation == '요' ||
+              _isIngredientCookingContinuation(continuation)) {
+            return true;
+          }
+          if (continuation.isEmpty &&
+              (_isIngredientCookingContinuation(followingText) ||
+                  RegExp(r'^\s*(?:요\s*)?[?？]').hasMatch(followingText))) {
+            return true;
+          }
+        }
+        if (_isIngredientCookingContinuation(wordSuffix)) return true;
+        continue;
+      }
+
+      if (_isIngredientCookingContinuation(lower.substring(candidate.end))) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  int? _koreanNominalParticleEnd(String token, String suffix) {
+    final patterns = _koreanNounSuffixPatterns(token);
+    return RegExp(
+      '^(?:${patterns.primary})(?:${patterns.auxiliary}){0,2}',
+    ).firstMatch(suffix)?.end;
+  }
+
+  ({String primary, String auxiliary, String copular})
+  _koreanNounSuffixPatterns(String token) {
+    final finalConsonant = (token.runes.last - 0xAC00) % 28;
     final hasFinalConsonant = finalConsonant != 0;
-    // ㄹ 받침은 모음 끝 명사와 마찬가지로 "로"를 쓴다(불로, 물로).
     final directional = !hasFinalConsonant || finalConsonant == 8 ? '로' : '으로';
     final primaryParticles = <String>{
       '$directional서',
@@ -970,7 +1015,7 @@ final class CookingVoiceRouter {
         '야',
       ],
     };
-    final auxiliaryParticles = <String>{
+    const auxiliaryParticles = <String>{
       '이라도',
       '이라면',
       '라도',
@@ -984,8 +1029,6 @@ final class CookingVoiceRouter {
       '도',
       '만',
     };
-    final primaryPattern = _alternation(primaryParticles);
-    final auxiliaryPattern = _alternation(auxiliaryParticles);
     final copularEndings = <String>{
       '인가요',
       '인가',
@@ -1003,12 +1046,35 @@ final class CookingVoiceRouter {
       ],
       if (!hasFinalConsonant) ...['였나요', '였어요', '여도요', '여도', '면요', '면', '예요'],
     };
-    final copularPattern = _alternation(copularEndings);
+    return (
+      primary: _alternation(primaryParticles),
+      auxiliary: _alternation(auxiliaryParticles),
+      copular: _alternation(copularEndings),
+    );
+  }
+
+  bool _isIngredientCookingContinuation(String value) {
+    final continuation = value.replaceFirst(RegExp(r'^[\s,，]+'), '');
+    return RegExp(
+      r'^(?:(?:더|좀|조금|약간|많이|적게|얼마나|어떻게|다|전부|모두|'
+      r'이미|거의|완전히)\s*)*'
+      r'(?:넣|추가|빼|제외|사용|준비|손질|썰|다듬|씻|볶|굽|구우|'
+      r'익|삶|데치|끓|섞|갈|다지|자르|먹|양념|없|부족|모자라|'
+      r'떨어졌|다썼|상했|상한|탔|짜|싱거|괜찮|어때)',
+    ).hasMatch(continuation);
+  }
+
+  bool _hasSingleKoreanWordToken(
+    String lower,
+    String token, {
+    bool allowCopular = false,
+  }) {
+    final patterns = _koreanNounSuffixPatterns(token);
     final tokenPattern = RegExp('(^|[^가-힣a-z0-9])${RegExp.escape(token)}');
     final particlePattern =
-        '(?:(?:$primaryPattern)?(?:$auxiliaryPattern){0,2}요?)';
+        '(?:(?:${patterns.primary})?(?:${patterns.auxiliary}){0,2}요?)';
     final suffixAlternatives = allowCopular
-        ? '(?:$copularPattern)|$particlePattern'
+        ? '(?:${patterns.copular})|$particlePattern'
         : particlePattern;
     final suffixPattern = RegExp(
       '^(?:$suffixAlternatives)?'
@@ -1188,7 +1254,7 @@ final class CookingVoiceRouter {
     }
 
     // An explicit whole-cook completion wins over a step-level "됐어".
-    if (_hasAny(text, _finishPhrases)) {
+    if (_isFinishCommand(text)) {
       return const VoiceIntent(VoiceIntentType.finish);
     }
 
@@ -1199,6 +1265,15 @@ final class CookingVoiceRouter {
       return const VoiceIntent(VoiceIntentType.previous);
     }
     return null;
+  }
+
+  bool _isFinishCommand(String text) {
+    final command = text.replaceFirst(RegExp(r'^(?:이제|드디어|정말)'), '');
+    if (_explicitFinishPhrases.any(command.startsWith)) return true;
+    return RegExp(
+      r'^(?:(?:조리|요리|다|전부|모두))?(?:완성|완료)했'
+      r'(?:어(?:요)?|다|습니다|네(?:요)?|지(?:요)?|죠)?[.!?。！？]*$',
+    ).hasMatch(command);
   }
 
   bool _isNextCommand(String text) {
@@ -1269,7 +1344,10 @@ final class CookingVoiceRouter {
     durationParts.sort((left, right) => left.start.compareTo(right.start));
 
     final associatedParts = <int>{};
-    final replacementCutoff = _extensionReplacementCutoff(source);
+    final replacementCutoff = _extensionReplacementCutoff(
+      source,
+      durationParts,
+    );
     for (final signal in _extensionSignalMatches(source)) {
       if (signal.start < replacementCutoff) continue;
       if (_isRejectedExtensionSignal(source, signal)) continue;
@@ -1314,8 +1392,20 @@ final class CookingVoiceRouter {
     return _boundedSeconds(seconds);
   }
 
-  int _extensionReplacementCutoff(String source) {
+  int _extensionReplacementCutoff(
+    String source,
+    List<({int start, int end, int seconds})> durationParts,
+  ) {
     var cutoff = 0;
+    final extensionSignals = _extensionSignalMatches(source)
+        .where(
+          (signal) => _isDurationAssociatedExtensionSignal(
+            source,
+            signal,
+            durationParts,
+          ),
+        )
+        .toList();
     final replacementMarkers = <RegExp>[
       RegExp(r'말고(?=$|[\s,，]|\d)'),
       RegExp(r'대신(?:에)?(?=$|[\s,，]|\d)'),
@@ -1325,10 +1415,50 @@ final class CookingVoiceRouter {
     for (final pattern in replacementMarkers) {
       for (final marker in pattern.allMatches(source)) {
         if (_isNegatedReplacementMarker(source, marker)) continue;
+        if (!_isExtensionReplacementMarker(source, marker, extensionSignals)) {
+          continue;
+        }
         if (marker.end > cutoff) cutoff = marker.end;
       }
     }
     return cutoff;
+  }
+
+  bool _isDurationAssociatedExtensionSignal(
+    String source,
+    RegExpMatch signal,
+    List<({int start, int end, int seconds})> durationParts,
+  ) {
+    for (final part in durationParts) {
+      if (part.end <= signal.start &&
+          _isExtensionSignalGap(source.substring(part.end, signal.start))) {
+        return true;
+      }
+      if (part.start >= signal.end &&
+          _isExtensionSignalGap(source.substring(signal.end, part.start))) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  bool _isExtensionReplacementMarker(
+    String source,
+    RegExpMatch marker,
+    List<RegExpMatch> extensionSignals,
+  ) {
+    RegExpMatch? previousSignal;
+    for (final signal in extensionSignals) {
+      if (signal.end > marker.start) break;
+      previousSignal = signal;
+    }
+    if (previousSignal == null) return false;
+
+    final gap = source
+        .substring(previousSignal.end, marker.start)
+        .replaceAll(RegExp(r'[\s,，]'), '');
+    return gap.isEmpty ||
+        _isExtensionSignalSuffix(previousSignal.group(0)!, gap);
   }
 
   bool _isNegatedReplacementMarker(String source, RegExpMatch marker) {

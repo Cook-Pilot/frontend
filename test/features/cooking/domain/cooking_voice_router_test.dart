@@ -189,6 +189,22 @@ void main() {
       );
     });
 
+    test('keeps extensions before unrelated replacement clauses', () {
+      for (final command in const [
+        '1분 더 하고 소금 말고 후추 넣어',
+        '1분 더하고 양파 대신 마늘 넣어',
+        '1분 더 하고 재료 준비 취소했어',
+        '1분 더 하고 소금, 아니 후추 넣어',
+        '1분 더 하고 소금 추가 말고 후추 넣어',
+      ]) {
+        expect(
+          routeOf(command),
+          const VoiceIntent(VoiceIntentType.extendTimer, seconds: 60),
+          reason: command,
+        );
+      }
+    });
+
     test('requires a lexical boundary after timer extension signals', () {
       expect(
         routeOf('1분 더해줘'),
@@ -239,6 +255,25 @@ void main() {
         routeOf('조리 완료, 이제 됐어'),
         const VoiceIntent(VoiceIntentType.finish),
       );
+    });
+
+    test('requires whole-cook context for generic completion phrases', () {
+      expect(routeOf('완료했어'), const VoiceIntent(VoiceIntentType.finish));
+      expect(routeOf('요리 완성했어요'), const VoiceIntent(VoiceIntentType.finish));
+
+      for (final partialCompletion in const [
+        '재료 손질 완료했어',
+        '타이머 설정 완료했어',
+        '양파 손질 완료했어',
+        '재료 손질이 다 끝났어',
+        '타이머 설정이 전부 끝났어',
+      ]) {
+        expect(
+          routeOf(partialCompletion),
+          const VoiceIntent(VoiceIntentType.ignore),
+          reason: partialCompletion,
+        );
+      }
     });
   });
 
@@ -430,6 +465,44 @@ void main() {
       },
     );
 
+    test('disambiguates multi-syllable ingredient homonyms', () {
+      VoiceIntent routeWithEggplant(String transcript) {
+        return router.route(
+          transcript,
+          recipeTitle: '채소 볶음',
+          ingredientNames: const ['가지', '양파'],
+          currentStepInstruction: '팬을 달군다',
+        );
+      }
+
+      for (final unrelatedQuestion in const [
+        '오늘 어떻게 집에 가지?',
+        '휴가를 어디로 가지?',
+        '오늘은 집에 가지는 않아?',
+        '이번엔 학교에 가지도 않아?',
+      ]) {
+        expect(
+          routeWithEggplant(unrelatedQuestion),
+          const VoiceIntent(VoiceIntentType.ignore),
+          reason: unrelatedQuestion,
+        );
+      }
+
+      for (final cookingQuestion in const [
+        '가지는 얼마나 익혀?',
+        '가지를 더 넣어도 돼?',
+        '가지 어떻게 썰어?',
+        '가지가 없어',
+        '가지는요?',
+      ]) {
+        expect(
+          routeWithEggplant(cookingQuestion),
+          const VoiceIntent(VoiceIntentType.exceptionQuestion),
+          reason: cookingQuestion,
+        );
+      }
+    });
+
     test('does not mistake 진짜 for a salty problem', () {
       expect(
         routeOf('고기 진짜 익었어?'),
@@ -544,6 +617,9 @@ void main() {
         '생고기를 먹은 적 없지만 오늘 먹었어',
         '생고기를 안 먹으려 했지만 결국 먹었어',
         '생고기를 익혀야 했지만 그냥 먹었어',
+        '생고기를 구운 줄 알고 먹었어',
+        '생고기를 익힌 줄 착각하고 먹었어',
+        '생고기를 조리한 것으로 알고 먹었어',
         '생고기를 먹으려 해',
         '생고기를 먹어도 돼?',
         '생고기를 먹으면 괜찮을까?',
