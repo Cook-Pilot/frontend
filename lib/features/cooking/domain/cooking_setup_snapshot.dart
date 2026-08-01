@@ -63,9 +63,9 @@ final class CookingSetupIngredient {
         originalName: originalName,
         name: name,
         amount: (amountValue as num?)?.toDouble(),
-        baselineAmount:
-            (baselineAmountValue as num?)?.toDouble() ??
-            amountValue?.toDouble(),
+        baselineAmount: json.containsKey('baselineAmount')
+            ? (baselineAmountValue as num?)?.toDouble()
+            : amountValue?.toDouble(),
         unit: unit,
         isRequired: isRequired,
         omitted: omittedValue as bool? ?? false,

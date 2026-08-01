@@ -43,6 +43,12 @@ cookpilot.pending_review_draft.v1
 
 최상위 JSON에는 `schemaVersion: 1`을 포함한다. 필드가 빠졌거나 알 수 없는
 필드가 추가된 값은 현재 코드가 의미를 확정할 수 없으므로 복원하지 않는다.
+후기 초안에 포함된 `setupSnapshot`도 현재 버전의 스냅샷·재료·단계 필드
+집합과 정확히 일치해야 한다. `personalVersionId`, `originalIngredientId`,
+`amount`, `baselineAmount`, `originalStepId`, `timerSeconds`, `cautionNote`처럼
+값이 `null`일 수 있는 필드도 키 자체는 반드시 존재해야 한다. 이 엄격한
+경계는 후기 복구에만 적용하며, 다른 저장소의 과거 실행 스냅샷을 읽는
+`CookingSetupSnapshot.fromJson`의 하위 호환 기본값은 유지한다.
 
 예시는 다음과 같다.
 
