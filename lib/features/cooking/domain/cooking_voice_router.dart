@@ -306,10 +306,7 @@ final class CookingVoiceRouter {
     ).allMatches(source).toList();
     if (rawReferences.isEmpty) return false;
 
-    final consumptions = RegExp(
-      r'먹(?:었|어(?:도)?|으면|으려|을까|은|는\s*중)|'
-      r'섭취(?:했|해|한)|삼켰',
-    ).allMatches(source);
+    final consumptions = _rawConsumptionMatches(source);
     for (final consumption in consumptions) {
       final rawReference = _nearestRawReference(
         source,
@@ -331,6 +328,13 @@ final class CookingVoiceRouter {
     return false;
   }
 
+  Iterable<RegExpMatch> _rawConsumptionMatches(String source) {
+    return RegExp(
+      r'먹(?:었|어(?:도)?|으면|으려|을까|은|는\s*중|고)|'
+      r'섭취(?:했|해|한)|삼켰',
+    ).allMatches(source);
+  }
+
   RegExpMatch? _nearestRawReference(
     String source,
     List<RegExpMatch> rawReferences,
@@ -340,7 +344,12 @@ final class CookingVoiceRouter {
       if (rawReference.end > consumption.start) continue;
       final between = source.substring(rawReference.end, consumption.start);
       if (between.length > 120 ||
-          RegExp(r'[.!?。！？;；]').hasMatch(between) ||
+          _nextHardBoundaryOutsideQuotes(
+                source,
+                rawReference.end,
+                end: consumption.start,
+              ) !=
+              null ||
           _crossesDetachedClause(between) ||
           _hasDifferentConsumptionTarget(between)) {
         return null;
@@ -371,14 +380,7 @@ final class CookingVoiceRouter {
       '(?:^|[\\s,，])([가-힣a-z0-9]{1,20})\\s*(?:을|를|도)\\s*'
       '(?:$adverbs\\s*)*\$',
     ).firstMatch(between);
-    if (object != null) return true;
-
-    final subject = RegExp(
-      '(?:^|[\\s,，])([가-힣a-z0-9]{1,20})\\s*(?:은|는|이|가)\\s*'
-      '(?:$adverbs\\s*)*\$',
-    ).firstMatch(between);
-    if (subject == null) return false;
-    return !const {'오늘', '지금', '이번', '그때', '결국'}.contains(subject.group(1));
+    return object != null;
   }
 
   ({int start, int end}) _consumptionSegment(
@@ -386,21 +388,26 @@ final class CookingVoiceRouter {
     RegExpMatch rawReference,
     RegExpMatch consumption,
   ) {
-    final hardBoundary = RegExp(r'[.!?。！？;；]');
     var sentenceEnd = source.length;
-    final nextHardBoundary = hardBoundary.firstMatch(
-      source.substring(consumption.end),
+    final nextHardBoundary = _nextHardBoundaryOutsideQuotes(
+      source,
+      consumption.end,
     );
     if (nextHardBoundary != null) {
-      sentenceEnd = consumption.end + nextHardBoundary.start;
+      sentenceEnd = nextHardBoundary;
     }
 
     final contrast = RegExp(r'그렇지만|하지만|그런데|그러나|반면|대신|지만');
     var start = rawReference.start;
+    for (final previous in _rawConsumptionMatches(source)) {
+      if (previous.start >= consumption.start) break;
+      if (previous.end > rawReference.end) start = previous.end;
+    }
     for (final boundary in contrast.allMatches(
       source.substring(rawReference.end, consumption.start),
     )) {
-      start = rawReference.end + boundary.end;
+      final boundaryEnd = rawReference.end + boundary.end;
+      if (boundaryEnd > start) start = boundaryEnd;
     }
 
     var end = sentenceEnd;
@@ -409,6 +416,51 @@ final class CookingVoiceRouter {
     );
     if (nextContrast != null) end = consumption.end + nextContrast.start;
     return (start: start, end: end);
+  }
+
+  int? _nextHardBoundaryOutsideQuotes(String source, int start, {int? end}) {
+    var insideDoubleQuote = false;
+    var insideSingleQuote = false;
+    final limit = end ?? source.length;
+    for (var index = 0; index < limit; index++) {
+      final codeUnit = source.codeUnitAt(index);
+      if (codeUnit == 0x201c) {
+        insideDoubleQuote = true;
+        continue;
+      }
+      if (codeUnit == 0x201d) {
+        insideDoubleQuote = false;
+        continue;
+      }
+      if (codeUnit == 0x22) {
+        insideDoubleQuote = !insideDoubleQuote;
+        continue;
+      }
+      if (codeUnit == 0x2018) {
+        insideSingleQuote = true;
+        continue;
+      }
+      if (codeUnit == 0x2019) {
+        insideSingleQuote = false;
+        continue;
+      }
+      if (index >= start &&
+          !insideDoubleQuote &&
+          !insideSingleQuote &&
+          const {
+            0x21,
+            0x2e,
+            0x3b,
+            0x3f,
+            0x3002,
+            0xff01,
+            0xff1b,
+            0xff1f,
+          }.contains(codeUnit)) {
+        return index;
+      }
+    }
+    return null;
   }
 
   bool _isSafeConsumptionEvent(
@@ -437,7 +489,7 @@ final class CookingVoiceRouter {
       return true;
     }
     if (RegExp(
-      r'^(?:어)?[”"’]?(?:라고|라는|다고|다는)(?:'
+      r'^(?:어)?[.!?。！？;；]?[”"’]?(?:라고|라는|다고|다는)(?:'
       r'(?:말)?한?(?:건|게|것(?:이|은)?)|'
       r'말(?:은|이|을)?(?:사실이)?)(?:전혀|절대|아예)?아니',
     ).hasMatch(suffix)) {
@@ -1272,10 +1324,21 @@ final class CookingVoiceRouter {
     ];
     for (final pattern in replacementMarkers) {
       for (final marker in pattern.allMatches(source)) {
+        if (_isNegatedReplacementMarker(source, marker)) continue;
         if (marker.end > cutoff) cutoff = marker.end;
       }
     }
     return cutoff;
+  }
+
+  bool _isNegatedReplacementMarker(String source, RegExpMatch marker) {
+    final tail = _normalize(source.substring(marker.end));
+    return RegExp(
+      r'^(?:'
+      r'(?:는|은|도)?(?:안|못)(?:하|해|했|할)|'
+      r'(?:하|해)?지(?:는)?(?:마|말|않)|'
+      r'(?:하|해)?(?:는)?건아니)',
+    ).hasMatch(tail);
   }
 
   Iterable<RegExpMatch> _extensionSignalMatches(String source) sync* {

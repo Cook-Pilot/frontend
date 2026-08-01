@@ -176,6 +176,14 @@ void main() {
         const VoiceIntent(VoiceIntentType.ignore),
       );
       expect(
+        routeOf('1분 더, 취소하지 마'),
+        const VoiceIntent(VoiceIntentType.extendTimer, seconds: 60),
+      );
+      expect(
+        routeOf('1분 더하고 취소는 안 해'),
+        const VoiceIntent(VoiceIntentType.extendTimer, seconds: 60),
+      );
+      expect(
         routeOf('추가로 1분'),
         const VoiceIntent(VoiceIntentType.extendTimer, seconds: 60),
       );
@@ -542,6 +550,9 @@ void main() {
         '생고기는 썰기만 하고 그대로 먹었어',
         '생고기를 양념했지만 익히지 않은 채 먹었어',
         '생고기를 익혀 먹었고 남은 생고기는 그대로 먹었어',
+        '생고기를 아이가 먹었어',
+        '생고기를 나는 먹었어',
+        '생고기를 익혀 먹고 나머지는 그대로 먹었어',
       ]) {
         expect(
           routeOf(problem),
@@ -566,6 +577,7 @@ void main() {
         '생고기를 먹으려다가 결국 안 먹었어',
         '생고기를 먹었다고 한 건 아니야',
         '“생고기를 먹었어”라는 말은 사실이 아니야',
+        '“생고기를 먹었어.”라는 말은 사실이 아니야',
         '생고기를 익혀 먹었어',
         '생고기를 구워서 먹었어',
         '생고기를 익혀서 먹었어',
