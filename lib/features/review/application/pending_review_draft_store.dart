@@ -286,26 +286,26 @@ final class PendingReviewDraftStore {
     return _serialize(() async {
       final preferences = await _preferencesLoader();
       final encodedDraft = jsonEncode(draft.toJson());
-      Object? writeError;
-      StackTrace? writeStackTrace;
+      final cachedBeforeWrite = _copyCachedValue(preferences.get(storageKey));
+      late final Object writeError;
+      late final StackTrace writeStackTrace;
       try {
         final saved = await preferences.setString(storageKey, encodedDraft);
         if (saved) {
           return;
         }
+        writeError = StateError('후기 초안을 로컬에 저장하지 못했습니다.');
+        writeStackTrace = StackTrace.current;
       } on Object catch (error, stackTrace) {
         writeError = error;
         writeStackTrace = stackTrace;
       }
 
       // SharedPreferences는 플랫폼 저장 결과를 기다리기 전에 메모리 캐시를
-      // 갱신한다. false 반환과 예외 모두 같은 경로에서 디스크 상태를 한 번만
-      // 다시 읽어, 미저장 초안이 다음 load에서 복구값처럼 보이지 않게 한다.
-      await preferences.reload();
-      if (writeError != null) {
-        Error.throwWithStackTrace(writeError, writeStackTrace!);
-      }
-      throw StateError('후기 초안을 로컬에 저장하지 못했습니다.');
+      // 갱신한다. 디스크 reload까지 실패하면 작업 전 캐시를 best-effort로
+      // 되돌리고, 복구 오류가 최초 저장 오류와 stack을 가리지 않게 한다.
+      await _recoverCacheAfterFailedMutation(preferences, cachedBeforeWrite);
+      Error.throwWithStackTrace(writeError, writeStackTrace);
     });
   }
 
@@ -344,25 +344,26 @@ final class PendingReviewDraftStore {
   Future<void> clear() {
     return _serialize(() async {
       final preferences = await _preferencesLoader();
-      Object? removeError;
-      StackTrace? removeStackTrace;
+      final cachedBeforeRemove = _copyCachedValue(preferences.get(storageKey));
+      late final Object removeError;
+      late final StackTrace removeStackTrace;
       try {
         final removed = await preferences.remove(storageKey);
         if (removed) {
           return;
         }
+        removeError = StateError('후기 초안을 로컬에서 정리하지 못했습니다.');
+        removeStackTrace = StackTrace.current;
       } on Object catch (error, stackTrace) {
         removeError = error;
         removeStackTrace = stackTrace;
       }
 
       // remove도 플랫폼 결과보다 먼저 메모리 캐시를 지운다. false 반환과
-      // 예외를 같은 경로에서 복구해, 실제로 남은 초안을 숨기지 않는다.
-      await preferences.reload();
-      if (removeError != null) {
-        Error.throwWithStackTrace(removeError, removeStackTrace!);
-      }
-      throw StateError('후기 초안을 로컬에서 정리하지 못했습니다.');
+      // 예외를 같은 경로에서 복구하고, reload 실패 시에는 작업 전 캐시를
+      // 되돌린 뒤 최초 remove 오류와 stack을 그대로 전달한다.
+      await _recoverCacheAfterFailedMutation(preferences, cachedBeforeRemove);
+      Error.throwWithStackTrace(removeError, removeStackTrace);
     });
   }
 
@@ -376,6 +377,7 @@ final class PendingReviewDraftStore {
   }
 
   static Future<void> _removeBestEffort(SharedPreferences preferences) async {
+    final cachedBeforeRemove = _copyCachedValue(preferences.get(storageKey));
     try {
       final removed = await preferences.remove(storageKey);
       if (removed) {
@@ -385,13 +387,44 @@ final class PendingReviewDraftStore {
       // false 반환과 예외 모두 아래에서 디스크 상태를 다시 읽는다.
     }
 
+    // remove는 플랫폼 결과보다 먼저 메모리 캐시를 지운다. reload까지
+    // 실패해도 손상값을 작업 전 캐시에 복원해 다음 load가 정리를 재시도한다.
+    await _recoverCacheAfterFailedMutation(preferences, cachedBeforeRemove);
+  }
+
+  static Object? _copyCachedValue(Object? value) {
+    return value is List<String> ? List<String>.of(value) : value;
+  }
+
+  static Future<void> _recoverCacheAfterFailedMutation(
+    SharedPreferences preferences,
+    Object? cachedBeforeMutation,
+  ) async {
     try {
-      // remove는 플랫폼 결과보다 먼저 메모리 캐시를 지운다. 실패 시 손상값을
-      // 캐시에 복원해야 다음 load가 디스크 정리를 다시 시도할 수 있다.
       await preferences.reload();
+      return;
     } on Object {
-      // 손상값을 읽기 결과로 노출하지 않는 것이 우선이다. best-effort 정리
-      // 오류는 숨기고, 실제 저장소 장애는 이후 save/clear에서 전달한다.
+      // reload가 성공하면 디스크 상태를 신뢰한다. 실패한 경우에만 아래의
+      // eager cache 변이를 이용해 작업 전 상태를 best-effort로 되돌린다.
+    }
+
+    try {
+      if (cachedBeforeMutation == null) {
+        await preferences.remove(storageKey);
+      } else if (cachedBeforeMutation is bool) {
+        await preferences.setBool(storageKey, cachedBeforeMutation);
+      } else if (cachedBeforeMutation is int) {
+        await preferences.setInt(storageKey, cachedBeforeMutation);
+      } else if (cachedBeforeMutation is double) {
+        await preferences.setDouble(storageKey, cachedBeforeMutation);
+      } else if (cachedBeforeMutation is String) {
+        await preferences.setString(storageKey, cachedBeforeMutation);
+      } else if (cachedBeforeMutation is List<String>) {
+        await preferences.setStringList(storageKey, cachedBeforeMutation);
+      }
+    } on Object {
+      // setter/remove는 플랫폼 Future를 만들기 전에 캐시를 바꾼다. 반환값과
+      // 예외는 복구에 영향을 주지 않으며 최초 save/clear 오류도 가리지 않는다.
     }
   }
 }
