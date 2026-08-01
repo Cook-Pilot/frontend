@@ -86,7 +86,13 @@ void main() {
             "baseServings": 1.0,
             "imageUrl": null,
             "ingredients": [
-              {"name": "물", "amount": 500.0, "unit": "ml", "required": true}
+              {
+                "id": "11000000-0000-0000-0000-000000000001",
+                "name": "물",
+                "amount": 500.0,
+                "unit": "ml",
+                "required": true
+              }
             ],
             "steps": [
               {
@@ -113,12 +119,90 @@ void main() {
 
     expect(recipe.id, recipeId);
     expect(recipe.baseServings, 1);
+    expect(
+      recipe.ingredients.single.originalIngredientId,
+      '11000000-0000-0000-0000-000000000001',
+    );
     expect(recipe.ingredients.single.amountLabel, '500ml');
     expect(recipe.steps, hasLength(2));
     expect(recipe.steps.first.timerDuration, const Duration(seconds: 90));
     expect(recipe.steps.first.minutes, 2);
     expect(recipe.steps.first.description, contains('화상 주의'));
     expect(recipe.timerMinutes, 2);
+  });
+
+  test('기본 재료 ID 누락은 Recipe 생성 전에 거부해 ADD 경로에 들어가지 않는다', () async {
+    const summary = RecipeSummary(
+      id: recipeId,
+      title: '라면',
+      description: '기본 라면',
+      imageUrl: '',
+      hasPersonalVersion: false,
+      latestPersonalVersionId: null,
+    );
+    final missingIdBody = _baseRecipeJson.replaceFirst(
+      '"id": "11000000-0000-0000-0000-000000000001", ',
+      '',
+    );
+    final repository = RecipeRepository(
+      baseUrl: baseUrl,
+      client: MockClient((_) async => _jsonResponse(missingIdBody)),
+    );
+
+    await expectLater(
+      repository.findById(summary),
+      throwsA(
+        isA<RecipeApiException>().having(
+          (exception) => exception.message,
+          'message',
+          contains('재료 ID'),
+        ),
+      ),
+    );
+  });
+
+  test('기본 재료 ID가 canonical UUID가 아니면 상세 응답을 거부한다', () async {
+    const summary = RecipeSummary(
+      id: recipeId,
+      title: '라면',
+      description: '기본 라면',
+      imageUrl: '',
+      hasPersonalVersion: false,
+      latestPersonalVersionId: null,
+    );
+    final invalidBodies = <String>[
+      _baseRecipeJson.replaceFirst('11000000-0000-0000-0000-000000000001', ''),
+      _baseRecipeJson.replaceFirst(
+        '11000000-0000-0000-0000-000000000001',
+        'not-a-uuid',
+      ),
+      _baseRecipeJson.replaceFirst(
+        '11000000-0000-0000-0000-000000000001',
+        '00000000-0000-0000-0000-000000000000',
+      ),
+      _baseRecipeJson.replaceFirst(
+        '"id": "11000000-0000-0000-0000-000000000001"',
+        '"id": 7',
+      ),
+    ];
+
+    for (final body in invalidBodies) {
+      final repository = RecipeRepository(
+        baseUrl: baseUrl,
+        client: MockClient((_) async => _jsonResponse(body)),
+      );
+
+      await expectLater(
+        repository.findById(summary),
+        throwsA(
+          isA<RecipeApiException>().having(
+            (exception) => exception.message,
+            'message',
+            contains('재료 ID'),
+          ),
+        ),
+      );
+    }
   });
 
   test('개인 버전 상세의 합성된 재료와 단계를 읽는다', () async {
@@ -173,6 +257,7 @@ void main() {
     expect(version.versionNumber, 2);
     expect(version.title, '덜 짠 라면 v2');
     expect(version.summary, '스프를 줄인 버전');
+    expect(version.ingredients.single.originalIngredientId, isNull);
     expect(version.ingredients.single.amountLabel, '550ml');
     expect(version.steps.single.timerSeconds, 90);
   });
@@ -253,6 +338,7 @@ void main() {
             "title": "다른 레시피",
             "ingredients": [
               {
+                "id": "11000000-0000-0000-0000-000000000001",
                 "name": "물",
                 "amount": 500,
                 "unit": "ml",
@@ -443,7 +529,7 @@ const _baseRecipeJson = '''
     "baseServings": 1,
     "imageUrl": null,
     "ingredients": [
-      {"name": "물", "amount": 500, "unit": "ml", "required": true}
+      {"id": "11000000-0000-0000-0000-000000000001", "name": "물", "amount": 500, "unit": "ml", "required": true}
     ],
     "steps": [
       {

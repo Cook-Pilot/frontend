@@ -77,6 +77,13 @@ status만 `PersonalVersionCreated` marker로 바꾼다. 빈 `201` body도 같은
 | 이름과 양 모두 그대로 | 전송하지 않음 |
 | 추가했다가 취소한 재료 | 전송하지 않음 |
 
+`originalIngredientId == null`을 `ADD`로 해석하기 전에 원본 식별 경계를 고정한다.
+기본 레시피 상세 응답의 재료는 `id` 또는 호환 `originalIngredientId`에 nil이 아닌
+소문자 canonical UUID가 반드시 있어야 하며, 누락·잘못된 타입·잘못된 형식은 상세
+응답 전체를 거부한다. 따라서 식별자를 잃은 원본 재료가 신규 `ADD`로 흘러가 중복
+저장될 수 없다. 반면 개인 버전 합성 응답의 실제 추가 재료는
+`originalIngredientId: null`을 계속 허용한다.
+
 개인 버전을 선택하면 서버의 합성 결과만 snapshot에 그대로 복사하지 않는다. 합성
 결과의 `originalIngredientId`를 기본 레시피와 대조해 다음처럼 원본 기준을 복원한다.
 
@@ -150,6 +157,8 @@ snapshot의 양은 이미 조리 인분 기준이며, 백엔드는 저장된 후
 ## 검증
 
 ```bash
+flutter test test/features/recipe/data/recipe_api_test.dart
+flutter test test/features/review/application/pending_review_draft_store_test.dart
 flutter test test/features/review/data/personal_version_approval_api_test.dart
 flutter analyze
 ```
@@ -157,6 +166,8 @@ flutter analyze
 focused 테스트는 다음을 확인한다.
 
 - 베타 사용자 헤더, URL, JSON 계약
+- 기본 레시피 재료 ID의 필수 canonical 검증과 개인 버전 ADD의 null origin 허용
+- PR #35 legacy draft 재료 필드의 current shape migration
 - `ADD` / `REMOVE` / `MODIFY` 매핑과 무변경 제외
 - 개인 버전 합성 결과의 누적 `ADD` / `REMOVE` / `MODIFY` 보존
 - 원본 수량 `null`과 개인 버전 숫자 수량의 누적 `MODIFY` 및 JSON 왕복 보존

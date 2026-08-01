@@ -45,9 +45,20 @@ cookpilot.pending_review_draft.v1
 필드가 추가된 값은 현재 코드가 의미를 확정할 수 없으므로 복원하지 않는다.
 후기 초안에 포함된 `setupSnapshot`도 현재 버전의 스냅샷·재료·단계 필드
 집합과 정확히 일치해야 한다. `personalVersionId`, `originalIngredientId`,
-`amount`, `baselineAmount`, `originalStepId`, `timerSeconds`, `cautionNote`처럼
-값이 `null`일 수 있는 필드도 키 자체는 반드시 존재해야 한다. 이 엄격한
-경계는 후기 복구에만 적용하며, 다른 저장소의 과거 실행 스냅샷을 읽는
+`amount`, `baselineAmount`, `baselineUnit`, `baselineIsRequired`,
+`originalStepId`, `timerSeconds`, `cautionNote`처럼 값이 `null`일 수 있는 필드도
+키 자체는 반드시 존재해야 한다.
+
+단, PR #35가 같은 저장 키와 schema version으로 저장한 재료는
+`baselineUnit`, `baselineIsRequired`가 없었다. 이 legacy 재료 필드 집합과 현재
+필드 집합은 각각 정확히 일치할 때만 허용한다. legacy 목록은 두 값을 `null`로
+보완한 뒤 현재 `CookingSetupSnapshot`으로 decode한다. 한 재료에 키 하나만 섞인
+hybrid, legacy/current 재료가 섞인 목록, 다른 필드의 누락, 알 수 없는 필드는
+계속 거부한다. 정규화는 최상위 draft decode 안에서 먼저 일어나므로 후속 PR의
+outer `schemaVersion: 1` → `2` 마이그레이션과 결합해도 PR #35 저장값을 직접
+복원할 수 있다. constructor와 `toJson`은 항상 현재 완전한 필드 집합만 만든다.
+
+이 엄격한 경계는 후기 복구에만 적용하며, 다른 저장소의 과거 실행 스냅샷을 읽는
 `CookingSetupSnapshot.fromJson`의 하위 호환 기본값은 유지한다.
 
 예시는 다음과 같다.
@@ -175,6 +186,7 @@ reload까지 실패하면 제거 전 raw cache 값을 복원해 다음 `load`에
 - UUID·별점·NUL·잘못된 Unicode 거부
 - canonical UTC `cookedAt`과 잘못된 날짜·offset·fraction 거부
 - 실행 스냅샷의 재료 수치·타이머 index·기본/override 초 범위 무결성
+- PR #35 legacy 재료 shape의 보존 migration과 incomplete·hybrid·unknown 거부
 - 여러 store 인스턴스의 동시 저장 직렬화
 - 앞선 저장 실패 뒤에도 다음 작업이 진행되는 큐 복구
 - 플랫폼 저장·삭제 실패 뒤 메모리 캐시와 실제 저장값의 재동기화
