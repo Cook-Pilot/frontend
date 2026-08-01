@@ -109,6 +109,8 @@ final class PendingReviewDraft {
     'name',
     'amount',
     'baselineAmount',
+    'baselineUnit',
+    'baselineIsRequired',
     'unit',
     'isRequired',
     'omitted',
