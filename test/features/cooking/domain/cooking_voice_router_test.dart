@@ -350,6 +350,10 @@ void main() {
         '가짜',
         '이번 주 요리 계획을 짜',
         '내일 일정을 좀 짜줘',
+        '내일 일정 좀 짜줘',
+        '내일 일정을 조금 짜줘',
+        '내일 일정을 약간 더 구체적으로 짜줘',
+        '내일 일정 빠르게 짜줘',
         '다음 주 계획을 미리 다시 짜',
         '오늘 시간이 없어',
         '다음 주에 장 보러 가자',
@@ -366,10 +370,16 @@ void main() {
     });
 
     test('does not let a planning use hide a later salty problem', () {
-      expect(
-        routeOf('일정을 미리 짜고 보니 국이 너무 짜'),
-        const VoiceIntent(VoiceIntentType.exceptionQuestion),
-      );
+      for (final statement in const [
+        '일정을 미리 짜고 보니 국이 너무 짜',
+        '일정을 정리하다 보니 소스가 약간 짜',
+      ]) {
+        expect(
+          routeOf(statement),
+          const VoiceIntent(VoiceIntentType.exceptionQuestion),
+          reason: statement,
+        );
+      }
     });
 
     test('empty transcript is ignored', () {

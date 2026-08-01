@@ -98,24 +98,30 @@ final class CookingVoiceRouter {
   // unrelated words such as "불가능" and "인간관계" as cooking context.
   static const _boundaryCookingContext = <String>['불', '간', '팬'];
 
-  static const _planningObjectMarkers = <String>['계획을', '일정을', '각본을', '전략을'];
+  static const _planningObjectStems = <String>['계획', '일정', '각본', '전략'];
 
-  // Adverbs that may naturally sit between a planning object and "짜다".
-  // Longer entries come first so the prefix scanner consumes them atomically.
-  static const _planningModifiers = <String>[
-    '구체적으로',
-    '꼼꼼하게',
-    '자세히',
-    '간단히',
-    '꼼꼼히',
-    '미리',
-    '다시',
-    '새로',
-    '함께',
-    '먼저',
-    '직접',
-    '좀',
-    '잘',
+  // A planning noun may occur earlier in the transcript, so do not let it
+  // hide a later cooking use of "짜" after the speaker has moved to a food or
+  // a new clause. Generic adverbs are deliberately not enumerated: natural
+  // requests freely insert words such as "좀", "조금", or "빠르게".
+  static const _planningBreakMarkers = <String>[
+    '간이',
+    '국이',
+    '국물',
+    '소스',
+    '양념',
+    '찌개',
+    '육수',
+    '반찬',
+    '음식',
+    '먹어',
+    '보니',
+    '보니까',
+    '했는데',
+    '인데',
+    '지만',
+    '다가',
+    '그런데',
   ];
 
   static const _finishPhrases = <String>[
@@ -317,23 +323,21 @@ final class CookingVoiceRouter {
   }
 
   bool _isPlanningVerbUse(String text, int verbIndex) {
-    for (final marker in _planningObjectMarkers) {
-      final markerIndex = text.lastIndexOf(marker, verbIndex);
+    for (final stem in _planningObjectStems) {
+      final markerIndex = text.lastIndexOf(stem, verbIndex);
       if (markerIndex < 0) continue;
 
-      var between = text.substring(markerIndex + marker.length, verbIndex);
-      while (between.isNotEmpty) {
-        String? matchedModifier;
-        for (final modifier in _planningModifiers) {
-          if (between.startsWith(modifier)) {
-            matchedModifier = modifier;
-            break;
-          }
-        }
-        if (matchedModifier == null) break;
-        between = between.substring(matchedModifier.length);
+      var between = text.substring(markerIndex + stem.length, verbIndex);
+      if (between.startsWith('을') || between.startsWith('를')) {
+        between = between.substring(1);
       }
-      if (between.isEmpty) return true;
+
+      // Keep the association local, but allow arbitrary natural modifiers.
+      // A food/clause marker means this "짜" belongs to a later thought.
+      if (between.runes.length <= 20 &&
+          !_hasAny(between, _planningBreakMarkers)) {
+        return true;
+      }
     }
     return false;
   }
