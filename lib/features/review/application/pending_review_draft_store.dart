@@ -89,6 +89,40 @@ final class PendingReviewDraft {
     'approvedPersonalVersionCreation',
   };
 
+  static const _setupSnapshotJsonFields = <String>{
+    'schemaVersion',
+    'recipeId',
+    'title',
+    'description',
+    'imageUrl',
+    'baseServings',
+    'targetServings',
+    'source',
+    'personalVersionId',
+    'ingredients',
+    'steps',
+  };
+
+  static const _setupIngredientJsonFields = <String>{
+    'originalIngredientId',
+    'originalName',
+    'name',
+    'amount',
+    'baselineAmount',
+    'unit',
+    'isRequired',
+    'omitted',
+  };
+
+  static const _setupStepJsonFields = <String>{
+    'originalStepId',
+    'stepIndex',
+    'instruction',
+    'timerSeconds',
+    'cautionNote',
+    'imageUrl',
+  };
+
   final String clientSessionId;
   final DateTime cookedAt;
   final CookingSetupSnapshot setupSnapshot;
@@ -156,13 +190,11 @@ final class PendingReviewDraft {
         if (cookedAt == null || !cookedAt.isUtc) {
           return null;
         }
-        if (setupSnapshotValue['schemaVersion'] !=
-            CookingSetupSnapshot.currentSchemaVersion) {
+        final setupSnapshotJson = Map<String, Object?>.from(setupSnapshotValue);
+        if (!_hasExactCurrentSetupSnapshotShape(setupSnapshotJson)) {
           return null;
         }
-        final setupSnapshot = CookingSetupSnapshot.fromJson(
-          Map<String, Object?>.from(setupSnapshotValue),
-        );
+        final setupSnapshot = CookingSetupSnapshot.fromJson(setupSnapshotJson);
         if (setupSnapshot == null) {
           return null;
         }
@@ -193,6 +225,45 @@ final class PendingReviewDraft {
     }
     return null;
   }
+
+  static bool _hasExactCurrentSetupSnapshotShape(Map<String, Object?> json) {
+    if (!_hasExactFields(json, _setupSnapshotJsonFields) ||
+        json['schemaVersion'] != CookingSetupSnapshot.currentSchemaVersion) {
+      return false;
+    }
+    final ingredientValues = json['ingredients'];
+    final stepValues = json['steps'];
+    if (ingredientValues is! List || stepValues is! List) {
+      return false;
+    }
+    for (final value in ingredientValues) {
+      if (value is! Map) {
+        return false;
+      }
+      final ingredientJson = Map<String, Object?>.from(value);
+      if (!_hasExactFields(ingredientJson, _setupIngredientJsonFields) ||
+          ingredientJson['omitted'] is! bool) {
+        return false;
+      }
+    }
+    for (final value in stepValues) {
+      if (value is! Map ||
+          !_hasExactFields(
+            Map<String, Object?>.from(value),
+            _setupStepJsonFields,
+          )) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  static bool _hasExactFields(
+    Map<String, Object?> json,
+    Set<String> expectedFields,
+  ) =>
+      json.length == expectedFields.length &&
+      expectedFields.every(json.containsKey);
 }
 
 /// 데모에서 작성 중인 후기 한 건만 보관하는 SharedPreferences 저장소.
