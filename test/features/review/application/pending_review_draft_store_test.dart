@@ -161,6 +161,8 @@ void main() {
         'name',
         'amount',
         'baselineAmount',
+        'baselineUnit',
+        'baselineIsRequired',
         'unit',
         'isRequired',
         'omitted',
@@ -232,6 +234,8 @@ void main() {
         setupSnapshot['personalVersionId'] = null;
         ingredient['originalIngredientId'] = null;
         ingredient['baselineAmount'] = null;
+        ingredient['baselineUnit'] = null;
+        ingredient['baselineIsRequired'] = null;
         ingredient['omitted'] = true;
         step['originalStepId'] = null;
         step['timerSeconds'] = null;
@@ -246,6 +250,8 @@ void main() {
       expect(ingredient.originalIngredientId, isNull);
       expect(ingredient.amount, 1);
       expect(ingredient.baselineAmount, isNull);
+      expect(ingredient.baselineUnit, isNull);
+      expect(ingredient.baselineIsRequired, isNull);
       expect(ingredient.omitted, isTrue);
       final step = restored.setupSnapshot.steps.single;
       expect(step.originalStepId, isNull);
