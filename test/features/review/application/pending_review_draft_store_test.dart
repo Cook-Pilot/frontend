@@ -160,6 +160,47 @@ void main() {
       );
     });
 
+    test('재료 amount와 baselineAmount는 null 또는 finite 값만 허용한다', () {
+      CookingSetupSnapshot snapshotWith(String field, double? value) {
+        return buildSetupSnapshot(
+          ingredientAmount: field == 'amount' ? value : 1,
+          ingredientBaselineAmount: field == 'baselineAmount' ? value : 1,
+        );
+      }
+
+      for (final field in const <String>['amount', 'baselineAmount']) {
+        for (final value in <double?>[null, 1.5]) {
+          final draft = buildDraft(setupSnapshot: snapshotWith(field, value));
+
+          expect(
+            PendingReviewDraft.fromJson(draft.toJson()),
+            isNotNull,
+            reason: '$field의 $value 값은 허용해야 한다.',
+          );
+        }
+
+        for (final value in <double>[
+          double.nan,
+          double.infinity,
+          double.negativeInfinity,
+        ]) {
+          expect(
+            () => buildDraft(setupSnapshot: snapshotWith(field, value)),
+            throwsArgumentError,
+            reason: '$field의 $value 값은 모델 생성에서 거부해야 한다.',
+          );
+          final corrupted = _mutatedDraftJson(
+            (setupSnapshot, ingredient, step) => ingredient[field] = value,
+          );
+          expect(
+            PendingReviewDraft.fromJson(corrupted),
+            isNull,
+            reason: '$field의 $value 값은 저장값 복원에서 거부해야 한다.',
+          );
+        }
+      }
+    });
+
     test('실행 단계 기본 타이머는 null과 지원 범위 경계만 허용한다', () {
       for (final timerSeconds in <int?>[
         null,
@@ -941,6 +982,8 @@ CookingSetupSnapshot buildSetupSnapshot({
   int stepIndex = 0,
   int? stepTimerSeconds = 120,
   double baseServings = 2,
+  double? ingredientAmount = 1,
+  double? ingredientBaselineAmount = 1,
   int targetServings = 2,
   bool includeStep = true,
 }) {
@@ -953,13 +996,13 @@ CookingSetupSnapshot buildSetupSnapshot({
     targetServings: targetServings,
     source: CookingRecipeSource.base,
     personalVersionId: null,
-    ingredients: const [
+    ingredients: [
       CookingSetupIngredient(
         originalIngredientId: '11000000-0000-0000-0000-000000000001',
         originalName: '두부',
         name: '두부',
-        amount: 1,
-        baselineAmount: 1,
+        amount: ingredientAmount,
+        baselineAmount: ingredientBaselineAmount,
         unit: '모',
         isRequired: true,
       ),

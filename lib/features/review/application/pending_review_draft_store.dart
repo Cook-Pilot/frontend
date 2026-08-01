@@ -452,6 +452,22 @@ void _validateSetupSnapshot(CookingSetupSnapshot snapshot) {
         'setupSnapshot.ingredients.originalIngredientId',
       );
     }
+    final amount = ingredient.amount;
+    if (amount != null && !amount.isFinite) {
+      throw ArgumentError.value(
+        amount,
+        'setupSnapshot.ingredients.amount',
+        'must be finite when present',
+      );
+    }
+    final baselineAmount = ingredient.baselineAmount;
+    if (baselineAmount != null && !baselineAmount.isFinite) {
+      throw ArgumentError.value(
+        baselineAmount,
+        'setupSnapshot.ingredients.baselineAmount',
+        'must be finite when present',
+      );
+    }
   }
   for (final (index, step) in snapshot.steps.indexed) {
     if (step.stepIndex != index) {
