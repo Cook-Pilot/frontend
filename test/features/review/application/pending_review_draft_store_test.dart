@@ -539,6 +539,36 @@ void main() {
       expect(platform.getAllCalls, 2, reason: '초기 load 뒤 캐시 복구는 한 번만 수행한다.');
     });
 
+    test('저장 실패 뒤 reload가 성공하면 작업 전 cache보다 disk 상태를 신뢰한다', () async {
+      final cachedDraft = buildDraft(rating: 2, comment: '작업 전 cache 초안');
+      final diskDraft = buildDraft(rating: 3, comment: '외부에서 바뀐 disk 초안');
+      const platformKey = 'flutter.${PendingReviewDraftStore.storageKey}';
+      final platform = _FailingSetSharedPreferencesStore({
+        platformKey: jsonEncode(cachedDraft.toJson()),
+      });
+      final originalPlatform = SharedPreferencesStorePlatform.instance;
+      addTearDown(() {
+        SharedPreferencesStorePlatform.instance = originalPlatform;
+      });
+      SharedPreferencesStorePlatform.instance = platform;
+      final preferences = await SharedPreferences.getInstance();
+      platform.replacePersistedValue(
+        platformKey,
+        jsonEncode(diskDraft.toJson()),
+      );
+      final store = PendingReviewDraftStore(
+        preferencesLoader: () async => preferences,
+      );
+
+      await expectLater(store.save(buildDraft(rating: 5)), throwsStateError);
+
+      final restored = await store.load();
+      expect(restored, isNotNull);
+      expect(restored!.rating, 3);
+      expect(restored.comment, '외부에서 바뀐 disk 초안');
+      expect(platform.getAllCalls, 2);
+    });
+
     test('플랫폼 저장 예외 뒤 이전 영속 초안을 복원하고 원래 stack을 전달한다', () async {
       final previousDraft = buildDraft(rating: 2, comment: '예외 전 영속 초안');
       final writeError = StateError('platform write failed');
@@ -608,6 +638,102 @@ void main() {
       );
       expect(platform.getAllCalls, 2, reason: '초기 load 뒤 캐시 복구는 한 번만 수행한다.');
     });
+
+    for (final hasPreviousDraft in [true, false]) {
+      for (final writeThrows in [false, true]) {
+        final previousState = hasPreviousDraft ? '이전 초안이 있으면' : '이전 초안이 없으면';
+        final failureMode = writeThrows ? '저장 예외' : '저장 false';
+
+        test(
+          '$failureMode 뒤 reload도 실패해도 $previousState cache와 최초 오류를 보존한다',
+          () async {
+            final previousDraft = buildDraft(
+              rating: 2,
+              comment: 'reload 실패 전 초안',
+            );
+            final persistedValues = <String, Object>{
+              if (hasPreviousDraft)
+                'flutter.${PendingReviewDraftStore.storageKey}': jsonEncode(
+                  previousDraft.toJson(),
+                ),
+            };
+            final writeError = StateError('initial platform write failed');
+            final writeStackTrace = StackTrace.fromString(
+              'initial platform write failure stack',
+            );
+            final reloadError = StateError('reload failed');
+            final reloadStackTrace = StackTrace.fromString(
+              'reload failure stack',
+            );
+            final restoreError = StateError('cache restore failed');
+            final restoreStackTrace = StackTrace.fromString(
+              'cache restore failure stack',
+            );
+            final platform = _FailingSetSharedPreferencesStore(
+              persistedValues,
+              writeError: writeThrows ? writeError : null,
+              writeStackTrace: writeThrows ? writeStackTrace : null,
+              reloadError: reloadError,
+              reloadStackTrace: reloadStackTrace,
+              restoreError: restoreError,
+              restoreStackTrace: restoreStackTrace,
+            );
+            final originalPlatform = SharedPreferencesStorePlatform.instance;
+            addTearDown(() {
+              SharedPreferencesStorePlatform.instance = originalPlatform;
+            });
+            SharedPreferencesStorePlatform.instance = platform;
+            final preferences = await SharedPreferences.getInstance();
+            final store = PendingReviewDraftStore(
+              preferencesLoader: () async => preferences,
+            );
+            Object? caughtError;
+            StackTrace? caughtStackTrace;
+
+            try {
+              await store.save(buildDraft(rating: 5, comment: '저장되지 않은 최신 초안'));
+            } on Object catch (error, stackTrace) {
+              caughtError = error;
+              caughtStackTrace = stackTrace;
+            }
+
+            if (writeThrows) {
+              expect(caughtError, same(writeError));
+              expect(caughtStackTrace.toString(), writeStackTrace.toString());
+            } else {
+              expect(
+                caughtError,
+                isA<StateError>().having(
+                  (error) => error.message,
+                  'message',
+                  '후기 초안을 로컬에 저장하지 못했습니다.',
+                ),
+              );
+              expect(caughtError, isNot(same(reloadError)));
+              expect(caughtError, isNot(same(restoreError)));
+              expect(
+                caughtStackTrace.toString(),
+                contains('pending_review_draft_store.dart'),
+              );
+            }
+
+            final restored = await store.load();
+            if (hasPreviousDraft) {
+              expect(restored, isNotNull);
+              expect(restored!.rating, 2);
+              expect(restored.comment, 'reload 실패 전 초안');
+            } else {
+              expect(restored, isNull);
+              expect(
+                preferences.containsKey(PendingReviewDraftStore.storageKey),
+                isFalse,
+              );
+            }
+            expect(platform.getAllCalls, 2);
+          },
+        );
+      }
+    }
 
     test('저장소를 열지 못한 오류를 초안 없음으로 숨기지 않는다', () async {
       final store = PendingReviewDraftStore(
@@ -765,6 +891,100 @@ void main() {
       );
     });
 
+    for (final removeThrows in [false, true]) {
+      final failureMode = removeThrows ? 'remove 예외' : 'remove false';
+
+      test(
+        '손상값 $failureMode 뒤 reload와 fallback이 실패해도 다음 load가 정리를 재시도한다',
+        () async {
+          const corruptedValue = '{reload also fails';
+          final removeError = StateError('initial cleanup remove failed');
+          final platform = _FailingRemoveSharedPreferencesStore(
+            const {
+              'flutter.${PendingReviewDraftStore.storageKey}': corruptedValue,
+            },
+            removeError: removeThrows ? removeError : null,
+            removeStackTrace: removeThrows
+                ? StackTrace.fromString('initial cleanup remove stack')
+                : null,
+            reloadError: StateError('cleanup reload failed'),
+            reloadStackTrace: StackTrace.fromString('cleanup reload stack'),
+            restoreError: StateError('cleanup cache restore failed'),
+            restoreStackTrace: StackTrace.fromString(
+              'cleanup cache restore stack',
+            ),
+          );
+          final originalPlatform = SharedPreferencesStorePlatform.instance;
+          addTearDown(() {
+            SharedPreferencesStorePlatform.instance = originalPlatform;
+          });
+          SharedPreferencesStorePlatform.instance = platform;
+          final preferences = await SharedPreferences.getInstance();
+          final store = PendingReviewDraftStore(
+            preferencesLoader: () async => preferences,
+          );
+
+          expect(await store.load(), isNull);
+          expect(
+            preferences.getString(PendingReviewDraftStore.storageKey),
+            corruptedValue,
+          );
+
+          expect(await store.load(), isNull);
+          expect(
+            preferences.getString(PendingReviewDraftStore.storageKey),
+            corruptedValue,
+          );
+          expect(platform.removedKeys, const [
+            'flutter.${PendingReviewDraftStore.storageKey}',
+            'flutter.${PendingReviewDraftStore.storageKey}',
+          ]);
+          expect(platform.getAllCalls, 3);
+        },
+      );
+    }
+
+    for (final entry in <String, Object>{
+      'bool': true,
+      'int': 42,
+      'double': 1.5,
+      'string list': <String>['broken'],
+    }.entries) {
+      test(
+        'reload 실패 시 손상된 ${entry.key} raw cache를 복원해 cleanup을 재시도한다',
+        () async {
+          final platform = _FailingRemoveSharedPreferencesStore(
+            {'flutter.${PendingReviewDraftStore.storageKey}': entry.value},
+            reloadError: StateError('cleanup reload failed'),
+            restoreError: StateError('cleanup cache restore failed'),
+          );
+          final originalPlatform = SharedPreferencesStorePlatform.instance;
+          addTearDown(() {
+            SharedPreferencesStorePlatform.instance = originalPlatform;
+          });
+          SharedPreferencesStorePlatform.instance = platform;
+          final preferences = await SharedPreferences.getInstance();
+          final store = PendingReviewDraftStore(
+            preferencesLoader: () async => preferences,
+          );
+
+          expect(await store.load(), isNull);
+          expect(
+            preferences.get(PendingReviewDraftStore.storageKey),
+            equals(entry.value),
+          );
+
+          expect(await store.load(), isNull);
+          expect(
+            preferences.get(PendingReviewDraftStore.storageKey),
+            equals(entry.value),
+          );
+          expect(platform.removedKeys, hasLength(2));
+          expect(platform.getAllCalls, 3);
+        },
+      );
+    }
+
     test('clear 후에는 복원할 초안이 없다', () async {
       final store = PendingReviewDraftStore();
       await store.save(buildDraft());
@@ -865,6 +1085,102 @@ void main() {
         reason: '초기 load 뒤 clear 실패의 캐시 복구는 한 번만 수행한다.',
       );
     });
+
+    for (final hasPreviousDraft in [true, false]) {
+      for (final removeThrows in [false, true]) {
+        final previousState = hasPreviousDraft ? '이전 초안이 있으면' : '이전 초안이 없으면';
+        final failureMode = removeThrows ? 'remove 예외' : 'remove false';
+
+        test(
+          'clear $failureMode 뒤 reload도 실패해도 $previousState cache와 최초 오류를 보존한다',
+          () async {
+            final previousDraft = buildDraft(
+              rating: 3,
+              comment: 'reload 실패 뒤 남은 초안',
+            );
+            final persistedValues = <String, Object>{
+              if (hasPreviousDraft)
+                'flutter.${PendingReviewDraftStore.storageKey}': jsonEncode(
+                  previousDraft.toJson(),
+                ),
+            };
+            final removeError = StateError('initial platform remove failed');
+            final removeStackTrace = StackTrace.fromString(
+              'initial platform remove failure stack',
+            );
+            final reloadError = StateError('reload failed');
+            final reloadStackTrace = StackTrace.fromString(
+              'reload failure stack',
+            );
+            final restoreError = StateError('cache restore failed');
+            final restoreStackTrace = StackTrace.fromString(
+              'cache restore failure stack',
+            );
+            final platform = _FailingRemoveSharedPreferencesStore(
+              persistedValues,
+              removeError: removeThrows ? removeError : null,
+              removeStackTrace: removeThrows ? removeStackTrace : null,
+              reloadError: reloadError,
+              reloadStackTrace: reloadStackTrace,
+              restoreError: restoreError,
+              restoreStackTrace: restoreStackTrace,
+            );
+            final originalPlatform = SharedPreferencesStorePlatform.instance;
+            addTearDown(() {
+              SharedPreferencesStorePlatform.instance = originalPlatform;
+            });
+            SharedPreferencesStorePlatform.instance = platform;
+            final preferences = await SharedPreferences.getInstance();
+            final store = PendingReviewDraftStore(
+              preferencesLoader: () async => preferences,
+            );
+            Object? caughtError;
+            StackTrace? caughtStackTrace;
+
+            try {
+              await store.clear();
+            } on Object catch (error, stackTrace) {
+              caughtError = error;
+              caughtStackTrace = stackTrace;
+            }
+
+            if (removeThrows) {
+              expect(caughtError, same(removeError));
+              expect(caughtStackTrace.toString(), removeStackTrace.toString());
+            } else {
+              expect(
+                caughtError,
+                isA<StateError>().having(
+                  (error) => error.message,
+                  'message',
+                  '후기 초안을 로컬에서 정리하지 못했습니다.',
+                ),
+              );
+              expect(caughtError, isNot(same(reloadError)));
+              expect(caughtError, isNot(same(restoreError)));
+              expect(
+                caughtStackTrace.toString(),
+                contains('pending_review_draft_store.dart'),
+              );
+            }
+
+            final restored = await store.load();
+            if (hasPreviousDraft) {
+              expect(restored, isNotNull);
+              expect(restored!.rating, 3);
+              expect(restored.comment, 'reload 실패 뒤 남은 초안');
+            } else {
+              expect(restored, isNull);
+              expect(
+                preferences.containsKey(PendingReviewDraftStore.storageKey),
+                isFalse,
+              );
+            }
+            expect(platform.getAllCalls, 2);
+          },
+        );
+      }
+    }
   });
 }
 
@@ -874,52 +1190,20 @@ final class _FailingRemoveSharedPreferencesStore
     Map<String, Object> persistedValues, {
     this.removeError,
     this.removeStackTrace,
+    this.reloadError,
+    this.reloadStackTrace,
+    this.restoreError,
+    this.restoreStackTrace,
   }) : _persistedValues = Map<String, Object>.from(persistedValues);
 
   final Map<String, Object> _persistedValues;
   final Object? removeError;
   final StackTrace? removeStackTrace;
+  final Object? reloadError;
+  final StackTrace? reloadStackTrace;
+  final Object? restoreError;
+  final StackTrace? restoreStackTrace;
   final List<String> removedKeys = [];
-  var getAllCalls = 0;
-
-  @override
-  Future<bool> clear() async {
-    _persistedValues.clear();
-    return true;
-  }
-
-  @override
-  Future<Map<String, Object>> getAll() async {
-    getAllCalls += 1;
-    return Map<String, Object>.from(_persistedValues);
-  }
-
-  @override
-  Future<bool> remove(String key) async {
-    removedKeys.add(key);
-    final error = removeError;
-    if (error != null) {
-      Error.throwWithStackTrace(error, removeStackTrace ?? StackTrace.current);
-    }
-    return false;
-  }
-
-  @override
-  Future<bool> setValue(String valueType, String key, Object value) async =>
-      true;
-}
-
-final class _FailingSetSharedPreferencesStore
-    extends SharedPreferencesStorePlatform {
-  _FailingSetSharedPreferencesStore(
-    Map<String, Object> persistedValues, {
-    this.writeError,
-    this.writeStackTrace,
-  }) : _persistedValues = Map<String, Object>.from(persistedValues);
-
-  final Map<String, Object> _persistedValues;
-  final Object? writeError;
-  final StackTrace? writeStackTrace;
   final List<String> setKeys = [];
   var getAllCalls = 0;
 
@@ -932,11 +1216,91 @@ final class _FailingSetSharedPreferencesStore
   @override
   Future<Map<String, Object>> getAll() async {
     getAllCalls += 1;
+    final error = reloadError;
+    if (getAllCalls > 1 && error != null) {
+      Error.throwWithStackTrace(error, reloadStackTrace ?? StackTrace.current);
+    }
     return Map<String, Object>.from(_persistedValues);
   }
 
   @override
   Future<bool> remove(String key) async {
+    removedKeys.add(key);
+    final cacheRestoreError = restoreError;
+    if (removedKeys.length > 1 && cacheRestoreError != null) {
+      Error.throwWithStackTrace(
+        cacheRestoreError,
+        restoreStackTrace ?? StackTrace.current,
+      );
+    }
+    final error = removeError;
+    if (error != null) {
+      Error.throwWithStackTrace(error, removeStackTrace ?? StackTrace.current);
+    }
+    return false;
+  }
+
+  @override
+  Future<bool> setValue(String valueType, String key, Object value) async {
+    setKeys.add(key);
+    final error = restoreError;
+    if (error != null) {
+      Error.throwWithStackTrace(error, restoreStackTrace ?? StackTrace.current);
+    }
+    return true;
+  }
+}
+
+final class _FailingSetSharedPreferencesStore
+    extends SharedPreferencesStorePlatform {
+  _FailingSetSharedPreferencesStore(
+    Map<String, Object> persistedValues, {
+    this.writeError,
+    this.writeStackTrace,
+    this.reloadError,
+    this.reloadStackTrace,
+    this.restoreError,
+    this.restoreStackTrace,
+  }) : _persistedValues = Map<String, Object>.from(persistedValues);
+
+  final Map<String, Object> _persistedValues;
+  final Object? writeError;
+  final StackTrace? writeStackTrace;
+  final Object? reloadError;
+  final StackTrace? reloadStackTrace;
+  final Object? restoreError;
+  final StackTrace? restoreStackTrace;
+  final List<String> setKeys = [];
+  final List<String> removedKeys = [];
+  var getAllCalls = 0;
+
+  void replacePersistedValue(String key, Object value) {
+    _persistedValues[key] = value;
+  }
+
+  @override
+  Future<bool> clear() async {
+    _persistedValues.clear();
+    return true;
+  }
+
+  @override
+  Future<Map<String, Object>> getAll() async {
+    getAllCalls += 1;
+    final error = reloadError;
+    if (getAllCalls > 1 && error != null) {
+      Error.throwWithStackTrace(error, reloadStackTrace ?? StackTrace.current);
+    }
+    return Map<String, Object>.from(_persistedValues);
+  }
+
+  @override
+  Future<bool> remove(String key) async {
+    removedKeys.add(key);
+    final error = restoreError;
+    if (error != null) {
+      Error.throwWithStackTrace(error, restoreStackTrace ?? StackTrace.current);
+    }
     _persistedValues.remove(key);
     return true;
   }
@@ -944,6 +1308,13 @@ final class _FailingSetSharedPreferencesStore
   @override
   Future<bool> setValue(String valueType, String key, Object value) async {
     setKeys.add(key);
+    final cacheRestoreError = restoreError;
+    if (setKeys.length > 1 && cacheRestoreError != null) {
+      Error.throwWithStackTrace(
+        cacheRestoreError,
+        restoreStackTrace ?? StackTrace.current,
+      );
+    }
     final error = writeError;
     if (error != null) {
       Error.throwWithStackTrace(error, writeStackTrace ?? StackTrace.current);
