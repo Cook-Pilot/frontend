@@ -211,6 +211,9 @@ void main() {
         '지금 불 줄여야 할까?',
         '불이 너무 센 것 같아?',
         '불로 조절해도 돼?',
+        '불의 세기 괜찮아?',
+        '불의 강도를 줄여야 할까?',
+        '불만 줄여야 할까?',
         '불인가요?',
         '불일까요?',
         '간이 맞아?',
@@ -270,6 +273,18 @@ void main() {
         ingredientNames: const ['물', '쌀', '파'],
         currentStepInstruction: '약불에서 익힌다',
       );
+      final greenOnionAlsoQuestion = router.route(
+        '파도 넣어야 해?',
+        recipeTitle: '밥',
+        ingredientNames: const ['물', '쌀', '파'],
+        currentStepInstruction: '쌀을 씻는다',
+      );
+      final greenOnionPrepQuestion = router.route(
+        '파도 썰어 넣을까?',
+        recipeTitle: '밥',
+        ingredientNames: const ['물', '쌀', '파'],
+        currentStepInstruction: '쌀을 씻는다',
+      );
 
       expect(
         waterQuestion,
@@ -286,6 +301,14 @@ void main() {
       );
       expect(
         waterAuxiliaryChainQuestion,
+        const VoiceIntent(VoiceIntentType.exceptionQuestion),
+      );
+      expect(
+        greenOnionAlsoQuestion,
+        const VoiceIntent(VoiceIntentType.exceptionQuestion),
+      );
+      expect(
+        greenOnionPrepQuestion,
         const VoiceIntent(VoiceIntentType.exceptionQuestion),
       );
     });
@@ -319,6 +342,8 @@ void main() {
         '국이 너무 짜',
         '국물이 뭔가 짜',
         '소스가 뭔가 좀 짜',
+        '국이 짭니다',
+        '국이 짭니까?',
         '고기가 덜 익었어',
         '면이 안 익어',
         '재료가 없어',
@@ -334,6 +359,24 @@ void main() {
           reason: problem,
         );
       }
+    });
+
+    test('uses recipe ingredients as explicit salty subjects', () {
+      final saltyKimchi = router.route(
+        '김치가 짜',
+        recipeTitle: '김치찌개',
+        ingredientNames: const ['김치', '두부'],
+        currentStepInstruction: '김치와 두부를 끓인다',
+      );
+      final lexicalKimchi = router.route(
+        '김치가 짜임새가 좀 좋아',
+        recipeTitle: '김치찌개',
+        ingredientNames: const ['김치', '두부'],
+        currentStepInstruction: '김치와 두부를 끓인다',
+      );
+
+      expect(saltyKimchi, const VoiceIntent(VoiceIntentType.exceptionQuestion));
+      expect(lexicalKimchi, const VoiceIntent(VoiceIntentType.ignore));
     });
 
     test('routes explicit kitchen safety patterns', () {
@@ -369,6 +412,7 @@ void main() {
         '불이익은요?',
         '팬클럽은요?',
         '불의의 사고는요?',
+        '불의 세상은 어때?',
         '불이익만은요?',
         '불만은요?',
         '불과 몇 분 차이야?',
@@ -391,6 +435,8 @@ void main() {
         '음식 때문에 짜증나',
         '그 영화가 너무 짠해',
         '그 사람은 좀 짠돌이야',
+        '날짜 좀 알려줘',
+        '짜임새가 좀 좋아',
       ]) {
         expect(
           routeOf(statement),
@@ -431,12 +477,29 @@ void main() {
         ingredientNames: const ['물', '쌀', '파'],
         currentStepInstruction: '쌀을 씻는다',
       );
+      final waveCookingVerbWithoutIngredient = router.route(
+        '파도 넣어야 해?',
+        recipeTitle: '밥',
+        ingredientNames: const ['물', '쌀'],
+        currentStepInstruction: '쌀을 씻는다',
+      );
+      final wavePhotoQuestion = router.route(
+        '파도 사진 넣어야 해?',
+        recipeTitle: '밥',
+        ingredientNames: const ['물', '쌀', '파'],
+        currentStepInstruction: '쌀을 씻는다',
+      );
 
       expect(waveQuestion, const VoiceIntent(VoiceIntentType.ignore));
       expect(waveSubjectQuestion, const VoiceIntent(VoiceIntentType.ignore));
       expect(waveOnlyQuestion, const VoiceIntent(VoiceIntentType.ignore));
       expect(fileQuestion, const VoiceIntent(VoiceIntentType.ignore));
       expect(diggingQuestion, const VoiceIntent(VoiceIntentType.ignore));
+      expect(
+        waveCookingVerbWithoutIngredient,
+        const VoiceIntent(VoiceIntentType.ignore),
+      );
+      expect(wavePhotoQuestion, const VoiceIntent(VoiceIntentType.ignore));
     });
 
     test('ignores cooking statements that do not describe a problem', () {
@@ -460,6 +523,10 @@ void main() {
         '내일 일정 좀 짜줘',
         '내일 일정을 조금 짜줘',
         '내일 일정을 약간 더 구체적으로 짜줘',
+        '내일 일정좀 짜줘',
+        '내일일정을좀짜줘',
+        '내일 계획조금 짜줘',
+        '내일계획을약간짜줘',
         '내일 일정 빠르게 짜줘',
         '일정을 고객 회의와 이동 시간을 충분히 고려해서 조금 여유 있게 짜줘',
         '일정을 진짜 좀 잘 짜줘',

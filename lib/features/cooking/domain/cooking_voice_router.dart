@@ -305,9 +305,16 @@ final class CookingVoiceRouter {
       '조금',
       '약간',
     ];
-    final predicates = _jjaPredicates(lowerTranscript).toList();
+    final predicates = _jjaPredicates(
+      lowerTranscript,
+      ingredientTokens,
+    ).toList();
     if (predicates.any(
-      (predicate) => _hasExplicitTasteExpression(lowerTranscript, predicate),
+      (predicate) => _hasExplicitTasteExpression(
+        lowerTranscript,
+        predicate,
+        ingredientTokens,
+      ),
     )) {
       return true;
     }
@@ -326,30 +333,56 @@ final class CookingVoiceRouter {
     return false;
   }
 
-  Iterable<RegExpMatch> _jjaPredicates(String lowerTranscript) sync* {
-    for (final match in RegExp('짰|짠|짜').allMatches(lowerTranscript)) {
-      if (!_isLexicalJja(lowerTranscript, match)) yield match;
+  Iterable<RegExpMatch> _jjaPredicates(
+    String lowerTranscript,
+    Set<String> ingredientTokens,
+  ) sync* {
+    for (final match in RegExp(
+      r'짭(?:니다|니까)|짰|짠|짜',
+    ).allMatches(lowerTranscript)) {
+      if (!_isLexicalJja(lowerTranscript, match, ingredientTokens)) {
+        yield match;
+      }
     }
   }
 
-  bool _isLexicalJja(String lowerTranscript, RegExpMatch match) {
+  bool _isLexicalJja(
+    String lowerTranscript,
+    RegExpMatch match,
+    Set<String> ingredientTokens,
+  ) {
     final surface = match.group(0)!;
-    final previous = match.start == 0 ? '' : lowerTranscript[match.start - 1];
-    final suffix = lowerTranscript.substring(match.end);
+    final wordPrefix = _hangulWordPrefix(lowerTranscript, match.start);
+    final wordSuffix = _hangulWordSuffix(lowerTranscript, match.end);
 
     if (surface == '짜') {
-      return previous == '진' ||
-          previous == '가' ||
-          suffix.startsWith('증') ||
-          suffix.startsWith('장') ||
-          suffix.startsWith('릿');
+      if (!_isJjaPresentEnding(wordSuffix)) return true;
     }
     if (surface == '짠') {
-      return suffix.startsWith('돌이') ||
-          suffix.startsWith('해') ||
-          suffix.startsWith('하');
+      if (wordSuffix.startsWith('돌이') ||
+          wordSuffix.startsWith('해') ||
+          wordSuffix.startsWith('하')) {
+        return true;
+      }
     }
-    return false;
+    if (surface.startsWith('짭') && wordSuffix.isNotEmpty) {
+      return true;
+    }
+
+    if (wordPrefix.isEmpty) return false;
+    final prefix = lowerTranscript.substring(0, match.start);
+    return !_tasteDegreeMarkers.any(wordPrefix.endsWith) &&
+        !_hasTasteLead(prefix, ingredientTokens);
+  }
+
+  bool _isJjaPresentEnding(String wordSuffix) {
+    // Match productive adjective/verb endings, not nouns that merely start
+    // with the same syllable (for example, "짜임새").
+    return RegExp(
+      r'^(?:요|다|서(?:요)?|고(?:요)?|지만(?:요)?|니까(?:요)?|면(?:요)?|게|'
+      r'지(?:요)?|죠|네(?:요)?|잖아(?:요)?|겠(?:다|어(?:요)?)?|'
+      r'줘(?:요)?|주세요|주라|려고|려면|면서|도록|는데(?:요)?|도|거나)?$',
+    ).hasMatch(wordSuffix);
   }
 
   bool _isPlanningPredicateUse(
@@ -369,7 +402,12 @@ final class CookingVoiceRouter {
       final markerIndex = lowerTranscript.lastIndexOf(stem, predicate.start);
       if (markerIndex >= clauseStart &&
           markerIndex > objectIndex &&
-          _isPlanningTargetAt(lowerTranscript, markerIndex, stem)) {
+          _isPlanningTargetAt(
+            lowerTranscript,
+            markerIndex,
+            stem,
+            beforeIndex: predicate.start,
+          )) {
         objectIndex = markerIndex;
         objectEnd = markerIndex + stem.length;
       }
@@ -396,8 +434,17 @@ final class CookingVoiceRouter {
     int index,
     String stem, {
     bool allowAdverbialParticle = false,
+    int? beforeIndex,
   }) {
-    final wordSuffix = _hangulWordSuffix(text, index + stem.length);
+    final suffixStart = index + stem.length;
+    final suffixSource = beforeIndex == null
+        ? text.substring(suffixStart)
+        : text.substring(suffixStart, beforeIndex);
+    // STT may omit spaces around a particle or degree marker. Inspect only
+    // the morphology attached before this predicate so "일정을좀짜" remains
+    // a plan while adjective forms such as "일정하게" fail closed.
+    final wordSuffix =
+        RegExp(r'^[가-힣]+').firstMatch(suffixSource)?.group(0) ?? '';
     if (wordSuffix.isEmpty) return true;
     if (_planningNonTargetSuffixes.any(wordSuffix.startsWith)) {
       return allowAdverbialParticle &&
@@ -432,7 +479,11 @@ final class CookingVoiceRouter {
     const auxiliaryParticles = <String>['은', '는', '도', '만'];
     final primary = _alternation(primaryParticles);
     final auxiliary = _alternation(auxiliaryParticles);
-    return RegExp('^(?:$primary)(?:$auxiliary){0,2}\$').hasMatch(wordSuffix);
+    final degree = _alternation(_tasteDegreeMarkers);
+    return RegExp(
+      '^(?:(?:$primary)(?:$auxiliary){0,2})?'
+      '(?:(?:$degree)(?:더)?)?\$',
+    ).hasMatch(wordSuffix);
   }
 
   bool _startsNewFoodClause(
@@ -521,10 +572,17 @@ final class CookingVoiceRouter {
   bool _hasExplicitTasteExpression(
     String lowerTranscript,
     RegExpMatch predicate,
+    Set<String> ingredientTokens,
   ) {
-    final subjects = _alternation(_tasteSubjectStems);
+    return _hasTasteLead(
+      lowerTranscript.substring(0, predicate.start),
+      ingredientTokens,
+    );
+  }
+
+  bool _hasTasteLead(String prefix, Set<String> ingredientTokens) {
+    final subjects = _alternation({..._tasteSubjectStems, ...ingredientTokens});
     final degrees = _alternation(_tasteDegreeMarkers);
-    final prefix = lowerTranscript.substring(0, predicate.start);
     return RegExp(
       '(^|[^가-힣a-z0-9])(?:$subjects)'
       '(?:이|가|은|는|도|만)?\\s*(?:(?:$degrees)\\s*)?\$',
@@ -685,13 +743,20 @@ final class CookingVoiceRouter {
     );
     for (final candidate in tokenPattern.allMatches(lower)) {
       final wordSuffix = _hangulWordSuffix(lower, candidate.end);
-      if (_isKnownSingleTokenLexeme(token, wordSuffix)) continue;
+      if (_isKnownSingleTokenLexeme(lower, token, candidate.end, wordSuffix)) {
+        continue;
+      }
       if (suffixPattern.hasMatch(lower.substring(candidate.end))) return true;
     }
     return false;
   }
 
-  bool _isKnownSingleTokenLexeme(String token, String wordSuffix) {
+  bool _isKnownSingleTokenLexeme(
+    String lower,
+    String token,
+    int tokenEnd,
+    String wordSuffix,
+  ) {
     final lexicalRoots = switch (token) {
       '불' => const ['만', '과', '의'],
       '파' => const ['도'],
@@ -702,10 +767,57 @@ final class CookingVoiceRouter {
       final tail = wordSuffix.substring(root.length);
       if (tail.isEmpty ||
           RegExp(r'^(?:(?:이|가|은|는|을|를|의|도|만)){1,2}요?$').hasMatch(tail)) {
+        if (_hasSingleTokenCollisionCookingContinuation(
+          lower,
+          token,
+          root,
+          tail,
+          tokenEnd + wordSuffix.length,
+        )) {
+          return false;
+        }
         return true;
       }
     }
     return false;
+  }
+
+  bool _hasSingleTokenCollisionCookingContinuation(
+    String lower,
+    String token,
+    String lexicalRoot,
+    String particleTail,
+    int wordEnd,
+  ) {
+    if (particleTail.isNotEmpty || wordEnd >= lower.length) return false;
+    final remainder = lower.substring(wordEnd);
+    final separator = RegExp(r'^[\s,，]+').firstMatch(remainder);
+    if (separator == null) return false;
+    final continuation = remainder.substring(separator.end);
+
+    // Reinterpret a lexical collision only at a real word boundary and only
+    // when the next phrase is strongly cooking-specific.
+    if (token == '불' && lexicalRoot == '의') {
+      return RegExp(r'^(세기|강도|크기|온도)').hasMatch(continuation);
+    }
+    if (token == '불' && lexicalRoot == '만') {
+      return RegExp(
+        r'^(?:(?:더|좀|조금|약간)\s*)?'
+        r'(?:줄|낮추|키우|높이|끄|켜|조절)',
+      ).hasMatch(continuation);
+    }
+    if (token == '파' && lexicalRoot == '도') {
+      return RegExp(
+        r'^(?:(?:더|좀|조금|약간)\s*)?'
+        r'(?:넣|추가|썰|다듬|씻|볶|굽|익히|빼|제외|사용)',
+      ).hasMatch(continuation);
+    }
+    return false;
+  }
+
+  String _hangulWordPrefix(String value, int end) {
+    return RegExp(r'[가-힣]+$').firstMatch(value.substring(0, end))?.group(0) ??
+        '';
   }
 
   String _hangulWordSuffix(String value, int start) {
