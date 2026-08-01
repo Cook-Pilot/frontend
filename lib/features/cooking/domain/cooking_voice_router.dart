@@ -83,7 +83,6 @@ final class CookingVoiceRouter {
     '양념',
     '냄비',
     '프라이팬',
-    '팬',
     '오븐',
     '고기',
     '기름',
@@ -97,7 +96,27 @@ final class CookingVoiceRouter {
   // These cues are useful in natural questions such as "불 줄여?" and
   // "간 맞아?", but unrestricted substring matching would also classify
   // unrelated words such as "불가능" and "인간관계" as cooking context.
-  static const _boundaryCookingContext = <String>['불', '간'];
+  static const _boundaryCookingContext = <String>['불', '간', '팬'];
+
+  static const _planningObjectMarkers = <String>['계획을', '일정을', '각본을', '전략을'];
+
+  // Adverbs that may naturally sit between a planning object and "짜다".
+  // Longer entries come first so the prefix scanner consumes them atomically.
+  static const _planningModifiers = <String>[
+    '구체적으로',
+    '꼼꼼하게',
+    '자세히',
+    '간단히',
+    '꼼꼼히',
+    '미리',
+    '다시',
+    '새로',
+    '함께',
+    '먼저',
+    '직접',
+    '좀',
+    '잘',
+  ];
 
   static const _finishPhrases = <String>[
     '조리완료',
@@ -262,10 +281,6 @@ final class CookingVoiceRouter {
   }
 
   bool _isSaltyProblem(String text) {
-    if (_hasAny(text, const ['계획을짜', '일정을짜', '각본을짜', '전략을짜'])) {
-      return false;
-    }
-
     const contextMarkers = [
       '간이',
       '국이',
@@ -290,9 +305,35 @@ final class CookingVoiceRouter {
       final previous = index == 0 ? '' : text[index - 1];
       final next = index + 1 >= text.length ? '' : text[index + 1];
       final isKnownFalsePositive =
-          previous == '진' || previous == '가' || next == '증' || next == '장';
+          previous == '진' ||
+          previous == '가' ||
+          next == '증' ||
+          next == '장' ||
+          _isPlanningVerbUse(text, index);
       if (!isKnownFalsePositive) return true;
       index = text.indexOf('짜', index + 1);
+    }
+    return false;
+  }
+
+  bool _isPlanningVerbUse(String text, int verbIndex) {
+    for (final marker in _planningObjectMarkers) {
+      final markerIndex = text.lastIndexOf(marker, verbIndex);
+      if (markerIndex < 0) continue;
+
+      var between = text.substring(markerIndex + marker.length, verbIndex);
+      while (between.isNotEmpty) {
+        String? matchedModifier;
+        for (final modifier in _planningModifiers) {
+          if (between.startsWith(modifier)) {
+            matchedModifier = modifier;
+            break;
+          }
+        }
+        if (matchedModifier == null) break;
+        between = between.substring(matchedModifier.length);
+      }
+      if (between.isEmpty) return true;
     }
     return false;
   }
@@ -347,10 +388,13 @@ final class CookingVoiceRouter {
   bool _hasSingleKoreanWordToken(String lower, String token) {
     final codePoint = token.runes.single;
     final hasFinalConsonant = (codePoint - 0xAC00) % 28 != 0;
-    final particleStarts = hasFinalConsonant ? '이은을도만과으에의' : '가는를도만와로에의';
+    final particles = hasFinalConsonant
+        ? '으로|이|은|을|도|만|과|에|의'
+        : '로|가|는|를|도|만|와|에|의';
     final pattern = RegExp(
       '(^|[^가-힣a-z0-9])${RegExp.escape(token)}'
-      '(?=\$|[^가-힣a-z0-9]|[$particleStarts])',
+      '(?:$particles)?'
+      r'(?=$|[^가-힣a-z0-9])',
     );
     return pattern.hasMatch(lower);
   }

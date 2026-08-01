@@ -209,7 +209,9 @@ void main() {
     test('recognizes static and recipe-specific cooking context', () {
       const questions = [
         '지금 불 줄여야 할까?',
+        '불이 너무 센 것 같아?',
         '간이 맞아?',
+        '팬이 너무 뜨거워?',
         '고기 다 익었어?',
         '소스가 묽은데 어떻게 해야 해?',
         '토마토는 얼마나 더 익혀?',
@@ -317,6 +319,8 @@ void main() {
         '오늘 왜 이렇게 피곤하지?',
         '인간관계가 어때?',
         '불가능한 일인데 어때?',
+        '불이익은 어때?',
+        '팬클럽은 어때?',
       ];
 
       for (final question in unrelatedQuestions) {
@@ -345,6 +349,8 @@ void main() {
         '진짜',
         '가짜',
         '이번 주 요리 계획을 짜',
+        '내일 일정을 좀 짜줘',
+        '다음 주 계획을 미리 다시 짜',
         '오늘 시간이 없어',
         '다음 주에 장 보러 가자',
         '다 됐다 이제',
@@ -357,6 +363,13 @@ void main() {
           reason: statement,
         );
       }
+    });
+
+    test('does not let a planning use hide a later salty problem', () {
+      expect(
+        routeOf('일정을 미리 짜고 보니 국이 너무 짜'),
+        const VoiceIntent(VoiceIntentType.exceptionQuestion),
+      );
     });
 
     test('empty transcript is ignored', () {
