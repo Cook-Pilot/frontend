@@ -34,15 +34,26 @@ final class LocalNotificationTimerAlarm implements TimerAlarmPort {
   );
 
   /// 플러그인·타임존을 초기화하고 알림/정확 알람 권한을 요청한다.
-  static Future<LocalNotificationTimerAlarm> initialize() async {
+  static Future<LocalNotificationTimerAlarm> initialize({
+    void Function(bool active)? onPermissionFlowChanged,
+  }) async {
+    void notifyPermissionFlow(bool active) {
+      try {
+        onPermissionFlowChanged?.call(active);
+      } catch (_) {
+        // UI lifecycle bookkeeping must not block alarm initialization.
+      }
+    }
+
     tzdata.initializeTimeZones();
     final plugin = FlutterLocalNotificationsPlugin();
     await plugin.initialize(
       const InitializationSettings(
         android: AndroidInitializationSettings('@mipmap/ic_launcher'),
         iOS: DarwinInitializationSettings(
-          requestAlertPermission: true,
-          requestSoundPermission: true,
+          requestAlertPermission: false,
+          requestSoundPermission: false,
+          requestBadgePermission: false,
         ),
       ),
     );
@@ -50,9 +61,21 @@ final class LocalNotificationTimerAlarm implements TimerAlarmPort {
         .resolvePlatformSpecificImplementation<
           AndroidFlutterLocalNotificationsPlugin
         >();
-    await android?.requestNotificationsPermission();
-    // 정확한 시각 알람(Android 12+). 거부되면 inexact로 대체된다.
-    await android?.requestExactAlarmsPermission();
+    final ios = plugin
+        .resolvePlatformSpecificImplementation<
+          IOSFlutterLocalNotificationsPlugin
+        >();
+    if (android != null || ios != null) {
+      notifyPermissionFlow(true);
+      try {
+        await ios?.requestPermissions(alert: true, badge: true, sound: true);
+        await android?.requestNotificationsPermission();
+        // 정확한 시각 알람(Android 12+). 거부되면 inexact로 대체된다.
+        await android?.requestExactAlarmsPermission();
+      } finally {
+        notifyPermissionFlow(false);
+      }
+    }
     return LocalNotificationTimerAlarm(plugin);
   }
 
@@ -67,7 +90,9 @@ final class LocalNotificationTimerAlarm implements TimerAlarmPort {
     final now = tz.TZDateTime.now(tz.local);
     final when = tz.TZDateTime.from(at, tz.local);
     // 과거 시각이면 즉시(1초 뒤)로 보정한다.
-    final target = when.isAfter(now) ? when : now.add(const Duration(seconds: 1));
+    final target = when.isAfter(now)
+        ? when
+        : now.add(const Duration(seconds: 1));
     await _plugin.zonedSchedule(
       _notificationId,
       '조리 타이머 완료',

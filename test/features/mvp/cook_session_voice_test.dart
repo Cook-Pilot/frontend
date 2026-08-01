@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:cookpilot/features/cooking/application/cooking_ports.dart';
+import 'package:cookpilot/features/cooking/presentation/timer_alarm_provider.dart';
 import 'package:cookpilot/features/mvp/cook_flow_screens.dart';
 import 'package:cookpilot/features/recipe/domain/recipe.dart';
 import 'package:flutter/material.dart';
@@ -8,6 +9,24 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../helpers/cooking_fakes.dart';
+
+final class _DeferredAlarmResolver {
+  final Completer<TimerAlarmPort> _completion = Completer<TimerAlarmPort>();
+  TimerAlarmPermissionFlowChanged? _onPermissionFlowChanged;
+
+  Future<TimerAlarmPort> call(
+    TimerAlarmPermissionFlowChanged onPermissionFlowChanged,
+  ) {
+    _onPermissionFlowChanged = onPermissionFlowChanged;
+    return _completion.future;
+  }
+
+  void beginPermissionFlow() => _onPermissionFlowChanged!(true);
+
+  void endPermissionFlow() => _onPermissionFlowChanged!(false);
+
+  void complete() => _completion.complete(const SilentTimerAlarm());
+}
 
 void main() {
   const recipe = Recipe(
@@ -56,7 +75,7 @@ void main() {
     Recipe testRecipe = recipe,
     bool handsFreeVoiceEnabled = false,
     TimerAlarmPort? alarm = const SilentTimerAlarm(),
-    Future<TimerAlarmPort> Function()? alarmResolver,
+    TimerAlarmResolver? alarmResolver,
   }) async {
     // The cooking controls live in one scrollable screen. Give the widget test
     // enough vertical room to build both the timer and voice controls so these
@@ -84,6 +103,30 @@ void main() {
     await tester.ensureVisible(button);
     await tester.tap(button);
     // A new session may wait for the previous asynchronous stop to finish.
+    await tester.pumpAndSettle();
+  }
+
+  void backgroundApp(WidgetTester tester) {
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+  }
+
+  void resumeApp(WidgetTester tester) {
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+  }
+
+  Future<void> finishOwnedAlarmFlowWhileBackgrounded(
+    WidgetTester tester,
+    _DeferredAlarmResolver alarm,
+  ) async {
+    backgroundApp(tester);
+    alarm.endPermissionFlow();
+    alarm.complete();
+    await tester.pumpAndSettle();
+    resumeApp(tester);
     await tester.pumpAndSettle();
   }
 
@@ -149,18 +192,20 @@ void main() {
 
   testWidgets('알림 권한 완료가 resumed보다 먼저여도 핸즈프리는 한 번만 시작한다', (tester) async {
     final speech = FakeSpeechInput();
-    final alarm = Completer<TimerAlarmPort>();
+    final alarm = _DeferredAlarmResolver();
     await pumpSession(
       tester,
       speechInput: speech,
       handsFreeVoiceEnabled: true,
       alarm: null,
-      alarmResolver: () => alarm.future,
+      alarmResolver: alarm.call,
     );
     expect(speech.startCount, 0);
 
+    alarm.beginPermissionFlow();
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
-    alarm.complete(const SilentTimerAlarm());
+    alarm.endPermissionFlow();
+    alarm.complete();
     await tester.pump();
     expect(speech.startCount, 0);
 
@@ -175,21 +220,23 @@ void main() {
 
   testWidgets('resumed가 알림 권한 완료보다 먼저여도 초기 음성 권한 요청을 직렬화한다', (tester) async {
     final speech = FakeSpeechInput();
-    final alarm = Completer<TimerAlarmPort>();
+    final alarm = _DeferredAlarmResolver();
     await pumpSession(
       tester,
       speechInput: speech,
       handsFreeVoiceEnabled: true,
       alarm: null,
-      alarmResolver: () => alarm.future,
+      alarmResolver: alarm.call,
     );
 
+    alarm.beginPermissionFlow();
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
     await tester.pump();
     expect(speech.startCount, 0);
 
-    alarm.complete(const SilentTimerAlarm());
+    alarm.endPermissionFlow();
+    alarm.complete();
     await tester.pumpAndSettle();
     expect(speech.startCount, 1);
 
@@ -202,23 +249,25 @@ void main() {
     tester,
   ) async {
     final speech = FakeSpeechInput();
-    final alarm = Completer<TimerAlarmPort>();
+    final alarm = _DeferredAlarmResolver();
     await pumpSession(
       tester,
       speechInput: speech,
       handsFreeVoiceEnabled: true,
       alarm: null,
-      alarmResolver: () => alarm.future,
+      alarmResolver: alarm.call,
     );
 
+    alarm.beginPermissionFlow();
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
-    alarm.complete(const SilentTimerAlarm());
+    alarm.endPermissionFlow();
+    alarm.complete();
     await tester.pumpAndSettle();
     expect(speech.startCount, 0);
 
-    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    resumeApp(tester);
     await tester.pumpAndSettle();
     expect(speech.startCount, 1);
     expect(find.text('듣는 중'), findsOneWidget);
@@ -226,14 +275,15 @@ void main() {
 
   testWidgets('기본 말하기는 알림 초기화와 resumed 뒤에 한 번만 시작한다', (tester) async {
     final speech = FakeSpeechInput();
-    final alarm = Completer<TimerAlarmPort>();
+    final alarm = _DeferredAlarmResolver();
     await pumpSession(
       tester,
       speechInput: speech,
       alarm: null,
-      alarmResolver: () => alarm.future,
+      alarmResolver: alarm.call,
     );
 
+    alarm.beginPermissionFlow();
     final button = find.byKey(const Key('voice-input-toggle'));
     await tester.ensureVisible(button);
     await tester.tap(button);
@@ -243,14 +293,145 @@ void main() {
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
-    alarm.complete(const SilentTimerAlarm());
+    alarm.endPermissionFlow();
+    alarm.complete();
     await tester.pumpAndSettle();
     expect(speech.startCount, 0);
 
-    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    resumeApp(tester);
     await tester.pumpAndSettle();
     expect(speech.startCount, 1);
     expect(find.text('듣는 중'), findsOneWidget);
+  });
+
+  testWidgets('알림 초기화 중 실제 background는 최초 핸즈프리 pending을 취소한다', (tester) async {
+    final speech = FakeSpeechInput();
+    final alarm = _DeferredAlarmResolver();
+    await pumpSession(
+      tester,
+      speechInput: speech,
+      handsFreeVoiceEnabled: true,
+      alarm: null,
+      alarmResolver: alarm.call,
+    );
+
+    backgroundApp(tester);
+    await tester.pump();
+    resumeApp(tester);
+    alarm.complete();
+    await tester.pumpAndSettle();
+
+    expect(speech.startCount, 0);
+    expect(find.text('듣는 중'), findsNothing);
+  });
+
+  testWidgets('알림 초기화 중 실제 background는 수동 말하기 pending도 취소한다', (tester) async {
+    final speech = FakeSpeechInput();
+    final alarm = _DeferredAlarmResolver();
+    await pumpSession(
+      tester,
+      speechInput: speech,
+      alarm: null,
+      alarmResolver: alarm.call,
+    );
+
+    final voiceButton = find.byKey(const Key('voice-input-toggle'));
+    await tester.ensureVisible(voiceButton);
+    await tester.tap(voiceButton);
+    await tester.pump();
+    expect(speech.startCount, 0);
+
+    backgroundApp(tester);
+    resumeApp(tester);
+    alarm.complete();
+    await tester.pumpAndSettle();
+
+    expect(speech.startCount, 0);
+    expect(find.text('듣는 중'), findsNothing);
+  });
+
+  testWidgets('알림 초기화 대기 중 조리 완료는 핸즈프리 pending을 취소한다', (tester) async {
+    final speech = FakeSpeechInput();
+    final alarm = _DeferredAlarmResolver();
+    const oneStepRecipe = Recipe(
+      id: '10000000-0000-0000-0000-000000000009',
+      title: '초기화 대기 완료 레시피',
+      description: '완료 취소 경계를 검증한다.',
+      baseServings: 1,
+      imageUrl: '',
+      ingredients: <Ingredient>[],
+      steps: <CookStep>[
+        CookStep(
+          stepIndex: 0,
+          instruction: '마무리하세요.',
+          timerSeconds: null,
+          cautionNote: null,
+          imageUrl: '',
+        ),
+      ],
+      hasPersonalVersion: false,
+    );
+    await pumpSession(
+      tester,
+      speechInput: speech,
+      testRecipe: oneStepRecipe,
+      handsFreeVoiceEnabled: true,
+      alarm: null,
+      alarmResolver: alarm.call,
+    );
+    alarm.beginPermissionFlow();
+
+    await tester.tap(find.widgetWithText(FilledButton, '조리 완료'));
+    await tester.pumpAndSettle();
+    expect(find.byType(ReviewScreen), findsOneWidget);
+
+    await finishOwnedAlarmFlowWhileBackgrounded(tester, alarm);
+    expect(speech.startCount, 0);
+  });
+
+  testWidgets('알림 초기화 대기 중 닫기는 수동 말하기 pending을 취소한다', (tester) async {
+    final speech = FakeSpeechInput();
+    final alarm = _DeferredAlarmResolver();
+    await pumpSession(
+      tester,
+      speechInput: speech,
+      alarm: null,
+      alarmResolver: alarm.call,
+    );
+    alarm.beginPermissionFlow();
+
+    final voiceButton = find.byKey(const Key('voice-input-toggle'));
+    await tester.ensureVisible(voiceButton);
+    await tester.tap(voiceButton);
+    await tester.pump();
+    await tester.tap(find.byIcon(Icons.close_rounded));
+    await tester.pump();
+
+    await finishOwnedAlarmFlowWhileBackgrounded(tester, alarm);
+    expect(speech.startCount, 0);
+  });
+
+  testWidgets('알림 초기화 대기 중 직접 입력은 수동 말하기 pending을 취소한다', (tester) async {
+    final speech = FakeSpeechInput();
+    final alarm = _DeferredAlarmResolver();
+    await pumpSession(
+      tester,
+      speechInput: speech,
+      alarm: null,
+      alarmResolver: alarm.call,
+    );
+    alarm.beginPermissionFlow();
+
+    final voiceButton = find.byKey(const Key('voice-input-toggle'));
+    await tester.ensureVisible(voiceButton);
+    await tester.tap(voiceButton);
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('help-request')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('help-question-field')), findsOneWidget);
+
+    await finishOwnedAlarmFlowWhileBackgrounded(tester, alarm);
+    expect(speech.startCount, 0);
   });
 
   testWidgets('시스템 back은 이전 화면을 열기 전에 음성 세션을 무효화하고 stop한다', (tester) async {

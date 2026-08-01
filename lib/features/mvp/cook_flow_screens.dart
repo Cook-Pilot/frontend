@@ -1520,7 +1520,8 @@ class CookSessionScreen extends StatefulWidget {
   final TimerAlarmPort? alarm;
 
   /// 권한 요청을 포함한 비동기 알림 초기화의 테스트 주입 지점.
-  final Future<TimerAlarmPort> Function()? alarmResolver;
+  /// 실제 구현처럼 앱이 시작한 권한-flow 시작/종료를 callback으로 알린다.
+  final TimerAlarmResolver? alarmResolver;
 
   /// 도움 질문에 답하는 포트. AI 파트가 완성되면 실제 구현으로 교체한다.
   final ExceptionAdvicePort? advicePort;
@@ -1564,7 +1565,8 @@ class _CookSessionScreenState extends State<CookSessionScreen>
   late final Future<void> _alarmInitialization;
   late AppLifecycleState _appLifecycleState;
   bool _alarmInitializationComplete = false;
-  bool _alarmInitializationInterruptedLifecycle = false;
+  bool _alarmPermissionFlowActive = false;
+  bool _alarmPermissionFlowEndedWhileBackgrounded = false;
   bool _firstFrameRendered = false;
   bool _initialHandsFreeStartPending = false;
   bool _manualSpeechStartPending = false;
@@ -1642,6 +1644,7 @@ class _CookSessionScreenState extends State<CookSessionScreen>
         !mounted ||
         !_firstFrameRendered ||
         !_alarmInitializationComplete ||
+        _alarmPermissionFlowActive ||
         _appLifecycleState != AppLifecycleState.resumed) {
       return;
     }
@@ -1664,9 +1667,11 @@ class _CookSessionScreenState extends State<CookSessionScreen>
       if (widget.alarm case final injected?) {
         alarm = injected;
       } else if (widget.alarmResolver case final resolver?) {
-        alarm = await resolver();
+        alarm = await resolver(_handleAlarmPermissionFlowChanged);
       } else {
-        alarm = await resolveTimerAlarm();
+        alarm = await resolveTimerAlarm(
+          onPermissionFlowChanged: _handleAlarmPermissionFlowChanged,
+        );
       }
       if (mounted) {
         _alarm = alarm;
@@ -1679,25 +1684,65 @@ class _CookSessionScreenState extends State<CookSessionScreen>
     }
   }
 
+  void _handleAlarmPermissionFlowChanged(bool active) {
+    if (_disposed) {
+      return;
+    }
+    if (active) {
+      _alarmPermissionFlowActive = true;
+      _alarmPermissionFlowEndedWhileBackgrounded = false;
+      return;
+    }
+    if (!_alarmPermissionFlowActive) {
+      return;
+    }
+    if (_appLifecycleState != AppLifecycleState.resumed) {
+      // Android exact-alarm settings may finish its method-channel call while
+      // Settings is still foreground. Keep ownership until our app resumes.
+      _alarmPermissionFlowEndedWhileBackgrounded = true;
+      return;
+    }
+    _alarmPermissionFlowActive = false;
+    _alarmPermissionFlowEndedWhileBackgrounded = false;
+    _startPendingSpeechIfReady();
+  }
+
+  bool get _hasPendingSpeechStart =>
+      _initialHandsFreeStartPending || _manualSpeechStartPending;
+
+  void _cancelPendingSpeechStarts() {
+    _initialHandsFreeStartPending = false;
+    _manualSpeechStartPending = false;
+  }
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     // 화면을 다시 켜면 잠든 사이 흐른 시간을 반영해 남은 시간을 재계산한다.
     _appLifecycleState = state;
-    if (state != AppLifecycleState.resumed && !_alarmInitializationComplete) {
-      _alarmInitializationInterruptedLifecycle = true;
-    }
     if (state == AppLifecycleState.resumed) {
       _timer.sync();
+    }
+    final isBackgroundState =
+        state == AppLifecycleState.hidden ||
+        state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached;
+    final preserveOwnedPermissionStart =
+        isBackgroundState &&
+        _alarmPermissionFlowActive &&
+        _hasPendingSpeechStart;
+    if (isBackgroundState && !preserveOwnedPermissionStart) {
+      _cancelPendingSpeechStarts();
     }
     _voiceSession.handleLifecycleStateChanged(
       state,
       preservePendingHandsFreeStart:
-          _initialHandsFreeStartPending &&
-          (!_alarmInitializationComplete ||
-              _alarmInitializationInterruptedLifecycle),
+          preserveOwnedPermissionStart && _initialHandsFreeStartPending,
     );
     if (state == AppLifecycleState.resumed) {
-      _alarmInitializationInterruptedLifecycle = false;
+      if (_alarmPermissionFlowEndedWhileBackgrounded) {
+        _alarmPermissionFlowActive = false;
+        _alarmPermissionFlowEndedWhileBackgrounded = false;
+      }
       _startPendingSpeechIfReady();
     }
   }
@@ -1916,8 +1961,7 @@ class _CookSessionScreenState extends State<CookSessionScreen>
     }
     _completed = true;
     _helpRequestVersion++;
-    _initialHandsFreeStartPending = false;
-    _manualSpeechStartPending = false;
+    _cancelPendingSpeechStarts();
     _voiceSession.complete();
     Navigator.of(context).pushReplacement(
       MaterialPageRoute<void>(
@@ -1938,8 +1982,7 @@ class _CookSessionScreenState extends State<CookSessionScreen>
     _closingSession = true;
     // Invalidate callbacks and begin closing the microphone before the route
     // transition reveals the previous screen.
-    _initialHandsFreeStartPending = false;
-    _manualSpeechStartPending = false;
+    _cancelPendingSpeechStarts();
     _voiceSession.complete();
     setState(() => _allowSessionPop = true);
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -2047,8 +2090,7 @@ class _CookSessionScreenState extends State<CookSessionScreen>
   }
 
   Future<void> _openHelpSheet() async {
-    _initialHandsFreeStartPending = false;
-    _manualSpeechStartPending = false;
+    _cancelPendingSpeechStarts();
     _voiceSession.disableAutomaticRearm();
     if (_speechIsActive) {
       unawaited(_deactivateSpeechInput(message: '음성 입력을 멈췄어요. 질문을 직접 입력해주세요.'));

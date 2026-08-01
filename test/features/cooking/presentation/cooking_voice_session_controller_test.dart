@@ -204,6 +204,24 @@ void main() {
     expect(controller.phase, CookingVoiceSpeechPhase.listening);
   });
 
+  test('일반 hidden은 시작 전 핸즈프리 opt-in도 해제한다', () async {
+    final speech = FakeSpeechInput();
+    final controller = createController(
+      speech: speech,
+      states: <(CookingVoiceSpeechPhase, String?)>[],
+      transcripts: <String>[],
+      handsFreeEnabled: true,
+    );
+    addTearDown(controller.dispose);
+
+    controller.handleLifecycleStateChanged(AppLifecycleState.hidden);
+    controller.handleLifecycleStateChanged(AppLifecycleState.resumed);
+    await controller.startHandsFree();
+
+    expect(speech.startCount, 0);
+    expect(controller.phase, CookingVoiceSpeechPhase.idle);
+  });
+
   test('중복 inactive 뒤 복구한 핸즈프리는 명령 후에도 다시 듣는다', () async {
     final speech = FakeSpeechInput()
       ..autoReady = false
