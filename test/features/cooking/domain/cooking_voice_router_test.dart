@@ -104,6 +104,29 @@ void main() {
       );
     });
 
+    test('parses only durations attached to an extension clause', () {
+      expect(
+        routeOf('타이머 5분인데 1분 더'),
+        const VoiceIntent(VoiceIntentType.extendTimer, seconds: 60),
+      );
+      expect(
+        routeOf('타이머 5분인데 1분 30초 더'),
+        const VoiceIntent(VoiceIntentType.extendTimer, seconds: 90),
+      );
+      expect(
+        routeOf('타이머 5분인데 더 1분'),
+        const VoiceIntent(VoiceIntentType.extendTimer, seconds: 60),
+      );
+      expect(
+        routeOf('1분 더하고 30초 더'),
+        const VoiceIntent(VoiceIntentType.extendTimer, seconds: 90),
+      );
+      expect(
+        routeOf('추가로 1분'),
+        const VoiceIntent(VoiceIntentType.extendTimer, seconds: 60),
+      );
+    });
+
     test('matches complete Korean minute quantities', () {
       expect(
         routeOf('타이머 두 분 더'),
@@ -186,6 +209,7 @@ void main() {
     test('recognizes static and recipe-specific cooking context', () {
       const questions = [
         '지금 불 줄여야 할까?',
+        '간이 맞아?',
         '고기 다 익었어?',
         '소스가 묽은데 어떻게 해야 해?',
         '토마토는 얼마나 더 익혀?',
@@ -291,6 +315,8 @@ void main() {
         '오늘 어떻게 집에 가지?',
         '이 노래 제목 뭐였지?',
         '오늘 왜 이렇게 피곤하지?',
+        '인간관계가 어때?',
+        '불가능한 일인데 어때?',
       ];
 
       for (final question in unrelatedQuestions) {

@@ -89,13 +89,15 @@ final class CookingVoiceRouter {
     '기름',
     '가스',
     '불꽃',
-    // These one-syllable cooking cues are useful in natural questions such as
-    // "불 줄여?" and "간 맞아?". The question AND-gate keeps plain
-    // statements from being sent to the exception path.
-    '불',
-    '간',
+    // This verb stem is intrinsically cooking-specific even when followed by
+    // another Hangul syllable, as in "끓여야".
     '끓',
   ];
+
+  // These cues are useful in natural questions such as "불 줄여?" and
+  // "간 맞아?", but unrestricted substring matching would also classify
+  // unrelated words such as "불가능" and "인간관계" as cooking context.
+  static const _boundaryCookingContext = <String>['불', '간'];
 
   static const _finishPhrases = <String>[
     '조리완료',
@@ -145,6 +147,7 @@ final class CookingVoiceRouter {
   }) {
     final text = _normalize(transcript);
     if (text.isEmpty) return const VoiceIntent(VoiceIntentType.ignore);
+    final lowerTranscript = transcript.toLowerCase();
 
     // Materialize ingredient tokens once so callers may safely pass a lazy
     // iterable and both exception gates see the same vocabulary.
@@ -169,9 +172,13 @@ final class CookingVoiceRouter {
     // mutates the cooking session. The command candidate keeps this gate
     // narrow: unrelated questions do not become cooking exceptions.
     if ((hasQuestionSignal && mutatingIntent != null) ||
-        _isExplicitCookingProblem(text, hasIngredientContext) ||
+        _isExplicitCookingProblem(
+          text,
+          lowerTranscript,
+          hasIngredientContext,
+        ) ||
         (hasQuestionSignal &&
-            (_hasCookingContext(text, dynamicContextTokens) ||
+            (_hasCookingContext(text, lowerTranscript, dynamicContextTokens) ||
                 hasIngredientContext))) {
       return const VoiceIntent(VoiceIntentType.exceptionQuestion);
     }
@@ -187,7 +194,11 @@ final class CookingVoiceRouter {
     return const VoiceIntent(VoiceIntentType.ignore);
   }
 
-  bool _isExplicitCookingProblem(String text, bool hasIngredientContext) {
+  bool _isExplicitCookingProblem(
+    String text,
+    String lowerTranscript,
+    bool hasIngredientContext,
+  ) {
     if (_hasAny(text, const [
       // Fire, gas, burns, and cuts.
       '기름에불',
@@ -246,7 +257,8 @@ final class CookingVoiceRouter {
       '그을',
     ]);
     return describesBurning &&
-        (_hasCookingContext(text, const <String>[]) || hasIngredientContext);
+        (_hasCookingContext(text, lowerTranscript, const <String>[]) ||
+            hasIngredientContext);
   }
 
   bool _isSaltyProblem(String text) {
@@ -304,8 +316,15 @@ final class CookingVoiceRouter {
 
   bool _hasQuestionSignal(String text) => _questionSignals.any(text.contains);
 
-  bool _hasCookingContext(String text, Iterable<String> dynamicTokens) {
+  bool _hasCookingContext(
+    String text,
+    String lowerTranscript,
+    Iterable<String> dynamicTokens,
+  ) {
     return _staticCookingContext.any(text.contains) ||
+        _boundaryCookingContext.any(
+          (token) => _hasSingleKoreanWordToken(lowerTranscript, token),
+        ) ||
         dynamicTokens.any(text.contains);
   }
 
@@ -320,13 +339,20 @@ final class CookingVoiceRouter {
       // A one-letter ingredient must begin a spoken word. This keeps
       // "물 더 넣어", "물이 없어" and "파를 썰어" while preventing a
       // recipe containing "파" from treating "파티 어때?" as cooking context.
-      final pattern = RegExp(
-        '(^|[^가-힣a-z0-9])${RegExp.escape(token)}'
-        r'(?=$|[^가-힣a-z0-9]|[이가은는을를도만과와로에의])',
-      );
-      if (pattern.hasMatch(lower)) return true;
+      if (_hasSingleKoreanWordToken(lower, token)) return true;
     }
     return false;
+  }
+
+  bool _hasSingleKoreanWordToken(String lower, String token) {
+    final codePoint = token.runes.single;
+    final hasFinalConsonant = (codePoint - 0xAC00) % 28 != 0;
+    final particleStarts = hasFinalConsonant ? '이은을도만과으에의' : '가는를도만와로에의';
+    final pattern = RegExp(
+      '(^|[^가-힣a-z0-9])${RegExp.escape(token)}'
+      '(?=\$|[^가-힣a-z0-9]|[$particleStarts])',
+    );
+    return pattern.hasMatch(lower);
   }
 
   VoiceIntent? _mutatingIntent(String text, int? extensionSeconds) {
@@ -397,25 +423,29 @@ final class CookingVoiceRouter {
     if (!_hasAny(text, _timerExtensionSignals)) return null;
 
     final source = transcript.toLowerCase();
-    var seconds = 0;
-    var hasDuration = false;
+    final durationParts = <({int start, int end, int seconds})>[];
 
     for (final match in RegExp(r'(\d+)\s*분').allMatches(source)) {
       final minutes = int.tryParse(match.group(1)!);
       if (minutes == null) continue;
-      seconds += minutes * 60;
-      hasDuration = true;
+      durationParts.add((
+        start: match.start,
+        end: match.end,
+        seconds: minutes * 60,
+      ));
     }
     for (final match in RegExp(r'(\d+)\s*초').allMatches(source)) {
       final parsedSeconds = int.tryParse(match.group(1)!);
       if (parsedSeconds == null) continue;
-      seconds += parsedSeconds;
-      hasDuration = true;
+      durationParts.add((
+        start: match.start,
+        end: match.end,
+        seconds: parsedSeconds,
+      ));
     }
 
-    if (text.contains('반분')) {
-      seconds += 30;
-      hasDuration = true;
+    for (final match in RegExp(r'반\s*분').allMatches(source)) {
+      durationParts.add((start: match.start, end: match.end, seconds: 30));
     }
 
     // Keep a Korean quantity intact up to "분", including whitespace between
@@ -432,11 +462,109 @@ final class CookingVoiceRouter {
       final quantity = match.group(2)!.replaceAll(RegExp(r'\s+'), '');
       final minutes = _parseKoreanMinuteQuantity(quantity);
       if (minutes == null) continue;
-      seconds += minutes * 60;
-      hasDuration = true;
+      durationParts.add((
+        start: quantityStart,
+        end: match.end,
+        seconds: minutes * 60,
+      ));
     }
 
-    return hasDuration ? _boundedSeconds(seconds) : null;
+    if (durationParts.isEmpty) return null;
+    durationParts.sort((left, right) => left.start.compareTo(right.start));
+
+    final associatedParts = <int>{};
+    final signalPattern = RegExp(
+      _timerExtensionSignals.map(RegExp.escape).join('|'),
+    );
+    for (final signal in signalPattern.allMatches(source)) {
+      int? beforeIndex;
+      int? afterIndex;
+      for (var index = 0; index < durationParts.length; index++) {
+        final part = durationParts[index];
+        if (part.end <= signal.start) beforeIndex = index;
+        if (afterIndex == null && part.start >= signal.end) afterIndex = index;
+      }
+
+      if (beforeIndex != null &&
+          _isExtensionSignalGap(
+            source.substring(durationParts[beforeIndex].end, signal.start),
+          )) {
+        _addDurationClusterBefore(
+          source,
+          durationParts,
+          beforeIndex,
+          associatedParts,
+        );
+      }
+      if (afterIndex != null &&
+          _isExtensionSignalGap(
+            source.substring(signal.end, durationParts[afterIndex].start),
+          )) {
+        _addDurationClusterAfter(
+          source,
+          durationParts,
+          afterIndex,
+          associatedParts,
+        );
+      }
+    }
+
+    if (associatedParts.isEmpty) return null;
+    final seconds = associatedParts.fold<int>(
+      0,
+      (total, index) => total + durationParts[index].seconds,
+    );
+    return _boundedSeconds(seconds);
+  }
+
+  void _addDurationClusterBefore(
+    String source,
+    List<({int start, int end, int seconds})> parts,
+    int anchorIndex,
+    Set<int> associatedParts,
+  ) {
+    associatedParts.add(anchorIndex);
+    for (var index = anchorIndex - 1; index >= 0; index--) {
+      final gap = source.substring(parts[index].end, parts[index + 1].start);
+      if (!_isDurationJoiner(gap)) break;
+      associatedParts.add(index);
+    }
+  }
+
+  void _addDurationClusterAfter(
+    String source,
+    List<({int start, int end, int seconds})> parts,
+    int anchorIndex,
+    Set<int> associatedParts,
+  ) {
+    associatedParts.add(anchorIndex);
+    for (var index = anchorIndex + 1; index < parts.length; index++) {
+      final gap = source.substring(parts[index - 1].end, parts[index].start);
+      if (!_isDurationJoiner(gap)) break;
+      associatedParts.add(index);
+    }
+  }
+
+  bool _isExtensionSignalGap(String value) {
+    final gap = value.replaceAll(RegExp(r'[\s,·+]'), '');
+    return const {
+      '',
+      '만',
+      '정도',
+      '씩',
+      '가량',
+      '쯤',
+      '만큼',
+      '을',
+      '를',
+      '로',
+      '으로',
+    }.contains(gap);
+  }
+
+  bool _isDurationJoiner(String value) {
+    final gap = value.replaceAll(RegExp(r'[\s,·+]'), '');
+    return const {'', '하고', '과', '와', '및', '에'}.contains(gap);
   }
 
   int? _parseKoreanMinuteQuantity(String quantity) {
