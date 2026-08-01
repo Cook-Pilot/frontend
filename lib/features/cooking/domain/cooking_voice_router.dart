@@ -354,9 +354,14 @@ final class CookingVoiceRouter {
     final surface = match.group(0)!;
     final wordPrefix = _hangulWordPrefix(lowerTranscript, match.start);
     final wordSuffix = _hangulWordSuffix(lowerTranscript, match.end);
+    final prefix = lowerTranscript.substring(0, match.start);
+    final hasTasteLead = _hasTasteLead(prefix, ingredientTokens);
 
     if (surface == '짜') {
       if (!_isJjaPresentEnding(wordSuffix)) return true;
+      if (_isJjaCreationImperative(lowerTranscript, match) && !hasTasteLead) {
+        return true;
+      }
     }
     if (surface == '짠') {
       if (wordSuffix.startsWith('돌이') ||
@@ -370,9 +375,7 @@ final class CookingVoiceRouter {
     }
 
     if (wordPrefix.isEmpty) return false;
-    final prefix = lowerTranscript.substring(0, match.start);
-    return !_tasteDegreeMarkers.any(wordPrefix.endsWith) &&
-        !_hasTasteLead(prefix, ingredientTokens);
+    return !_tasteDegreeMarkers.any(wordPrefix.endsWith) && !hasTasteLead;
   }
 
   bool _isJjaPresentEnding(String wordSuffix) {
@@ -381,8 +384,17 @@ final class CookingVoiceRouter {
     return RegExp(
       r'^(?:요|다|서(?:요)?|고(?:요)?|지만(?:요)?|니까(?:요)?|면(?:요)?|게|'
       r'지(?:요)?|죠|네(?:요)?|잖아(?:요)?|겠(?:다|어(?:요)?)?|'
-      r'줘(?:요)?|주세요|주라|려고|려면|면서|도록|는데(?:요)?|도|거나)?$',
+      r'줘(?:요)?|주세요|주라|려고|려면|면서|도록|는데(?:요)?|도|거나|'
+      r'져(?:요)?|졌(?:어(?:요)?|다|네(?:요)?|는데(?:요)?|지만(?:요)?|고|'
+      r'습니다|습니까)|더라(?:고(?:요)?)?|던데(?:요)?|더니|대요|'
+      r'다고(?:요)?)?$',
     ).hasMatch(wordSuffix);
+  }
+
+  bool _isJjaCreationImperative(String lowerTranscript, RegExpMatch predicate) {
+    return RegExp(
+      r'^\s*(?:줘(?:요)?|주세요|주라)(?=$|[^가-힣a-z0-9])',
+    ).hasMatch(lowerTranscript.substring(predicate.end));
   }
 
   bool _isPlanningPredicateUse(
@@ -741,62 +753,85 @@ final class CookingVoiceRouter {
       '^(?:$suffixAlternatives)?'
       r'(?=$|[^가-힣a-z0-9])',
     );
+    if (_hasStrongSingleTokenCollisionContext(lower, token)) return true;
     for (final candidate in tokenPattern.allMatches(lower)) {
       final wordSuffix = _hangulWordSuffix(lower, candidate.end);
-      if (_isKnownSingleTokenLexeme(lower, token, candidate.end, wordSuffix)) {
-        continue;
-      }
+      if (_isKnownSingleTokenLexeme(token, wordSuffix)) continue;
       if (suffixPattern.hasMatch(lower.substring(candidate.end))) return true;
     }
     return false;
   }
 
-  bool _isKnownSingleTokenLexeme(
-    String lower,
-    String token,
-    int tokenEnd,
-    String wordSuffix,
-  ) {
-    final lexicalRoots = switch (token) {
+  List<String> _singleTokenLexicalRoots(String token) {
+    return switch (token) {
       '불' => const ['만', '과', '의'],
       '파' => const ['도'],
       _ => const <String>[],
     };
-    for (final root in lexicalRoots) {
+  }
+
+  bool _isKnownSingleTokenLexeme(String token, String wordSuffix) {
+    for (final root in _singleTokenLexicalRoots(token)) {
       if (!wordSuffix.startsWith(root)) continue;
       final tail = wordSuffix.substring(root.length);
       if (tail.isEmpty ||
           RegExp(r'^(?:(?:이|가|은|는|을|를|의|도|만)){1,2}요?$').hasMatch(tail)) {
-        if (_hasSingleTokenCollisionCookingContinuation(
-          lower,
-          token,
-          root,
-          tail,
-          tokenEnd + wordSuffix.length,
-        )) {
-          return false;
-        }
         return true;
       }
     }
     return false;
   }
 
-  bool _hasSingleTokenCollisionCookingContinuation(
-    String lower,
+  bool _hasStrongSingleTokenCollisionContext(String lower, String token) {
+    final lexicalRoots = _singleTokenLexicalRoots(token);
+    if (lexicalRoots.isEmpty) return false;
+
+    for (final candidate in RegExp(RegExp.escape(token)).allMatches(lower)) {
+      if (!_hasAllowedSingleTokenCollisionPrefix(lower, candidate.start)) {
+        continue;
+      }
+      final suffix = lower.substring(candidate.end);
+      for (final lexicalRoot in lexicalRoots) {
+        if (!suffix.startsWith(lexicalRoot)) continue;
+        final continuation = suffix
+            .substring(lexicalRoot.length)
+            .replaceFirst(RegExp(r'^[\s,，]+'), '');
+        if (_isStrongSingleTokenCookingContinuation(
+          token,
+          lexicalRoot,
+          continuation,
+        )) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  bool _hasAllowedSingleTokenCollisionPrefix(String lower, int tokenStart) {
+    final prefix = lower.substring(0, tokenStart);
+    var clauseStart = 0;
+    for (final boundary in RegExp(r'[.!?。！？;；]').allMatches(prefix)) {
+      clauseStart = boundary.end;
+    }
+    final rawClausePrefix = prefix.substring(clauseStart);
+    if (rawClausePrefix.trim().isNotEmpty &&
+        !RegExp(r'[\s,，]$').hasMatch(rawClausePrefix)) {
+      return false;
+    }
+    final clausePrefix = rawClausePrefix.replaceAll(RegExp(r'[\s,，]+'), '');
+    if (clausePrefix.isEmpty) return true;
+    return RegExp(
+      r'^(?:(?:지금|이제|현재|우선|먼저|여기|이거|이것|그거|그것|'
+      r'저거|저것|이쪽|그쪽|저쪽|이|그|저|좀|조금|약간|더)){1,3}$',
+    ).hasMatch(clausePrefix);
+  }
+
+  bool _isStrongSingleTokenCookingContinuation(
     String token,
     String lexicalRoot,
-    String particleTail,
-    int wordEnd,
+    String continuation,
   ) {
-    if (particleTail.isNotEmpty || wordEnd >= lower.length) return false;
-    final remainder = lower.substring(wordEnd);
-    final separator = RegExp(r'^[\s,，]+').firstMatch(remainder);
-    if (separator == null) return false;
-    final continuation = remainder.substring(separator.end);
-
-    // Reinterpret a lexical collision only at a real word boundary and only
-    // when the next phrase is strongly cooking-specific.
     if (token == '불' && lexicalRoot == '의') {
       return RegExp(r'^(세기|강도|크기|온도)').hasMatch(continuation);
     }

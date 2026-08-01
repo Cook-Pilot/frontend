@@ -212,8 +212,11 @@ void main() {
         '불이 너무 센 것 같아?',
         '불로 조절해도 돼?',
         '불의 세기 괜찮아?',
+        '불의세기 괜찮아?',
+        '지금 불의세기 괜찮아?',
         '불의 강도를 줄여야 할까?',
         '불만 줄여야 할까?',
+        '불만줄여야 할까?',
         '불인가요?',
         '불일까요?',
         '간이 맞아?',
@@ -285,6 +288,12 @@ void main() {
         ingredientNames: const ['물', '쌀', '파'],
         currentStepInstruction: '쌀을 씻는다',
       );
+      final joinedGreenOnionAlsoQuestion = router.route(
+        '파도넣어야 해?',
+        recipeTitle: '밥',
+        ingredientNames: const ['물', '쌀', '파'],
+        currentStepInstruction: '쌀을 씻는다',
+      );
 
       expect(
         waterQuestion,
@@ -309,6 +318,10 @@ void main() {
       );
       expect(
         greenOnionPrepQuestion,
+        const VoiceIntent(VoiceIntentType.exceptionQuestion),
+      );
+      expect(
+        joinedGreenOnionAlsoQuestion,
         const VoiceIntent(VoiceIntentType.exceptionQuestion),
       );
     });
@@ -344,6 +357,15 @@ void main() {
         '소스가 뭔가 좀 짜',
         '국이 짭니다',
         '국이 짭니까?',
+        '국물이 짜졌어',
+        '국물이 짜졌습니다',
+        '국물이 짜졌습니까?',
+        '소스가 짜더라',
+        '소스가 짜던데',
+        '소스가 짜던데요',
+        '국이 짜더니',
+        '소스가 짜대요',
+        '국물이 짜다고 느껴',
         '고기가 덜 익었어',
         '면이 안 익어',
         '재료가 없어',
@@ -413,6 +435,9 @@ void main() {
         '팬클럽은요?',
         '불의의 사고는요?',
         '불의 세상은 어때?',
+        '고객 불만 줄여야 할까?',
+        '고객불만줄여야 할까?',
+        '이불의 세기 괜찮아?',
         '불이익만은요?',
         '불만은요?',
         '불과 몇 분 차이야?',
@@ -489,6 +514,18 @@ void main() {
         ingredientNames: const ['물', '쌀', '파'],
         currentStepInstruction: '쌀을 씻는다',
       );
+      final prefixedWaveCookingVerb = router.route(
+        '사진에 파도 넣어야 해?',
+        recipeTitle: '밥',
+        ingredientNames: const ['물', '쌀', '파'],
+        currentStepInstruction: '쌀을 씻는다',
+      );
+      final joinedPrefixedWaveCookingVerb = router.route(
+        '사진에파도넣어야 해?',
+        recipeTitle: '밥',
+        ingredientNames: const ['물', '쌀', '파'],
+        currentStepInstruction: '쌀을 씻는다',
+      );
 
       expect(waveQuestion, const VoiceIntent(VoiceIntentType.ignore));
       expect(waveSubjectQuestion, const VoiceIntent(VoiceIntentType.ignore));
@@ -500,6 +537,14 @@ void main() {
         const VoiceIntent(VoiceIntentType.ignore),
       );
       expect(wavePhotoQuestion, const VoiceIntent(VoiceIntentType.ignore));
+      expect(
+        prefixedWaveCookingVerb,
+        const VoiceIntent(VoiceIntentType.ignore),
+      );
+      expect(
+        joinedPrefixedWaveCookingVerb,
+        const VoiceIntent(VoiceIntentType.ignore),
+      );
     });
 
     test('ignores cooking statements that do not describe a problem', () {
@@ -527,6 +572,7 @@ void main() {
         '내일일정을좀짜줘',
         '내일 계획조금 짜줘',
         '내일계획을약간짜줘',
+        '내일일정을빠르게좀짜줘',
         '내일 일정 빠르게 짜줘',
         '일정을 고객 회의와 이동 시간을 충분히 고려해서 조금 여유 있게 짜줘',
         '일정을 진짜 좀 잘 짜줘',
@@ -545,6 +591,10 @@ void main() {
         '계획을 검토했는데 약간 더 구체적으로 짜줘',
         '일정을 짜고 좀 짜줘',
         '일정을 짜고 좀 다시 짜줘',
+        '코드 좀 짜줘',
+        '코드 좀 짜 줘',
+        '문서 구조 좀 짜주세요',
+        '기획서 좀 짜 주라',
         '다음 주 계획을 미리 다시 짜',
         '인간은 짠해',
         '오늘 시간이 없어',
