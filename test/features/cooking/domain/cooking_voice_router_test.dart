@@ -122,9 +122,34 @@ void main() {
         const VoiceIntent(VoiceIntentType.extendTimer, seconds: 90),
       );
       expect(
+        routeOf('1분 더 말고 30초 더'),
+        const VoiceIntent(VoiceIntentType.extendTimer, seconds: 30),
+      );
+      expect(
+        routeOf('1분 더하지 말고 30초 더'),
+        const VoiceIntent(VoiceIntentType.extendTimer, seconds: 30),
+      );
+      expect(
         routeOf('추가로 1분'),
         const VoiceIntent(VoiceIntentType.extendTimer, seconds: 60),
       );
+    });
+
+    test('requires a lexical boundary after timer extension signals', () {
+      expect(
+        routeOf('1분 더해줘'),
+        const VoiceIntent(VoiceIntentType.extendTimer, seconds: 60),
+      );
+      expect(
+        routeOf('1분 더요'),
+        const VoiceIntent(VoiceIntentType.extendTimer, seconds: 60),
+      );
+      expect(
+        routeOf('1분 연장요'),
+        const VoiceIntent(VoiceIntentType.extendTimer, seconds: 60),
+      );
+      expect(routeOf('1분 더덕을 볶아'), const VoiceIntent(VoiceIntentType.ignore));
+      expect(routeOf('1분 건더기를 건져'), const VoiceIntent(VoiceIntentType.ignore));
     });
 
     test('matches complete Korean minute quantities', () {
@@ -452,6 +477,37 @@ void main() {
         );
       }
     });
+
+    test('requires an unsafe predicate for raw meat statements', () {
+      for (final problem in const [
+        '생고기를 먹었어',
+        '고기를 생으로 먹었어',
+        '생고기가 덜 익었어',
+        '생고기가 위험해',
+      ]) {
+        expect(
+          routeOf(problem),
+          const VoiceIntent(VoiceIntentType.exceptionQuestion),
+          reason: problem,
+        );
+      }
+
+      for (final ordinaryStep in const [
+        '생고기를 넣었어',
+        '생고기를 팬에 올렸어',
+        '생고기를 먹기 좋게 썰었어',
+        '생고기를 익혀 먹었어',
+        '생고기를 안 먹었어',
+        '고기를 생으로 안 먹었어',
+        '생고기가 위험하지 않아',
+      ]) {
+        expect(
+          routeOf(ordinaryStep),
+          const VoiceIntent(VoiceIntentType.ignore),
+          reason: ordinaryStep,
+        );
+      }
+    });
   });
 
   group('CookingVoiceRouter false-positive boundaries', () {
@@ -503,6 +559,25 @@ void main() {
           reason: statement,
         );
       }
+    });
+
+    test('requires food context for degree-marked salty statements', () {
+      expect(
+        routeOf('국이 너무 짜'),
+        const VoiceIntent(VoiceIntentType.exceptionQuestion),
+      );
+      final recipeProblem = router.route(
+        '토마토 파스타가 너무 짜',
+        recipeTitle: '토마토 파스타',
+        ingredientNames: const ['면'],
+        currentStepInstruction: '면을 삶는다',
+      );
+      expect(
+        recipeProblem,
+        const VoiceIntent(VoiceIntentType.exceptionQuestion),
+      );
+      expect(routeOf('월급이 너무 짜'), const VoiceIntent(VoiceIntentType.ignore));
+      expect(routeOf('회사 복지가 좀 짜'), const VoiceIntent(VoiceIntentType.ignore));
     });
 
     test('does not parse lexicalized one-letter words as cooking context', () {

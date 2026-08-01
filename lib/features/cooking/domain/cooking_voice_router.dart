@@ -108,6 +108,7 @@ final class CookingVoiceRouter {
     '찌개',
     '육수',
     '반찬',
+    '김치',
     '음식',
     '요리',
     '이것',
@@ -181,8 +182,10 @@ final class CookingVoiceRouter {
       transcript,
       ingredientTokens,
     );
+    final recipeTokens = <String>{..._contextTokens(recipeTitle)};
+    final tasteContextTokens = <String>{...ingredientTokens, ...recipeTokens};
     final dynamicContextTokens = <String>{
-      ..._contextTokens(recipeTitle),
+      ...recipeTokens,
       ..._contextTokens(currentStepInstruction),
     };
 
@@ -198,7 +201,7 @@ final class CookingVoiceRouter {
           text,
           lowerTranscript,
           hasIngredientContext,
-          ingredientTokens,
+          tasteContextTokens,
         ) ||
         (hasQuestionSignal &&
             (_hasCookingContext(text, lowerTranscript, dynamicContextTokens) ||
@@ -243,7 +246,6 @@ final class CookingVoiceRouter {
       '곰팡',
       '이상한냄새',
       '변질',
-      '생고기',
       '피가나',
       '속이빨',
       '닭이안익',
@@ -269,6 +271,7 @@ final class CookingVoiceRouter {
       return true;
     }
 
+    if (_isUnsafeRawMeatProblem(text)) return true;
     if (_isSaltyProblem(text, lowerTranscript, ingredientTokens)) return true;
     if (_isMissingIngredientProblem(text, hasIngredientContext)) return true;
 
@@ -283,6 +286,41 @@ final class CookingVoiceRouter {
     return describesBurning &&
         (_hasCookingContext(text, lowerTranscript, const <String>[]) ||
             hasIngredientContext);
+  }
+
+  bool _isUnsafeRawMeatProblem(String text) {
+    const eatingPredicate = r'먹(?:었|어|으면|으려|을까|어도|은|는중)|섭취|삼켰';
+    final explicitlyRawConsumption = RegExp(
+      '(?:고기|닭|돼지고기|소고기)(?:을|를)?생으로'
+      '.{0,20}(?:$eatingPredicate)',
+    ).firstMatch(text);
+    if (explicitlyRawConsumption != null &&
+        !_isSafeMeatConsumptionClause(explicitlyRawConsumption.group(0)!)) {
+      return true;
+    }
+    if (!text.contains('생고기')) return false;
+
+    // Raw meat is an ordinary input while it is being prepared. Escalate only
+    // when the transcript says it was/will be consumed raw, is undercooked,
+    // or explicitly describes the raw meat as unsafe.
+    if (RegExp(
+      r'생고기.{0,20}(?:덜익|안익|설익|익지않|'
+      r'위험(?:해|하다|한|하네|해서|해요|합니다)|안전하지않|괜찮지않)',
+    ).hasMatch(text)) {
+      return true;
+    }
+
+    final consumption = RegExp(
+      '생고기.{0,20}(?:$eatingPredicate)',
+    ).firstMatch(text);
+    if (consumption == null) return false;
+    return !_isSafeMeatConsumptionClause(consumption.group(0)!);
+  }
+
+  bool _isSafeMeatConsumptionClause(String clause) {
+    return RegExp(
+      r'(?:안|않|말아)먹|(?:익혀|익힌|구워|볶아|삶아|데쳐|조리해|요리해)먹',
+    ).hasMatch(clause);
   }
 
   bool _isSaltyProblem(
@@ -301,10 +339,6 @@ final class CookingVoiceRouter {
       '반찬',
       '음식',
       '요리',
-      '너무',
-      '좀',
-      '조금',
-      '약간',
     ];
     final predicates = _jjaPredicates(
       lowerTranscript,
@@ -1042,10 +1076,9 @@ final class CookingVoiceRouter {
     durationParts.sort((left, right) => left.start.compareTo(right.start));
 
     final associatedParts = <int>{};
-    final signalPattern = RegExp(
-      _timerExtensionSignals.map(RegExp.escape).join('|'),
-    );
-    for (final signal in signalPattern.allMatches(source)) {
+    for (final signal in _extensionSignalMatches(source)) {
+      if (_isRejectedExtensionSignal(source, signal)) continue;
+
       int? beforeIndex;
       int? afterIndex;
       for (var index = 0; index < durationParts.length; index++) {
@@ -1084,6 +1117,49 @@ final class CookingVoiceRouter {
       (total, index) => total + durationParts[index].seconds,
     );
     return _boundedSeconds(seconds);
+  }
+
+  Iterable<RegExpMatch> _extensionSignalMatches(String source) sync* {
+    final signalPattern = RegExp(
+      _timerExtensionSignals.map(RegExp.escape).join('|'),
+    );
+    for (final signal in signalPattern.allMatches(source)) {
+      final suffix = _hangulWordSuffix(source, signal.end);
+      if (_isExtensionSignalSuffix(signal.group(0)!, suffix)) yield signal;
+    }
+  }
+
+  bool _isExtensionSignalSuffix(String signal, String suffix) {
+    if (suffix.isEmpty) return true;
+
+    final actionSuffix = RegExp(
+      r'^(?:로|해(?:줘|주세요|주라|서|도|요)?|'
+      r'하(?:고|지|면|자|는|도록|려고|면서|세요)?|'
+      r'할(?:게|까|까요|래)?|했(?:어|어요)?|줘|주세요|주라|요)$',
+    );
+    if (signal == '늘려') {
+      return RegExp(r'^(?:줘|주세요|주라|서|도|요|볼까|야)$').hasMatch(suffix);
+    }
+    if (actionSuffix.hasMatch(suffix)) return true;
+
+    // Joined STT output such as "1분더연장해줘" is still a command, while
+    // lexical continuations such as "더덕" and "건더기" stay excluded.
+    if (signal == '더') {
+      for (final chainedSignal in const ['추가', '연장', '늘려']) {
+        if (!suffix.startsWith(chainedSignal)) continue;
+        return _isExtensionSignalSuffix(
+          chainedSignal,
+          suffix.substring(chainedSignal.length),
+        );
+      }
+    }
+    return false;
+  }
+
+  bool _isRejectedExtensionSignal(String source, RegExpMatch signal) {
+    final tail = _normalize(source.substring(signal.end));
+    return RegExp(r'^(?:(?:하|해|늘리|주)지)?(?:는)?(?:말고|말자|말아|않)').hasMatch(tail) ||
+        RegExp(r'^안(?:하|해|늘리|주|할)').hasMatch(tail);
   }
 
   void _addDurationClusterBefore(
