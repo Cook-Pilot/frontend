@@ -211,10 +211,14 @@ void main() {
         '지금 불 줄여야 할까?',
         '불이 너무 센 것 같아?',
         '불로 조절해도 돼?',
+        '불인가요?',
+        '불일까요?',
         '간이 맞아?',
         '팬이 너무 뜨거워?',
         '팬에서 계속 구워도 돼?',
         '팬으로는 괜찮아?',
+        '팬이면 괜찮아?',
+        '팬이어도 괜찮아?',
         '팬은요?',
         '팬에서요?',
         '팬에서는요?',
@@ -313,6 +317,8 @@ void main() {
       const problems = [
         '물이 아직 안 끓어',
         '국이 너무 짜',
+        '국물이 뭔가 짜',
+        '소스가 뭔가 좀 짜',
         '고기가 덜 익었어',
         '면이 안 익어',
         '재료가 없어',
@@ -364,6 +370,9 @@ void main() {
         '팬클럽은요?',
         '불의의 사고는요?',
         '불이익만은요?',
+        '불만은요?',
+        '불과 몇 분 차이야?',
+        '불의는 어때?',
       ];
 
       for (final question in unrelatedQuestions) {
@@ -373,6 +382,61 @@ void main() {
           reason: question,
         );
       }
+    });
+
+    test('does not parse lexical 짜 and 짠 prefixes as taste predicates', () {
+      for (final statement in const [
+        '음식이 짜장면이야',
+        '요리가 짜릿해',
+        '음식 때문에 짜증나',
+        '그 영화가 너무 짠해',
+        '그 사람은 좀 짠돌이야',
+      ]) {
+        expect(
+          routeOf(statement),
+          const VoiceIntent(VoiceIntentType.ignore),
+          reason: statement,
+        );
+      }
+    });
+
+    test('does not parse lexicalized one-letter words as cooking context', () {
+      final waveQuestion = router.route(
+        '파도는 어때?',
+        recipeTitle: '밥',
+        ingredientNames: const ['물', '쌀', '파'],
+        currentStepInstruction: '쌀을 씻는다',
+      );
+      final waveSubjectQuestion = router.route(
+        '파도가 얼마나 높아?',
+        recipeTitle: '밥',
+        ingredientNames: const ['물', '쌀', '파'],
+        currentStepInstruction: '쌀을 씻는다',
+      );
+      final waveOnlyQuestion = router.route(
+        '파도만 보여?',
+        recipeTitle: '밥',
+        ingredientNames: const ['물', '쌀', '파'],
+        currentStepInstruction: '쌀을 씻는다',
+      );
+      final fileQuestion = router.route(
+        '파일까요?',
+        recipeTitle: '밥',
+        ingredientNames: const ['물', '쌀', '파'],
+        currentStepInstruction: '쌀을 씻는다',
+      );
+      final diggingQuestion = router.route(
+        '땅을 파면 뭐가 나와?',
+        recipeTitle: '밥',
+        ingredientNames: const ['물', '쌀', '파'],
+        currentStepInstruction: '쌀을 씻는다',
+      );
+
+      expect(waveQuestion, const VoiceIntent(VoiceIntentType.ignore));
+      expect(waveSubjectQuestion, const VoiceIntent(VoiceIntentType.ignore));
+      expect(waveOnlyQuestion, const VoiceIntent(VoiceIntentType.ignore));
+      expect(fileQuestion, const VoiceIntent(VoiceIntentType.ignore));
+      expect(diggingQuestion, const VoiceIntent(VoiceIntentType.ignore));
     });
 
     test('ignores cooking statements that do not describe a problem', () {
@@ -402,7 +466,9 @@ void main() {
         '일정을 진짜로 좀 잘 짜줘',
         '계획을 진짜 약간 여유 있게 짜줘',
         '조금 전에 짠 일정 보여줘',
+        '조금 전에 짠 구체적인 주말 여행 계획 보여줘',
         '어제 짰던 계획 좀 바꿔줘',
+        '어제 짰던 아주 장기적인 휴가 일정을 바꿔줘',
         '어제 계획을 좀 짰어',
         '조금 전에 짠 계획대로 해줘',
         '계획을 음식 취향에 맞춰 좀 짜줘',
@@ -438,6 +504,14 @@ void main() {
         '계획대로 국물 약간 짜',
         '일정 얘기는 나중에 하고 이거 너무 짜',
         '일정은 나중에 보고 국 너무 짰어',
+        '김치가 너무 짠데 계획은 그대로야',
+        '김치가 너무 짠 데 계획은 그대로야',
+        '소스가 약간 짜지만 일정은 바꾸지 마',
+        '국물이 좀 짜고 계획은 나중에 세울게',
+        '일정은 정리했는데 국물이 진짜 짜',
+        '계획을 검토했지만 소스가 뭔가 짜',
+        '국물이 일정하게 좀 짜',
+        '일정한 간격으로 저었는데 국물이 좀 짜',
         '국이 짠 것 같아',
         '소스가 좀 짰어',
       ]) {

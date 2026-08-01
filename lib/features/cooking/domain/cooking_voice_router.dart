@@ -197,6 +197,7 @@ final class CookingVoiceRouter {
           text,
           lowerTranscript,
           hasIngredientContext,
+          ingredientTokens,
         ) ||
         (hasQuestionSignal &&
             (_hasCookingContext(text, lowerTranscript, dynamicContextTokens) ||
@@ -219,6 +220,7 @@ final class CookingVoiceRouter {
     String text,
     String lowerTranscript,
     bool hasIngredientContext,
+    Set<String> ingredientTokens,
   ) {
     if (_hasAny(text, const [
       // Fire, gas, burns, and cuts.
@@ -266,7 +268,7 @@ final class CookingVoiceRouter {
       return true;
     }
 
-    if (_isSaltyProblem(text, lowerTranscript)) return true;
+    if (_isSaltyProblem(text, lowerTranscript, ingredientTokens)) return true;
     if (_isMissingIngredientProblem(text, hasIngredientContext)) return true;
 
     final describesBurning = _hasAny(text, const [
@@ -282,7 +284,11 @@ final class CookingVoiceRouter {
             hasIngredientContext);
   }
 
-  bool _isSaltyProblem(String text, String lowerTranscript) {
+  bool _isSaltyProblem(
+    String text,
+    String lowerTranscript,
+    Set<String> ingredientTokens,
+  ) {
     const contextMarkers = [
       '간이',
       '국이',
@@ -299,12 +305,20 @@ final class CookingVoiceRouter {
       '조금',
       '약간',
     ];
-    if (_hasExplicitTasteExpression(lowerTranscript)) return true;
+    final predicates = _jjaPredicates(lowerTranscript).toList();
+    if (predicates.any(
+      (predicate) => _hasExplicitTasteExpression(lowerTranscript, predicate),
+    )) {
+      return true;
+    }
     if (!_hasAny(text, contextMarkers)) return false;
 
-    for (final match in RegExp('짰|짠|짜').allMatches(text)) {
-      if (_isKnownNonPredicateJja(text, match) ||
-          _isPlanningPredicateUse(text, match)) {
+    for (final predicate in predicates) {
+      if (_isPlanningPredicateUse(
+        lowerTranscript,
+        predicate,
+        ingredientTokens,
+      )) {
         continue;
       }
       return true;
@@ -312,67 +326,209 @@ final class CookingVoiceRouter {
     return false;
   }
 
-  bool _isKnownNonPredicateJja(String text, RegExpMatch match) {
-    if (match.group(0) != '짜') return false;
-    final index = match.start;
-    final previous = index == 0 ? '' : text[index - 1];
-    final next = match.end >= text.length ? '' : text[match.end];
-    return previous == '진' || previous == '가' || next == '증' || next == '장';
+  Iterable<RegExpMatch> _jjaPredicates(String lowerTranscript) sync* {
+    for (final match in RegExp('짰|짠|짜').allMatches(lowerTranscript)) {
+      if (!_isLexicalJja(lowerTranscript, match)) yield match;
+    }
   }
 
-  bool _isPlanningPredicateUse(String text, RegExpMatch predicate) {
+  bool _isLexicalJja(String lowerTranscript, RegExpMatch match) {
+    final surface = match.group(0)!;
+    final previous = match.start == 0 ? '' : lowerTranscript[match.start - 1];
+    final suffix = lowerTranscript.substring(match.end);
+
+    if (surface == '짜') {
+      return previous == '진' ||
+          previous == '가' ||
+          suffix.startsWith('증') ||
+          suffix.startsWith('장') ||
+          suffix.startsWith('릿');
+    }
+    if (surface == '짠') {
+      return suffix.startsWith('돌이') ||
+          suffix.startsWith('해') ||
+          suffix.startsWith('하');
+    }
+    return false;
+  }
+
+  bool _isPlanningPredicateUse(
+    String lowerTranscript,
+    RegExpMatch predicate,
+    Set<String> ingredientTokens,
+  ) {
     var clauseStart = 0;
-    final prefix = text.substring(0, predicate.start);
+    final prefix = lowerTranscript.substring(0, predicate.start);
     for (final match in RegExp(r'[.!?。！？;；]').allMatches(prefix)) {
       clauseStart = match.end;
     }
 
     var objectIndex = -1;
+    var objectEnd = -1;
     for (final stem in _planningObjectStems) {
-      final markerIndex = text.lastIndexOf(stem, predicate.start);
+      final markerIndex = lowerTranscript.lastIndexOf(stem, predicate.start);
       if (markerIndex >= clauseStart &&
           markerIndex > objectIndex &&
-          _isPlanningTargetAt(text, markerIndex, stem)) {
+          _isPlanningTargetAt(lowerTranscript, markerIndex, stem)) {
         objectIndex = markerIndex;
+        objectEnd = markerIndex + stem.length;
       }
     }
-    if (objectIndex < 0) {
-      return _hasFollowingPlanningTarget(text, predicate);
+    if (objectIndex >= 0 &&
+        !_startsNewFoodClause(
+          lowerTranscript,
+          objectEnd,
+          predicate.start,
+          ingredientTokens,
+        )) {
+      return true;
     }
 
-    return true;
+    return _hasFollowingPlanningTarget(
+      lowerTranscript,
+      predicate,
+      ingredientTokens,
+    );
   }
 
-  bool _isPlanningTargetAt(String text, int index, String stem) {
-    final suffix = text.substring(index + stem.length);
-    return !_planningNonTargetSuffixes.any(suffix.startsWith);
+  bool _isPlanningTargetAt(
+    String text,
+    int index,
+    String stem, {
+    bool allowAdverbialParticle = false,
+  }) {
+    final wordSuffix = _hangulWordSuffix(text, index + stem.length);
+    if (wordSuffix.isEmpty) return true;
+    if (_planningNonTargetSuffixes.any(wordSuffix.startsWith)) {
+      return allowAdverbialParticle &&
+          RegExp(r'^대로(?:은|는|도|만)?$').hasMatch(wordSuffix);
+    }
+
+    const primaryParticles = <String>[
+      '에게서',
+      '한테서',
+      '에서',
+      '으로',
+      '에게',
+      '한테',
+      '부터',
+      '까지',
+      '이랑',
+      '에',
+      '의',
+      '도',
+      '만',
+      '이',
+      '가',
+      '은',
+      '는',
+      '을',
+      '를',
+      '과',
+      '와',
+      '로',
+      '랑',
+    ];
+    const auxiliaryParticles = <String>['은', '는', '도', '만'];
+    final primary = _alternation(primaryParticles);
+    final auxiliary = _alternation(auxiliaryParticles);
+    return RegExp('^(?:$primary)(?:$auxiliary){0,2}\$').hasMatch(wordSuffix);
   }
 
-  bool _hasFollowingPlanningTarget(String text, RegExpMatch predicate) {
-    var clauseEnd = text.length;
+  bool _startsNewFoodClause(
+    String lowerTranscript,
+    int objectEnd,
+    int predicateStart,
+    Set<String> ingredientTokens,
+  ) {
+    final between = lowerTranscript.substring(objectEnd, predicateStart);
+    final connectorPattern = RegExp(
+      r'(?:그런데|그러나|하지만|반면|보니까|보니|했는데|였는데|인데|는데|더니|다가|하고|지만|고)(?:\s+|[,，]\s*)',
+    );
+    RegExpMatch? lastConnector;
+    for (final connector in connectorPattern.allMatches(between)) {
+      lastConnector = connector;
+    }
+    if (lastConnector == null) return false;
+
+    return _hasTasteSubject(
+      between.substring(lastConnector.end),
+      ingredientTokens,
+    );
+  }
+
+  bool _hasFollowingPlanningTarget(
+    String lowerTranscript,
+    RegExpMatch predicate,
+    Set<String> ingredientTokens,
+  ) {
+    if (!_isForwardPlanningPredicate(lowerTranscript, predicate)) return false;
+
+    var clauseEnd = lowerTranscript.length;
     final punctuation = RegExp(
-      r'[.!?。！？;；]',
-    ).firstMatch(text.substring(predicate.end));
+      r'[.!?。！？;；,，]',
+    ).firstMatch(lowerTranscript.substring(predicate.end));
     if (punctuation != null) clauseEnd = predicate.end + punctuation.start;
 
     for (final stem in _planningObjectStems) {
-      final objectIndex = text.indexOf(stem, predicate.end);
+      final objectIndex = lowerTranscript.indexOf(stem, predicate.end);
       if (objectIndex < 0 || objectIndex >= clauseEnd) continue;
-      final between = text.substring(predicate.end, objectIndex);
-      if (between.runes.length <= 3 && !_hasAny(between, _tasteSubjectStems)) {
-        return true;
+      if (!_isPlanningTargetAt(
+        lowerTranscript,
+        objectIndex,
+        stem,
+        allowAdverbialParticle: true,
+      )) {
+        continue;
       }
+      final between = lowerTranscript.substring(predicate.end, objectIndex);
+      if (_startsWithConnectingEnding(between)) return false;
+      if (!_hasTasteSubject(between, ingredientTokens)) return true;
     }
     return false;
   }
 
-  bool _hasExplicitTasteExpression(String lowerTranscript) {
+  bool _startsWithConnectingEnding(String value) {
+    return RegExp(r'^\s*(?:데도|데|지만|고|면서)(?:\s+|[,，])').hasMatch(value);
+  }
+
+  bool _isForwardPlanningPredicate(
+    String lowerTranscript,
+    RegExpMatch predicate,
+  ) {
+    final surface = predicate.group(0)!;
+    final wordSuffix = _hangulWordSuffix(lowerTranscript, predicate.end);
+    if (surface == '짠') {
+      return wordSuffix.isEmpty ||
+          _planningObjectStems.any(wordSuffix.startsWith);
+    }
+    if (surface != '짰') return false;
+    if (wordSuffix == '던') return true;
+    return _planningObjectStems.any((stem) => wordSuffix.startsWith('던$stem'));
+  }
+
+  bool _hasTasteSubject(String value, Set<String> ingredientTokens) {
+    final normalized = _normalize(value);
+    final lower = value.toLowerCase();
+    return _tasteSubjectStems.any(
+          (subject) => subject.runes.length == 1
+              ? _hasSingleKoreanWordToken(lower, subject)
+              : normalized.contains(subject),
+        ) ||
+        _hasIngredientContext(value, ingredientTokens);
+  }
+
+  bool _hasExplicitTasteExpression(
+    String lowerTranscript,
+    RegExpMatch predicate,
+  ) {
     final subjects = _alternation(_tasteSubjectStems);
     final degrees = _alternation(_tasteDegreeMarkers);
+    final prefix = lowerTranscript.substring(0, predicate.start);
     return RegExp(
       '(^|[^가-힣a-z0-9])(?:$subjects)'
-      '(?:이|가|은|는|도|만)?\\s*(?:(?:$degrees)\\s*)?(?:짰|짠|짜)',
-    ).hasMatch(lowerTranscript);
+      '(?:이|가|은|는|도|만)?\\s*(?:(?:$degrees)\\s*)?\$',
+    ).hasMatch(prefix);
   }
 
   bool _isMissingIngredientProblem(String text, bool hasIngredientContext) {
@@ -401,7 +557,11 @@ final class CookingVoiceRouter {
   ) {
     return _staticCookingContext.any(text.contains) ||
         _boundaryCookingContext.any(
-          (token) => _hasSingleKoreanWordToken(lowerTranscript, token),
+          (token) => _hasSingleKoreanWordToken(
+            lowerTranscript,
+            token,
+            allowCopular: true,
+          ),
         ) ||
         dynamicTokens.any(text.contains);
   }
@@ -422,7 +582,11 @@ final class CookingVoiceRouter {
     return false;
   }
 
-  bool _hasSingleKoreanWordToken(String lower, String token) {
+  bool _hasSingleKoreanWordToken(
+    String lower,
+    String token, {
+    bool allowCopular = false,
+  }) {
     final codePoint = token.runes.single;
     final finalConsonant = (codePoint - 0xAC00) % 28;
     final hasFinalConsonant = finalConsonant != 0;
@@ -491,12 +655,62 @@ final class CookingVoiceRouter {
     };
     final primaryPattern = _alternation(primaryParticles);
     final auxiliaryPattern = _alternation(auxiliaryParticles);
-    final pattern = RegExp(
-      '(^|[^가-힣a-z0-9])${RegExp.escape(token)}'
-      '(?:(?:$primaryPattern)?(?:$auxiliaryPattern){0,2}요?)?'
+    final copularEndings = <String>{
+      '인가요',
+      '인가',
+      '일까요',
+      '일까',
+      '입니다',
+      if (hasFinalConsonant) ...[
+        '이었나요',
+        '이었어요',
+        '이어도요',
+        '이어도',
+        '이면요',
+        '이면',
+        '이에요',
+      ],
+      if (!hasFinalConsonant) ...['였나요', '였어요', '여도요', '여도', '면요', '면', '예요'],
+    };
+    final copularPattern = _alternation(copularEndings);
+    final tokenPattern = RegExp('(^|[^가-힣a-z0-9])${RegExp.escape(token)}');
+    final particlePattern =
+        '(?:(?:$primaryPattern)?(?:$auxiliaryPattern){0,2}요?)';
+    final suffixAlternatives = allowCopular
+        ? '(?:$copularPattern)|$particlePattern'
+        : particlePattern;
+    final suffixPattern = RegExp(
+      '^(?:$suffixAlternatives)?'
       r'(?=$|[^가-힣a-z0-9])',
     );
-    return pattern.hasMatch(lower);
+    for (final candidate in tokenPattern.allMatches(lower)) {
+      final wordSuffix = _hangulWordSuffix(lower, candidate.end);
+      if (_isKnownSingleTokenLexeme(token, wordSuffix)) continue;
+      if (suffixPattern.hasMatch(lower.substring(candidate.end))) return true;
+    }
+    return false;
+  }
+
+  bool _isKnownSingleTokenLexeme(String token, String wordSuffix) {
+    final lexicalRoots = switch (token) {
+      '불' => const ['만', '과', '의'],
+      '파' => const ['도'],
+      _ => const <String>[],
+    };
+    for (final root in lexicalRoots) {
+      if (!wordSuffix.startsWith(root)) continue;
+      final tail = wordSuffix.substring(root.length);
+      if (tail.isEmpty ||
+          RegExp(r'^(?:(?:이|가|은|는|을|를|의|도|만)){1,2}요?$').hasMatch(tail)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  String _hangulWordSuffix(String value, int start) {
+    return RegExp(r'^[가-힣]+').firstMatch(value.substring(start))?.group(0) ??
+        '';
   }
 
   String _alternation(Iterable<String> values) {
