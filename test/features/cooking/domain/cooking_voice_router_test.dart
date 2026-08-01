@@ -142,6 +142,40 @@ void main() {
         const VoiceIntent(VoiceIntentType.extendTimer, seconds: 30),
       );
       expect(
+        routeOf('1분 더 연장하는 대신 30초 더'),
+        const VoiceIntent(VoiceIntentType.extendTimer, seconds: 30),
+      );
+      expect(
+        routeOf('1분 더 추가하는 대신 30초 더'),
+        const VoiceIntent(VoiceIntentType.extendTimer, seconds: 30),
+      );
+      expect(
+        routeOf('1분 더, 아니 30초 더'),
+        const VoiceIntent(VoiceIntentType.extendTimer, seconds: 30),
+      );
+      expect(
+        routeOf('1분 더, 아니 30초 더, 아니 45초 더'),
+        const VoiceIntent(VoiceIntentType.extendTimer, seconds: 45),
+      );
+      expect(
+        routeOf('1분 추가 취소하고 45초만 연장'),
+        const VoiceIntent(VoiceIntentType.extendTimer, seconds: 45),
+      );
+      expect(routeOf('1분 추가 취소'), const VoiceIntent(VoiceIntentType.ignore));
+      expect(routeOf('1분 더하지 마'), const VoiceIntent(VoiceIntentType.ignore));
+      expect(
+        routeOf('1분 더 말고 30초도 추가하지 마'),
+        const VoiceIntent(VoiceIntentType.ignore),
+      );
+      expect(
+        routeOf('1분 추가할까 했지만 안 할게'),
+        const VoiceIntent(VoiceIntentType.ignore),
+      );
+      expect(
+        routeOf('1분 더 추가할까 했지만 안 할게'),
+        const VoiceIntent(VoiceIntentType.ignore),
+      );
+      expect(
         routeOf('추가로 1분'),
         const VoiceIntent(VoiceIntentType.extendTimer, seconds: 60),
       );
@@ -499,6 +533,15 @@ void main() {
         '생고기를 못 익혀서 먹었어',
         '생고기를 안 다 익힌 뒤 먹었어',
         '생고기를 덜 익힌 뒤 먹었어',
+        '생고기를 먹은 적 없지만 오늘 먹었어',
+        '생고기를 안 먹으려 했지만 결국 먹었어',
+        '생고기를 익혀야 했지만 그냥 먹었어',
+        '생고기를 먹으려 해',
+        '생고기를 먹어도 돼?',
+        '생고기를 먹으면 괜찮을까?',
+        '생고기는 썰기만 하고 그대로 먹었어',
+        '생고기를 양념했지만 익히지 않은 채 먹었어',
+        '생고기를 익혀 먹었고 남은 생고기는 그대로 먹었어',
       ]) {
         expect(
           routeOf(problem),
@@ -512,6 +555,17 @@ void main() {
         '생고기를 팬에 올렸어',
         '생고기를 먹기 좋게 썰었어',
         '생고기를 넣었어. 밥을 먹었어',
+        '생고기를 넣었어, 그리고 밥을 먹었어',
+        '생고기를 넣었고 밥을 먹었어',
+        '생고기를 냉장고에 넣고 밥을 먹었어',
+        '생고기를 손질했고 아이는 과자를 먹었어',
+        '생고기를 먹지 말고 완전히 익힌 뒤 먹었어',
+        '생고기를 먹으려다 그만뒀어',
+        '생고기를 익혀 먹으려 했지만 결국 안 먹었어',
+        '생고기를 먹으려 했지만 결국 안 먹었어',
+        '생고기를 먹으려다가 결국 안 먹었어',
+        '생고기를 먹었다고 한 건 아니야',
+        '“생고기를 먹었어”라는 말은 사실이 아니야',
         '생고기를 익혀 먹었어',
         '생고기를 구워서 먹었어',
         '생고기를 익혀서 먹었어',
