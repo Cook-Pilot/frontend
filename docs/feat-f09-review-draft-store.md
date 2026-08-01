@@ -94,6 +94,9 @@ cookpilot.pending_review_draft.v1
   형식과 정확히 일치해야 한다. 날짜 normalization, offset, zone 생략,
   비정규 fractional second 표현은 복원하지 않는다.
 - 실행 스냅샷의 source와 `personalVersionId` 존재 여부가 일치해야 한다.
+- 실행 스냅샷의 `baseServings`는 양의 finite 숫자여야 하며, 각 재료의
+  `amount`와 `baselineAmount`는 `null`이거나 finite 숫자여야 한다. `NaN`과
+  양·음의 infinity는 거부한다.
 - 단계 index는 0부터 연속이어야 한다.
 - 실행 단계의 기본 타이머와 타이머 map의 override 초 값은 음수가 아니고
   32-bit signed integer 상한을 넘지 않아야 한다. 타이머 map의 index도 실행
@@ -168,7 +171,7 @@ SharedPreferences의 플랫폼 저장이나 삭제가 `false`를 반환하거나
 - emoji를 포함한 후기 code point 상한
 - UUID·별점·NUL·잘못된 Unicode 거부
 - canonical UTC `cookedAt`과 잘못된 날짜·offset·fraction 거부
-- 실행 스냅샷·타이머 index·기본/override 초 범위 무결성
+- 실행 스냅샷의 재료 수치·타이머 index·기본/override 초 범위 무결성
 - 여러 store 인스턴스의 동시 저장 직렬화
 - 앞선 저장 실패 뒤에도 다음 작업이 진행되는 큐 복구
 - 플랫폼 저장·삭제 실패 뒤 메모리 캐시와 실제 저장값의 재동기화
