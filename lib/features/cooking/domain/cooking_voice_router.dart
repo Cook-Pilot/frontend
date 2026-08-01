@@ -181,6 +181,8 @@ final class CookingVoiceRouter {
       ingredientTokens,
     );
     final recipeTokens = <String>{..._contextTokens(recipeTitle)};
+    final hasFullRecipeTitleContext =
+        recipeTokens.length > 1 && text.contains(_normalize(recipeTitle));
     final tasteContextTokens = <String>{...ingredientTokens, ...recipeTokens};
     final dynamicContextTokens = <String>{
       ...recipeTokens,
@@ -203,6 +205,7 @@ final class CookingVoiceRouter {
         ) ||
         (hasQuestionSignal &&
             (_hasCookingContext(text, lowerTranscript, dynamicContextTokens) ||
+                hasFullRecipeTitleContext ||
                 hasIngredientContext))) {
       return const VoiceIntent(VoiceIntentType.exceptionQuestion);
     }
@@ -973,11 +976,13 @@ final class CookingVoiceRouter {
             candidate.end + wordSuffix.length,
           );
           if (continuation == '요' ||
-              _isIngredientCookingContinuation(continuation)) {
+              _isIngredientCookingContinuation(continuation) ||
+              _isIngredientQuantityQuestion(continuation)) {
             return true;
           }
           if (continuation.isEmpty &&
               (_isIngredientCookingContinuation(followingText) ||
+                  _isIngredientQuantityQuestion(followingText) ||
                   RegExp(r'^\s*(?:요\s*)?[?？]').hasMatch(followingText))) {
             return true;
           }
@@ -1100,6 +1105,13 @@ final class CookingVoiceRouter {
       r'익|삶|데치|끓|섞|갈|다지|자르|먹|양념|없|부족|모자라|'
       r'떨어졌|다썼|상했|상한|탔|짜|싱거|괜찮|어때)',
     ).hasMatch(continuation);
+  }
+
+  bool _isIngredientQuantityQuestion(String value) {
+    return RegExp(
+      r'^\s*몇\s*(?:개|그램|킬로|큰술|작은술|컵|쪽|알|단|줌|스푼)?'
+      r'\s*(?:야|인가|인가요|예요|이에요|지|죠)?\s*[?？]?$',
+    ).hasMatch(value);
   }
 
   bool _hasSingleKoreanWordToken(
@@ -1324,7 +1336,8 @@ final class CookingVoiceRouter {
             r'(?:(?:안|못)(?:했|됐|끝냈|끝났)|하지않|되지않|끝내지않)',
           ).hasMatch(tail) ||
           RegExp(
-            r'^(?:했|됐|났|낸|한|된|난)?(?:다는)?'
+            r'^(?:(?:이|가|은|는|도)?(?:했|됐|났|낸|한|된|난)?(?:다는)?|'
+            r'(?:이?라고)(?:말)?(?:했|한))'
             r'(?:건|게|것(?:이|은)?)(?:전혀|절대|아예)?아니',
           ).hasMatch(tail)) {
         return true;
@@ -1514,9 +1527,13 @@ final class CookingVoiceRouter {
     final gap = source
         .substring(previousSignal.end, marker.start)
         .replaceAll(RegExp(r'[\s,，.!?。！？;；]'), '');
-    return gap.isEmpty ||
-        _isExtensionSignalSuffix(previousSignal.group(0)!, gap) ||
-        RegExp(r'^(?:그건|그거는|그걸|그것은|그것을)$').hasMatch(gap);
+    final signal = previousSignal.group(0)!;
+    if (gap.isEmpty || _isExtensionSignalSuffix(signal, gap)) return true;
+
+    final referent = RegExp(r'(?:그건|그거는|그걸|그것은|그것을)$').firstMatch(gap);
+    if (referent == null) return false;
+    final action = gap.substring(0, referent.start);
+    return action.isEmpty || _isExtensionSignalSuffix(signal, action);
   }
 
   bool _isNegatedReplacementMarker(String source, RegExpMatch marker) {

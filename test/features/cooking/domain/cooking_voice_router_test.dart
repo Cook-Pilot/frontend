@@ -130,6 +130,10 @@ void main() {
         const VoiceIntent(VoiceIntentType.extendTimer, seconds: 30),
       );
       expect(
+        routeOf('1분 더 해줘. 그건 말고 30초 더'),
+        const VoiceIntent(VoiceIntentType.extendTimer, seconds: 30),
+      );
+      expect(
         routeOf('1분 더하지 말고 30초 더'),
         const VoiceIntent(VoiceIntentType.extendTimer, seconds: 30),
       );
@@ -271,7 +275,12 @@ void main() {
       expect(routeOf('요리는 완료했어'), const VoiceIntent(VoiceIntentType.finish));
       expect(routeOf('조리가 완료됐어'), const VoiceIntent(VoiceIntentType.finish));
 
-      for (final negatedCompletion in const ['조리 완료는 아직 안 했어', '조리 끝난 건 아니야']) {
+      for (final negatedCompletion in const [
+        '조리 완료는 아직 안 했어',
+        '조리 끝난 건 아니야',
+        '조리 완료라고 한 건 아니야',
+        '조리 완료가 된 건 아니야',
+      ]) {
         expect(
           routeOf(negatedCompletion),
           const VoiceIntent(VoiceIntentType.ignore),
@@ -513,6 +522,7 @@ void main() {
         '가지가 없어',
         '가지는요?',
         '양파는 몇 개 넣어?',
+        '양파는 몇 개?',
       ]) {
         expect(
           routeWithEggplant(cookingQuestion),
@@ -528,6 +538,17 @@ void main() {
         currentStepInstruction: '팬을 달군다',
       );
       expect(recipeTitleHomonym, const VoiceIntent(VoiceIntentType.ignore));
+
+      final fullRecipeTitle = router.route(
+        '토마토 파스타 어떻게 해?',
+        recipeTitle: '토마토 파스타',
+        ingredientNames: const ['양파'],
+        currentStepInstruction: '팬을 달군다',
+      );
+      expect(
+        fullRecipeTitle,
+        const VoiceIntent(VoiceIntentType.exceptionQuestion),
+      );
     });
 
     test('does not mistake 진짜 for a salty problem', () {
