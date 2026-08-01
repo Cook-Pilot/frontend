@@ -102,8 +102,9 @@ final class CookingVoiceSessionController {
     return start();
   }
 
-  /// [preservePendingHandsFreeStart] retains only a not-yet-started opt-in;
-  /// the caller remains responsible for starting it after returning resumed.
+  /// [preservePendingHandsFreeStart] retains only a not-yet-started opt-in
+  /// across hidden/paused. Detached always disarms because no host view remains.
+  /// The caller remains responsible for starting it after returning resumed.
   void handleLifecycleStateChanged(
     AppLifecycleState state, {
     bool preservePendingHandsFreeStart = false,
@@ -132,6 +133,8 @@ final class CookingVoiceSessionController {
 
     final preserveCallerOwnedStart =
         preservePendingHandsFreeStart &&
+        (state == AppLifecycleState.hidden ||
+            state == AppLifecycleState.paused) &&
         _handsFreeAutoRearm &&
         !_handsFreeHasStarted;
     if (preserveCallerOwnedStart) {

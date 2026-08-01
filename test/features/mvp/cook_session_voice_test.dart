@@ -13,19 +13,31 @@ import '../../helpers/cooking_fakes.dart';
 final class _DeferredAlarmResolver {
   final Completer<TimerAlarmPort> _completion = Completer<TimerAlarmPort>();
   TimerAlarmPermissionFlowChanged? _onPermissionFlowChanged;
+  bool _listenerCancelled = false;
 
-  Future<TimerAlarmPort> call(
+  bool get listenerCancelled => _listenerCancelled;
+
+  TimerAlarmRegistration call(
     TimerAlarmPermissionFlowChanged onPermissionFlowChanged,
   ) {
     _onPermissionFlowChanged = onPermissionFlowChanged;
-    return _completion.future;
+    return TimerAlarmRegistration(
+      alarm: _completion.future,
+      onCancel: () => _listenerCancelled = true,
+    );
   }
 
-  void beginPermissionFlow() => _onPermissionFlowChanged!(true);
+  void beginPermissionFlow() => _notifyPermissionFlow(true);
 
-  void endPermissionFlow() => _onPermissionFlowChanged!(false);
+  void endPermissionFlow() => _notifyPermissionFlow(false);
 
   void complete() => _completion.complete(const SilentTimerAlarm());
+
+  void _notifyPermissionFlow(bool active) {
+    if (!_listenerCancelled) {
+      _onPermissionFlowChanged!(active);
+    }
+  }
 }
 
 void main() {
@@ -273,6 +285,59 @@ void main() {
     expect(find.text('듣는 중'), findsOneWidget);
   });
 
+  testWidgets('owned 권한-flow여도 detached는 최초 핸즈프리 pending을 취소한다', (
+    tester,
+  ) async {
+    final speech = FakeSpeechInput();
+    final alarm = _DeferredAlarmResolver();
+    await pumpSession(
+      tester,
+      speechInput: speech,
+      handsFreeVoiceEnabled: true,
+      alarm: null,
+      alarmResolver: alarm.call,
+    );
+
+    alarm.beginPermissionFlow();
+    backgroundApp(tester);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.detached);
+    alarm.endPermissionFlow();
+    alarm.complete();
+    await tester.pumpAndSettle();
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pumpAndSettle();
+    expect(speech.startCount, 0);
+    expect(find.text('듣는 중'), findsNothing);
+  });
+
+  testWidgets('owned 권한-flow여도 detached는 수동 말하기 pending을 취소한다', (tester) async {
+    final speech = FakeSpeechInput();
+    final alarm = _DeferredAlarmResolver();
+    await pumpSession(
+      tester,
+      speechInput: speech,
+      alarm: null,
+      alarmResolver: alarm.call,
+    );
+
+    alarm.beginPermissionFlow();
+    final voiceButton = find.byKey(const Key('voice-input-toggle'));
+    await tester.ensureVisible(voiceButton);
+    await tester.tap(voiceButton);
+    await tester.pump();
+    backgroundApp(tester);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.detached);
+    alarm.endPermissionFlow();
+    alarm.complete();
+    await tester.pumpAndSettle();
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pumpAndSettle();
+    expect(speech.startCount, 0);
+    expect(find.text('듣는 중'), findsNothing);
+  });
+
   testWidgets('기본 말하기는 알림 초기화와 resumed 뒤에 한 번만 시작한다', (tester) async {
     final speech = FakeSpeechInput();
     final alarm = _DeferredAlarmResolver();
@@ -431,6 +496,30 @@ void main() {
     expect(find.byKey(const Key('help-question-field')), findsOneWidget);
 
     await finishOwnedAlarmFlowWhileBackgrounded(tester, alarm);
+    expect(speech.startCount, 0);
+  });
+
+  testWidgets('화면 dispose는 alarm listener와 pending 마이크 시작을 즉시 취소한다', (
+    tester,
+  ) async {
+    final speech = FakeSpeechInput();
+    final alarm = _DeferredAlarmResolver();
+    await pumpSession(
+      tester,
+      speechInput: speech,
+      handsFreeVoiceEnabled: true,
+      alarm: null,
+      alarmResolver: alarm.call,
+    );
+    alarm.beginPermissionFlow();
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+    expect(alarm.listenerCancelled, isTrue);
+
+    alarm.endPermissionFlow();
+    alarm.complete();
+    await tester.pumpAndSettle();
     expect(speech.startCount, 0);
   });
 

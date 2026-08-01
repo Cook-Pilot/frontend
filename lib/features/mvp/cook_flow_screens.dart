@@ -1562,6 +1562,7 @@ class _CookSessionScreenState extends State<CookSessionScreen>
   // 기본 클럭이 WallAnchoredMonotonicClock이라 화면이 꺼져도 시간이 이어진다.
   final LocalTimerController _timer = LocalTimerController();
   TimerAlarmPort? _alarm;
+  TimerAlarmRegistration? _alarmRegistration;
   late final Future<void> _alarmInitialization;
   late AppLifecycleState _appLifecycleState;
   bool _alarmInitializationComplete = false;
@@ -1662,16 +1663,21 @@ class _CookSessionScreenState extends State<CookSessionScreen>
 
   Future<void> _initAlarm() async {
     // 백그라운드 알림용 로컬 알림을 한 번 초기화(권한 요청 포함)한다.
+    TimerAlarmRegistration? registration;
     try {
       final TimerAlarmPort alarm;
       if (widget.alarm case final injected?) {
         alarm = injected;
       } else if (widget.alarmResolver case final resolver?) {
-        alarm = await resolver(_handleAlarmPermissionFlowChanged);
+        registration = resolver(_handleAlarmPermissionFlowChanged);
+        _alarmRegistration = registration;
+        alarm = await registration.alarm;
       } else {
-        alarm = await resolveTimerAlarm(
+        registration = resolveTimerAlarm(
           onPermissionFlowChanged: _handleAlarmPermissionFlowChanged,
         );
+        _alarmRegistration = registration;
+        alarm = await registration.alarm;
       }
       if (mounted) {
         _alarm = alarm;
@@ -1681,6 +1687,11 @@ class _CookSessionScreenState extends State<CookSessionScreen>
     } catch (_) {
       // 알림 권한이나 플러그인 초기화가 실패해도 화면 타이머와 음성 조리는
       // 계속 사용할 수 있다.
+    } finally {
+      registration?.cancel();
+      if (identical(_alarmRegistration, registration)) {
+        _alarmRegistration = null;
+      }
     }
   }
 
@@ -1722,15 +1733,16 @@ class _CookSessionScreenState extends State<CookSessionScreen>
     if (state == AppLifecycleState.resumed) {
       _timer.sync();
     }
-    final isBackgroundState =
-        state == AppLifecycleState.hidden ||
-        state == AppLifecycleState.paused ||
-        state == AppLifecycleState.detached;
+    final isOwnedPermissionBackgroundState =
+        state == AppLifecycleState.hidden || state == AppLifecycleState.paused;
     final preserveOwnedPermissionStart =
-        isBackgroundState &&
+        isOwnedPermissionBackgroundState &&
         _alarmPermissionFlowActive &&
         _hasPendingSpeechStart;
-    if (isBackgroundState && !preserveOwnedPermissionStart) {
+    final cancelsPendingSpeech =
+        state == AppLifecycleState.detached ||
+        (isOwnedPermissionBackgroundState && !preserveOwnedPermissionStart);
+    if (cancelsPendingSpeech) {
       _cancelPendingSpeechStarts();
     }
     _voiceSession.handleLifecycleStateChanged(
@@ -1750,6 +1762,9 @@ class _CookSessionScreenState extends State<CookSessionScreen>
   @override
   void dispose() {
     _disposed = true;
+    _cancelPendingSpeechStarts();
+    _alarmRegistration?.cancel();
+    _alarmRegistration = null;
     WidgetsBinding.instance.removeObserver(this);
     _timer.removeListener(_onTimerChanged);
     _voiceSession.dispose();

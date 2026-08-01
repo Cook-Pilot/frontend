@@ -222,6 +222,27 @@ void main() {
     expect(controller.phase, CookingVoiceSpeechPhase.idle);
   });
 
+  test('호출자가 preserve를 요청해도 detached는 시작 전 핸즈프리 opt-in을 해제한다', () async {
+    final speech = FakeSpeechInput();
+    final controller = createController(
+      speech: speech,
+      states: <(CookingVoiceSpeechPhase, String?)>[],
+      transcripts: <String>[],
+      handsFreeEnabled: true,
+    );
+    addTearDown(controller.dispose);
+
+    controller.handleLifecycleStateChanged(
+      AppLifecycleState.detached,
+      preservePendingHandsFreeStart: true,
+    );
+    controller.handleLifecycleStateChanged(AppLifecycleState.resumed);
+    await controller.startHandsFree();
+
+    expect(speech.startCount, 0);
+    expect(controller.phase, CookingVoiceSpeechPhase.idle);
+  });
+
   test('중복 inactive 뒤 복구한 핸즈프리는 명령 후에도 다시 듣는다', () async {
     final speech = FakeSpeechInput()
       ..autoReady = false
