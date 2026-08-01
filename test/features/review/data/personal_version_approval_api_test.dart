@@ -136,6 +136,149 @@ void main() {
     });
   });
 
+  test('MODIFY의 amount 삭제와 미변경을 구분하고 ADD REMOVE 형태를 유지한다', () {
+    final request = PersonalVersionApprovalRequest.fromSnapshot(
+      snapshot: _snapshotWith(
+        ingredients: const <CookingSetupIngredient>[
+          CookingSetupIngredient(
+            originalIngredientId: '11000000-0000-0000-0000-000000000001',
+            originalName: '물',
+            name: '물',
+            amount: null,
+            baselineAmount: 500,
+            unit: 'ml',
+            isRequired: true,
+          ),
+          CookingSetupIngredient(
+            originalIngredientId: '11000000-0000-0000-0000-000000000002',
+            originalName: '물',
+            name: '육수',
+            amount: 500,
+            baselineAmount: 500,
+            baselineUnit: 'ml',
+            baselineIsRequired: true,
+            unit: '컵',
+            isRequired: false,
+          ),
+          CookingSetupIngredient(
+            originalIngredientId: '11000000-0000-0000-0000-000000000003',
+            originalName: '소금',
+            name: '소금',
+            amount: 3,
+            baselineAmount: 2,
+            unit: 'g',
+            isRequired: true,
+          ),
+          CookingSetupIngredient(
+            originalName: '치즈',
+            name: '치즈',
+            amount: 1,
+            unit: '장',
+            isRequired: false,
+          ),
+          CookingSetupIngredient(
+            originalName: '후추',
+            name: '후추',
+            amount: null,
+            unit: '약간',
+            isRequired: false,
+          ),
+          CookingSetupIngredient(
+            originalIngredientId: '11000000-0000-0000-0000-000000000004',
+            originalName: '계란',
+            name: '계란',
+            amount: 1,
+            baselineAmount: 1,
+            unit: '개',
+            isRequired: true,
+            omitted: true,
+          ),
+        ],
+      ),
+    ).toJson();
+
+    final setup = request['setup'] as Map<String, Object?>;
+    expect(setup['ingredientAdjustments'], <Map<String, Object?>>[
+      <String, Object?>{
+        'originalIngredientId': '11000000-0000-0000-0000-000000000001',
+        'type': 'MODIFY',
+        'amount': null,
+        'sortOrder': 0,
+      },
+      <String, Object?>{
+        'originalIngredientId': '11000000-0000-0000-0000-000000000002',
+        'type': 'MODIFY',
+        'name': '육수',
+        'unit': '컵',
+        'required': false,
+        'sortOrder': 1,
+      },
+      <String, Object?>{
+        'originalIngredientId': '11000000-0000-0000-0000-000000000003',
+        'type': 'MODIFY',
+        'amount': 3.0,
+        'sortOrder': 2,
+      },
+      <String, Object?>{
+        'type': 'ADD',
+        'name': '치즈',
+        'amount': 1.0,
+        'unit': '장',
+        'required': false,
+        'sortOrder': 3,
+      },
+      <String, Object?>{
+        'type': 'ADD',
+        'name': '후추',
+        'amount': null,
+        'unit': '약간',
+        'required': false,
+        'sortOrder': 4,
+      },
+      <String, Object?>{
+        'originalIngredientId': '11000000-0000-0000-0000-000000000004',
+        'type': 'REMOVE',
+        'sortOrder': 5,
+      },
+    ]);
+  });
+
+  test('API body에 숫자 수량 삭제를 amount null로 명시한다', () async {
+    late String rawRequestBody;
+    final api = PersonalVersionApprovalApi(
+      baseUrl: baseUrl,
+      client: MockClient((request) async {
+        rawRequestBody = request.body;
+        return http.Response('', 201);
+      }),
+    );
+
+    await api.createFromApprovedReview(
+      reviewId: reviewId,
+      snapshot: _snapshotWith(
+        ingredients: const <CookingSetupIngredient>[
+          CookingSetupIngredient(
+            originalIngredientId: '11000000-0000-0000-0000-000000000001',
+            originalName: '물',
+            name: '물',
+            amount: null,
+            baselineAmount: 500,
+            unit: 'ml',
+            isRequired: true,
+          ),
+        ],
+      ),
+    );
+
+    final body = jsonDecode(rawRequestBody) as Map<String, dynamic>;
+    final setup = body['setup'] as Map<String, dynamic>;
+    final adjustments = setup['ingredientAdjustments'] as List<dynamic>;
+    final adjustment = adjustments.single as Map<String, dynamic>;
+    expect(adjustment.containsKey('amount'), isTrue);
+    expect(adjustment['amount'], isNull);
+    expect(rawRequestBody, contains('"amount":null'));
+  });
+
   test('개인 버전 합성 결과도 원본 기준 REMOVE ADD inherited MODIFY를 모두 유지한다', () {
     final ingredients = buildOriginalAnchoredSetupIngredients(
       baseIngredients: const <Ingredient>[
