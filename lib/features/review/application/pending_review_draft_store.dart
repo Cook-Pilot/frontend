@@ -187,7 +187,9 @@ final class PendingReviewDraft {
     }) {
       try {
         final cookedAt = DateTime.tryParse(cookedAtValue);
-        if (cookedAt == null || !cookedAt.isUtc) {
+        if (cookedAt == null ||
+            !cookedAt.isUtc ||
+            cookedAt.toIso8601String() != cookedAtValue) {
           return null;
         }
         final setupSnapshotJson = Map<String, Object?>.from(setupSnapshotValue);
@@ -464,6 +466,16 @@ void _validateSetupSnapshot(CookingSetupSnapshot snapshot) {
       _requireCanonicalUuid(
         originalStepId,
         'setupSnapshot.steps.originalStepId',
+      );
+    }
+    final timerSeconds = step.timerSeconds;
+    if (timerSeconds != null &&
+        (timerSeconds < 0 ||
+            timerSeconds > PendingReviewDraft.maximumTimerSeconds)) {
+      throw ArgumentError.value(
+        timerSeconds,
+        'setupSnapshot.steps.timerSeconds',
+        'must be within the supported integer range',
       );
     }
   }

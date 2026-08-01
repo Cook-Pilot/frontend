@@ -90,11 +90,14 @@ cookpilot.pending_review_draft.v1
 - `clientSessionId`, 레시피 ID, 개인 버전 ID, 원본 재료·단계 ID는
   소문자 canonical UUID 형식이어야 한다.
 - nil UUID는 조리 식별자로 사용하지 않는다.
-- `cookedAt` 저장값에는 UTC 또는 명시적인 offset이 있어야 한다.
+- `cookedAt` 저장값은 `DateTime.toIso8601String()`이 생성하는 canonical UTC
+  형식과 정확히 일치해야 한다. 날짜 normalization, offset, zone 생략,
+  비정규 fractional second 표현은 복원하지 않는다.
 - 실행 스냅샷의 source와 `personalVersionId` 존재 여부가 일치해야 한다.
 - 단계 index는 0부터 연속이어야 한다.
-- 타이머 map의 index는 실행 스냅샷 단계 안에 있어야 하며 초 값은 음수가
-  아니고 32-bit signed integer 상한을 넘지 않아야 한다.
+- 실행 단계의 기본 타이머와 타이머 map의 override 초 값은 음수가 아니고
+  32-bit signed integer 상한을 넘지 않아야 한다. 타이머 map의 index도 실행
+  스냅샷 단계 안에 있어야 한다.
 - 별점은 필수이며 1~5다.
 - `comment`는 Unicode code point 기준 1,000자,
   `nextTimeNote`는 500자까지 허용한다.
@@ -133,9 +136,9 @@ SharedPreferences의 플랫폼 저장이나 삭제가 `false`를 반환하거나
 - JSON 문법 오류
 - 지원하지 않는 schema version
 - 누락되거나 추가된 최상위 필드
-- 잘못된 UUID·별점·후기 길이
+- 잘못된 UUID·별점·후기 길이·비정규 `cookedAt`
 - 손상된 실행 스냅샷
-- 실행 단계 밖을 가리키는 타이머 값
+- 실행 단계 밖을 가리키거나 지원 범위를 벗어난 기본·override 타이머 값
 
 손상값 제거 자체가 일시적으로 실패해도 앱에는 그 값을 반환하지 않는다.
 다음 `load`에서 정리를 다시 시도한다. 정상 `save`와 명시적 `clear`의 저장소
@@ -164,7 +167,8 @@ SharedPreferences의 플랫폼 저장이나 삭제가 `false`를 반환하거나
 - 모든 복구 필드의 JSON·SharedPreferences 왕복
 - emoji를 포함한 후기 code point 상한
 - UUID·별점·NUL·잘못된 Unicode 거부
-- 실행 스냅샷·타이머 index 무결성
+- canonical UTC `cookedAt`과 잘못된 날짜·offset·fraction 거부
+- 실행 스냅샷·타이머 index·기본/override 초 범위 무결성
 - 여러 store 인스턴스의 동시 저장 직렬화
 - 앞선 저장 실패 뒤에도 다음 작업이 진행되는 큐 복구
 - 플랫폼 저장·삭제 실패 뒤 메모리 캐시와 실제 저장값의 재동기화
