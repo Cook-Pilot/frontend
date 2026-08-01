@@ -1562,6 +1562,12 @@ class _CookSessionScreenState extends State<CookSessionScreen>
   final LocalTimerController _timer = LocalTimerController();
   TimerAlarmPort? _alarm;
   late final Future<void> _alarmInitialization;
+  late AppLifecycleState _appLifecycleState;
+  bool _alarmInitializationComplete = false;
+  bool _alarmInitializationInterruptedLifecycle = false;
+  bool _firstFrameRendered = false;
+  bool _initialHandsFreeStartPending = false;
+  bool _manualSpeechStartPending = false;
   TimerStatus _lastStatus = TimerStatus.idle;
 
   // 마지막으로 저장한 상태. 타이머가 틱마다 알림을 보내므로 의미 있는
@@ -1580,11 +1586,12 @@ class _CookSessionScreenState extends State<CookSessionScreen>
   @override
   void initState() {
     super.initState();
+    _appLifecycleState =
+        WidgetsBinding.instance.lifecycleState ?? AppLifecycleState.resumed;
     _voiceSession = CookingVoiceSessionController(
       speechInput: widget.speechInput ?? NativeSpeechInput(),
       handsFreeEnabled: widget.handsFreeVoiceEnabled,
-      initialLifecycleState:
-          WidgetsBinding.instance.lifecycleState ?? AppLifecycleState.resumed,
+      initialLifecycleState: _appLifecycleState,
       onStateChanged: _onSpeechStateChanged,
       onTranscript: _handleSpeechUtterance,
     );
@@ -1610,17 +1617,43 @@ class _CookSessionScreenState extends State<CookSessionScreen>
       _lastStatus = _timer.status;
     }
     _alarmInitialization = _initAlarm();
-    unawaited(_alarmInitialization);
+    unawaited(_observeAlarmInitialization());
     _persist();
-    if (_voiceSession.shouldAutoStartHandsFree) {
-      WidgetsBinding.instance.addPostFrameCallback((_) async {
-        // Notification and microphone permissions both drive app lifecycle
-        // transitions. Serialize them so two system dialogs cannot race.
-        await _alarmInitialization;
-        if (_voiceSession.shouldAutoStartHandsFree && mounted) {
-          await _voiceSession.startHandsFree();
-        }
-      });
+    _initialHandsFreeStartPending = _voiceSession.shouldAutoStartHandsFree;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _firstFrameRendered = true;
+      _startPendingSpeechIfReady();
+    });
+  }
+
+  Future<void> _observeAlarmInitialization() async {
+    // Notification and microphone permissions both drive app lifecycle
+    // transitions. Keep every speech start behind this single startup gate.
+    await _alarmInitialization;
+    if (_disposed) {
+      return;
+    }
+    _alarmInitializationComplete = true;
+    _startPendingSpeechIfReady();
+  }
+
+  void _startPendingSpeechIfReady() {
+    if (_disposed ||
+        !mounted ||
+        !_firstFrameRendered ||
+        !_alarmInitializationComplete ||
+        _appLifecycleState != AppLifecycleState.resumed) {
+      return;
+    }
+    if (_initialHandsFreeStartPending) {
+      _initialHandsFreeStartPending = false;
+      _manualSpeechStartPending = false;
+      unawaited(_voiceSession.startHandsFree());
+      return;
+    }
+    if (_manualSpeechStartPending) {
+      _manualSpeechStartPending = false;
+      _voiceSession.toggle();
     }
   }
 
@@ -1649,10 +1682,24 @@ class _CookSessionScreenState extends State<CookSessionScreen>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     // 화면을 다시 켜면 잠든 사이 흐른 시간을 반영해 남은 시간을 재계산한다.
+    _appLifecycleState = state;
+    if (state != AppLifecycleState.resumed && !_alarmInitializationComplete) {
+      _alarmInitializationInterruptedLifecycle = true;
+    }
     if (state == AppLifecycleState.resumed) {
       _timer.sync();
     }
-    _voiceSession.handleLifecycleStateChanged(state);
+    _voiceSession.handleLifecycleStateChanged(
+      state,
+      preservePendingHandsFreeStart:
+          _initialHandsFreeStartPending &&
+          (!_alarmInitializationComplete ||
+              _alarmInitializationInterruptedLifecycle),
+    );
+    if (state == AppLifecycleState.resumed) {
+      _alarmInitializationInterruptedLifecycle = false;
+      _startPendingSpeechIfReady();
+    }
   }
 
   @override
@@ -1678,7 +1725,18 @@ class _CookSessionScreenState extends State<CookSessionScreen>
       ? _voiceSession.deactivateAndRearmHandsFree(message: message)
       : _voiceSession.deactivate(forceStop: forceStop, message: message);
 
-  void _toggleSpeechInput() => _voiceSession.toggle();
+  void _toggleSpeechInput() {
+    if (_speechIsActive) {
+      _manualSpeechStartPending = false;
+      _voiceSession.toggle();
+      return;
+    }
+    if (_manualSpeechStartPending) {
+      return;
+    }
+    _manualSpeechStartPending = true;
+    _startPendingSpeechIfReady();
+  }
 
   void _onSpeechStateChanged(_CookSpeechPhase _, String? message) {
     if (_disposed || !mounted) {
@@ -1858,6 +1916,8 @@ class _CookSessionScreenState extends State<CookSessionScreen>
     }
     _completed = true;
     _helpRequestVersion++;
+    _initialHandsFreeStartPending = false;
+    _manualSpeechStartPending = false;
     _voiceSession.complete();
     Navigator.of(context).pushReplacement(
       MaterialPageRoute<void>(
@@ -1878,6 +1938,8 @@ class _CookSessionScreenState extends State<CookSessionScreen>
     _closingSession = true;
     // Invalidate callbacks and begin closing the microphone before the route
     // transition reveals the previous screen.
+    _initialHandsFreeStartPending = false;
+    _manualSpeechStartPending = false;
     _voiceSession.complete();
     setState(() => _allowSessionPop = true);
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -1985,6 +2047,8 @@ class _CookSessionScreenState extends State<CookSessionScreen>
   }
 
   Future<void> _openHelpSheet() async {
+    _initialHandsFreeStartPending = false;
+    _manualSpeechStartPending = false;
     _voiceSession.disableAutomaticRearm();
     if (_speechIsActive) {
       unawaited(_deactivateSpeechInput(message: '음성 입력을 멈췄어요. 질문을 직접 입력해주세요.'));

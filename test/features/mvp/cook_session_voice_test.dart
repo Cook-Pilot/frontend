@@ -198,6 +198,61 @@ void main() {
     expect(speech.startCount, 2);
   });
 
+  testWidgets('정확 알람 설정의 hidden과 paused 뒤에도 최초 핸즈프리 opt-in을 보존한다', (
+    tester,
+  ) async {
+    final speech = FakeSpeechInput();
+    final alarm = Completer<TimerAlarmPort>();
+    await pumpSession(
+      tester,
+      speechInput: speech,
+      handsFreeVoiceEnabled: true,
+      alarm: null,
+      alarmResolver: () => alarm.future,
+    );
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    alarm.complete(const SilentTimerAlarm());
+    await tester.pumpAndSettle();
+    expect(speech.startCount, 0);
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pumpAndSettle();
+    expect(speech.startCount, 1);
+    expect(find.text('듣는 중'), findsOneWidget);
+  });
+
+  testWidgets('기본 말하기는 알림 초기화와 resumed 뒤에 한 번만 시작한다', (tester) async {
+    final speech = FakeSpeechInput();
+    final alarm = Completer<TimerAlarmPort>();
+    await pumpSession(
+      tester,
+      speechInput: speech,
+      alarm: null,
+      alarmResolver: () => alarm.future,
+    );
+
+    final button = find.byKey(const Key('voice-input-toggle'));
+    await tester.ensureVisible(button);
+    await tester.tap(button);
+    await tester.pump();
+    expect(speech.startCount, 0);
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    alarm.complete(const SilentTimerAlarm());
+    await tester.pumpAndSettle();
+    expect(speech.startCount, 0);
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pumpAndSettle();
+    expect(speech.startCount, 1);
+    expect(find.text('듣는 중'), findsOneWidget);
+  });
+
   testWidgets('시스템 back은 이전 화면을 열기 전에 음성 세션을 무효화하고 stop한다', (tester) async {
     final speech = FakeSpeechInput();
     await tester.pumpWidget(

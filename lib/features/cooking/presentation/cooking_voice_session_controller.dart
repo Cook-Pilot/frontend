@@ -83,7 +83,8 @@ final class CookingVoiceSessionController {
   bool get shouldAutoStartHandsFree => _handsFreeAutoRearm;
 
   /// Starts the explicit hands-free choice, or defers it across a transient
-  /// inactive permission overlay. A real hidden/paused transition disarms it.
+  /// inactive permission overlay. A hidden/paused transition disarms it unless
+  /// the caller identifies its own pending permission flow below.
   Future<void> startHandsFree() {
     if (!_handsFreeAutoRearm || _disposed || _completed) {
       return Future<void>.value();
@@ -101,7 +102,12 @@ final class CookingVoiceSessionController {
     return start();
   }
 
-  void handleLifecycleStateChanged(AppLifecycleState state) {
+  /// [preservePendingHandsFreeStart] retains only a not-yet-started opt-in;
+  /// the caller remains responsible for starting it after returning resumed.
+  void handleLifecycleStateChanged(
+    AppLifecycleState state, {
+    bool preservePendingHandsFreeStart = false,
+  }) {
     if (_disposed || _completed) {
       return;
     }
@@ -124,7 +130,16 @@ final class CookingVoiceSessionController {
     _resumeRestartEpoch++;
     _closeRetryWindow();
 
-    if (state == AppLifecycleState.inactive) {
+    final preserveCallerOwnedStart =
+        preservePendingHandsFreeStart &&
+        _handsFreeAutoRearm &&
+        !_handsFreeHasStarted;
+    if (preserveCallerOwnedStart) {
+      // The caller owns this app-initiated permission flow and will start only
+      // after both that flow and a resumed lifecycle have completed. Retain
+      // the explicit opt-in without scheduling this controller's own restart.
+      _restartOnResume = false;
+    } else if (state == AppLifecycleState.inactive) {
       // Permission dialogs and overlays are indistinguishable. Replace a
       // starting session after a direct inactive -> resumed transition, but
       // never auto-resume an established listening session.
