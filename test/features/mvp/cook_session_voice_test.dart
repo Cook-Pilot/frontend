@@ -369,6 +369,31 @@ void main() {
     expect(find.text('듣는 중'), findsOneWidget);
   });
 
+  testWidgets('알림 초기화 대기 중 말하기를 다시 누르면 pending 시작을 취소한다', (tester) async {
+    final speech = FakeSpeechInput();
+    final alarm = _DeferredAlarmResolver();
+    await pumpSession(
+      tester,
+      speechInput: speech,
+      alarm: null,
+      alarmResolver: alarm.call,
+    );
+
+    final voiceButton = find.byKey(const Key('voice-input-toggle'));
+    await tester.ensureVisible(voiceButton);
+    await tester.tap(voiceButton);
+    await tester.pump();
+    expect(speech.startCount, 0);
+
+    await tester.tap(voiceButton);
+    await tester.pump();
+    alarm.complete();
+    await tester.pumpAndSettle();
+
+    expect(speech.startCount, 0);
+    expect(find.text('듣는 중'), findsNothing);
+  });
+
   testWidgets('알림 초기화 중 실제 background는 최초 핸즈프리 pending을 취소한다', (tester) async {
     final speech = FakeSpeechInput();
     final alarm = _DeferredAlarmResolver();

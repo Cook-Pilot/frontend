@@ -1792,6 +1792,7 @@ class _CookSessionScreenState extends State<CookSessionScreen>
       return;
     }
     if (_manualSpeechStartPending) {
+      _manualSpeechStartPending = false;
       return;
     }
     _manualSpeechStartPending = true;
