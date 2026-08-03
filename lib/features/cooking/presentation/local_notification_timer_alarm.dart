@@ -67,7 +67,9 @@ final class LocalNotificationTimerAlarm implements TimerAlarmPort {
     final now = tz.TZDateTime.now(tz.local);
     final when = tz.TZDateTime.from(at, tz.local);
     // 과거 시각이면 즉시(1초 뒤)로 보정한다.
-    final target = when.isAfter(now) ? when : now.add(const Duration(seconds: 1));
+    final target = when.isAfter(now)
+        ? when
+        : now.add(const Duration(seconds: 1));
     await _plugin.zonedSchedule(
       _notificationId,
       '조리 타이머 완료',
