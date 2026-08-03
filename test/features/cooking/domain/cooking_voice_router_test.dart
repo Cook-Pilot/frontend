@@ -44,6 +44,11 @@ void main() {
         '타이머 켜지 마',
         '조리 시작하지 말아 줘',
         '요리 시작하지 않아',
+        '타이머 시작은 하지 마',
+        '조리 시작만 하지 마',
+        '시간 재기는 절대 안 해',
+        '타이머 시작이라도 하지 마',
+        '타이머 시작을 금지',
       ]) {
         expect(
           routeOf(command),
@@ -51,6 +56,11 @@ void main() {
           reason: command,
         );
       }
+
+      expect(
+        routeOf('타이머 시작만 하고 재료 손질은 안 해'),
+        const VoiceIntent(VoiceIntentType.startTimer),
+      );
     });
 
     test('checks resume before repeat', () {
@@ -310,6 +320,12 @@ void main() {
       for (final negatedCompletion in const [
         '조리 완료하지 마',
         '요리 끝내지 마',
+        '조리 완료만 하지 마',
+        '요리 끝만 내지 마',
+        '조리 완료라도 하지 마',
+        '조리 완료를 하지 마',
+        '조리 완료하지 못했어',
+        '조리 완료 금지',
         '조리 완료는 아직 안 했어',
         '조리 끝난 건 아니야',
         '조리 완료라고 한 건 아니야',
@@ -438,6 +454,28 @@ void main() {
       );
 
       expect(result, const VoiceIntent(VoiceIntentType.exceptionQuestion));
+
+      final particleResult = router.route(
+        '비빔밥은 어떻게 해?',
+        recipeTitle: '비빔밥',
+        ingredientNames: const ['고추장', '나물'],
+        currentStepInstruction: '재료를 섞는다',
+      );
+      expect(
+        particleResult,
+        const VoiceIntent(VoiceIntentType.exceptionQuestion),
+      );
+    });
+
+    test('does not treat a homonymous recipe title verb as context', () {
+      final result = router.route(
+        '오늘 어떻게 집에 가지?',
+        recipeTitle: '가지',
+        ingredientNames: const ['양파'],
+        currentStepInstruction: '팬을 달군다',
+      );
+
+      expect(result, const VoiceIntent(VoiceIntentType.ignore));
     });
 
     test('keeps one-character Korean ingredient names as cooking context', () {
@@ -683,6 +721,29 @@ void main() {
         routeOf('소스가 맛있는데 시간이 없어'),
         const VoiceIntent(VoiceIntentType.ignore),
       );
+      for (final problem in const [
+        '양파가 집에 없어',
+        '양파가 하나도 없어',
+        '양파를 전부 다 썼어',
+        '양파를 전부 다 사용했어',
+      ]) {
+        expect(
+          routeOf(problem),
+          const VoiceIntent(VoiceIntentType.exceptionQuestion),
+          reason: problem,
+        );
+      }
+      for (final negatedProblem in const [
+        '양파가 부족하지 않아',
+        '양파가 모자라지 않아',
+        '양파가 부족한 건 아니야',
+      ]) {
+        expect(
+          routeOf(negatedProblem),
+          const VoiceIntent(VoiceIntentType.ignore),
+          reason: negatedProblem,
+        );
+      }
     });
 
     test('uses recipe ingredients as explicit salty subjects', () {
