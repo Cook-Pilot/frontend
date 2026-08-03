@@ -181,10 +181,10 @@ final class CookingVoiceRouter {
       ingredientTokens,
     );
     final recipeTokens = <String>{..._contextTokens(recipeTitle)};
-    final normalizedRecipeTitle = _normalize(recipeTitle);
-    final hasFullRecipeTitleContext =
-        normalizedRecipeTitle.runes.length > 1 &&
-        text.contains(normalizedRecipeTitle);
+    final hasFullRecipeTitleContext = _hasRecipeTitleQuestionContext(
+      lowerTranscript,
+      recipeTitle,
+    );
     final tasteContextTokens = <String>{...ingredientTokens, ...recipeTokens};
     final dynamicContextTokens = <String>{
       ...recipeTokens,
@@ -221,6 +221,30 @@ final class CookingVoiceRouter {
     }
 
     return const VoiceIntent(VoiceIntentType.ignore);
+  }
+
+  bool _hasRecipeTitleQuestionContext(
+    String lowerTranscript,
+    String recipeTitle,
+  ) {
+    final titleParts = _contextTokens(recipeTitle).toList(growable: false);
+    if (titleParts.isEmpty || titleParts.join().runes.length <= 1) {
+      return false;
+    }
+
+    // This fallback is only for generic recipe questions such as
+    // "비빔밥 어떻게 해?". Other title mentions continue through the ordinary
+    // cooking-token boundary logic. Requiring a recipe-question continuation
+    // keeps a homonymous verb such as "집에 가지?" out of cooking context.
+    final titlePattern = titleParts.map(RegExp.escape).join(r'[\s\-·_/]*');
+    return RegExp(
+      '(^|[^가-힣a-z0-9])(?:$titlePattern)'
+      r'\s*(?:(?:이라도|라도|이|가|은|는|을|를|도|만)\s*){0,2}'
+      r'(?:'
+      r'어떻게\s*(?:해|하|만들|조리)|'
+      r'(?:레시피|조리법|요리법|만드는\s*법)|'
+      r'(?:해도|하면|해야|할까|괜찮|맞아|맞나|어때|인가|일까))',
+    ).hasMatch(lowerTranscript);
   }
 
   bool _isExplicitCookingProblem(
@@ -925,16 +949,39 @@ final class CookingVoiceRouter {
     // global ingredient flag would turn "양파를 넣었는데 시간이 없어" into a
     // missing-ingredient problem even though the absent subject is time.
     const particles = r'(?:이|가|은|는|을|를|도|만)?';
-    const modifiers = r'(?:(?:아예|전혀|정말|너무|좀|조금|거의|다|완전히))*';
+    const modifiers =
+        r'(?:(?:'
+        r'아예|전혀|정말|너무|좀|조금|거의|완전히|하나도|전부|다|'
+        r'(?:우리)?집(?:에는|에도|에)|'
+        r'(?:냉장고|주방|여기)(?:에는|에도|에)'
+        r'))*';
     const missingPredicates = r'(?:없어|없는데|다썼|다사용했|떨어졌|모자라|부족)';
     for (final token in <String>{...ingredientTokens, '재료', '양념', '소스'}) {
       if (token.isEmpty) continue;
       final pattern = RegExp(
-        '${RegExp.escape(token)}$particles$modifiers$missingPredicates',
+        '${RegExp.escape(token)}$particles$modifiers($missingPredicates)',
       );
-      if (pattern.hasMatch(text)) return true;
+      for (final match in pattern.allMatches(text)) {
+        if (!_isNegatedMissingPredicateTail(text.substring(match.end))) {
+          return true;
+        }
+      }
     }
     return false;
+  }
+
+  bool _isNegatedMissingPredicateTail(String tail) {
+    return RegExp(
+      r'^(?:'
+      r'(?:하)?지(?:는)?(?:않(?:아|다|아요|습니다|았|는|고|음)|'
+      r'못(?:해|하|했|할))|'
+      r'(?:(?:다고|라는|이라고)(?:말)?(?:한|했던)?|(?:한|인|진|였던))?'
+      r'(?:건|게|것(?:이|은)?)(?:전혀|절대|아예)?아니|'
+      r'함(?:이|은|도)?없이|'
+      r'보이|'
+      r'도(?:괜찮|상관없|돼|된다)|'
+      r'서는안)',
+    ).hasMatch(tail);
   }
 
   bool _hasQuestionSignal(String text) => _questionSignals.any(text.contains);
@@ -1384,20 +1431,23 @@ final class CookingVoiceRouter {
   }
 
   bool _isNegatedFinishCommand(String command) {
+    const particles = r'(?:(?:이라도|라도|이|가|은|는|을|를|도|만|까지|조차|마저)){0,2}';
+    const emphasis = r'(?:(?:아직|전혀|절대|아예|결코))*';
     for (final completion in RegExp(r'완성|완료|끝').allMatches(command)) {
       final tail = command.substring(completion.end);
       if (RegExp(
-            r'^(?:이|가|은|는|도)?(?:아직|전혀|절대|아예)?'
+            '^$particles$emphasis'
             r'(?:(?:안|못)(?:했|됐|끝냈|끝났)|'
-            r'(?:하|되|내)?지(?:는)?(?:마|말|않))',
+            r'(?:하|되|내)?지(?:는)?(?:마|말|않|못)|'
+            r'(?:말고|금지))',
           ).hasMatch(tail) ||
           RegExp(
-            r'^(?:이|가|은|는|도)?'
+            '^$particles'
             r'(?:되었던|됐던|했던|났던|되었|했|됐|났|낸|한|된|난)?'
             r'(?:건|게|것(?:이|은)?)(?:전혀|절대|아예)?아니',
           ).hasMatch(tail) ||
           RegExp(
-            r'^(?:이|가|은|는|도)?'
+            '^$particles'
             r'(?:되었던|됐던|했던|났던|되었|했|됐|났|낸|한|된|난)?'
             r'(?:이라는|라는|이?라고|다고|다는)'
             r'(?:(?:말)?(?:했던|했|한)?'
@@ -1411,9 +1461,15 @@ final class CookingVoiceRouter {
   }
 
   bool _isNegatedTimerStartCommand(String command) {
+    const particles = r'(?:(?:이라도|라도|이|가|은|는|을|를|도|만|까지|조차|마저)){0,2}';
+    const emphasis = r'(?:(?:아직|전혀|절대|아예|결코))*';
     return RegExp(
       r'(?:타이머(?:시작|켜)|시간재기|조리시작|요리시작)'
-      r'(?:(?:하)?지(?:는)?(?:마|말|않)|(?:은|는)?안(?:해|하|할|했))',
+      '$particles$emphasis'
+      r'(?:(?:하)?지(?:는)?(?:마|말|않|못)|'
+      r'(?:안|못)(?:해|하|할|했|켜|켰|시작)|'
+      r'(?:하|한|하는)?(?:건|게|것(?:이|은)?)아니|'
+      r'아니|말고|금지)',
     ).hasMatch(command);
   }
 
