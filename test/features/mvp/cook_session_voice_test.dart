@@ -394,6 +394,33 @@ void main() {
     expect(find.text('듣는 중'), findsNothing);
   });
 
+  testWidgets('단계 이동은 이전 단계에서 대기 중인 수동 말하기를 취소한다', (tester) async {
+    final speech = FakeSpeechInput();
+    final alarm = _DeferredAlarmResolver();
+    await pumpSession(
+      tester,
+      speechInput: speech,
+      alarm: null,
+      alarmResolver: alarm.call,
+    );
+
+    final voiceButton = find.byKey(const Key('voice-input-toggle'));
+    await tester.ensureVisible(voiceButton);
+    await tester.tap(voiceButton);
+    await tester.pump();
+    expect(speech.startCount, 0);
+
+    await tester.tap(find.widgetWithText(FilledButton, '다음 단계'));
+    await tester.pump();
+    expect(find.text('2 / ${recipe.steps.length} 단계'), findsOneWidget);
+
+    alarm.complete();
+    await tester.pumpAndSettle();
+
+    expect(speech.startCount, 0);
+    expect(find.text('듣는 중'), findsNothing);
+  });
+
   testWidgets('알림 초기화 중 실제 background는 최초 핸즈프리 pending을 취소한다', (tester) async {
     final speech = FakeSpeechInput();
     final alarm = _DeferredAlarmResolver();
