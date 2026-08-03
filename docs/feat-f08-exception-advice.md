@@ -96,9 +96,9 @@ F-09 후기 및 개인 버전 계산에도 AI 제안이 섞이지 않는다.
 말라는 안내를 표시한다. 앱과 백엔드는 원문 질문을 로컬 후기, 이벤트 payload,
 DB 또는 서버 로그에 저장하지 않는다.
 
-## 후속 범위
+## TTS 연동
 
-F-06/F-07 브랜치에는 `SpeechOutputPort` 인터페이스만 있고 실제 TTS 플러그인
-어댑터가 없다. 이번 연결은 `speechText`를 보존하지만 음성 재생은 하지 않는다.
-실제 TTS 어댑터가 추가되면 현재 단계·request version 검증을 통과한
-`speechText`만 재생하고 화면 이탈 및 새 요청 시 이전 재생을 중지해야 한다.
+후속 `NativeSpeechOutput`이 현재 단계와 request version 검증을 통과한
+`speechText`만 재생한다. 새 질문·단계 이동·완료·화면 이탈은 이전 재생을
+중지하며, 화면에 표시하는 `screenText`와 음성용 `speechText`는 계속 분리한다.
+세부 수명 주기와 실패 동작은 `feat-native-tts.md`에 정리한다.
