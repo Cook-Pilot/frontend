@@ -251,12 +251,14 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
             child: FilledButton(
               onPressed: canCook
                   ? () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute<void>(
-                          builder: (_) => CookSetupScreen(
-                            recipe: recipe,
-                            recommendationDataSource:
-                                RecommendationRepository(),
+                      unawaited(
+                        Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) => CookSetupScreen(
+                              recipe: recipe,
+                              recommendationDataSource:
+                                  RecommendationRepository(),
+                            ),
                           ),
                         ),
                       );
@@ -803,13 +805,15 @@ class _CookSetupScreenState extends State<CookSetupScreen> {
               ? null
               : () {
                   final snapshot = _buildSnapshot();
-                  Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (_) => CookSessionScreen(
-                        recipe: snapshot.toExecutionRecipe(),
-                        servings: servings,
-                        setupSnapshot: snapshot,
-                        alarm: widget.sessionAlarm,
+                  unawaited(
+                    Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => CookSessionScreen(
+                          recipe: snapshot.toExecutionRecipe(),
+                          servings: servings,
+                          setupSnapshot: snapshot,
+                          alarm: widget.sessionAlarm,
+                        ),
                       ),
                     ),
                   );
@@ -1927,13 +1931,17 @@ class _CookSessionScreenState extends State<CookSessionScreen>
               if (isLast) {
                 // 후기 저장이 성공하기 전까지 동일 세션으로 재시도할 수 있게 보존한다.
                 _completed = true;
-                Navigator.of(context).pushReplacement(
-                  MaterialPageRoute<void>(
-                    builder: (_) => ReviewScreen(
-                      setupSnapshot: _reviewSnapshot(),
-                      clientSessionId: _sessionId,
-                      cookedAt: DateTime.now(),
-                      timerSecondsByStep: Map.unmodifiable(_timerSecondsByStep),
+                unawaited(
+                  Navigator.of(context).pushReplacement(
+                    MaterialPageRoute<void>(
+                      builder: (_) => ReviewScreen(
+                        setupSnapshot: _reviewSnapshot(),
+                        clientSessionId: _sessionId,
+                        cookedAt: DateTime.now(),
+                        timerSecondsByStep: Map.unmodifiable(
+                          _timerSecondsByStep,
+                        ),
+                      ),
                     ),
                   ),
                 );
@@ -2102,9 +2110,11 @@ class _ReviewScreenState extends State<ReviewScreen> {
   }
 
   void _goHome() {
-    Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute<void>(builder: (_) => const MainShell()),
-      (route) => false,
+    unawaited(
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute<void>(builder: (_) => const MainShell()),
+        (route) => false,
+      ),
     );
   }
 
