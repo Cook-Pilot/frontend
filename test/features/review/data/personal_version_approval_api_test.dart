@@ -108,6 +108,104 @@ void main() {
     expect(request['cooking'], <String, Object?>{'transcript': null});
   });
 
+  test('원본 baseline이 없는 legacy 개인 버전 초안은 승인 diff 생성을 막는다', () {
+    final legacyPersonalSnapshot = CookingSetupSnapshot(
+      recipeId: recipeId,
+      title: '내 라면 v1',
+      description: '',
+      imageUrl: '',
+      baseServings: 1,
+      targetServings: 2,
+      source: CookingRecipeSource.personal,
+      personalVersionId: versionId,
+      ingredients: const <CookingSetupIngredient>[
+        CookingSetupIngredient(
+          originalIngredientId: '11000000-0000-0000-0000-000000000001',
+          originalName: '육수',
+          name: '육수',
+          amount: 600,
+          baselineAmount: 600,
+          unit: 'ml',
+          isRequired: true,
+        ),
+      ],
+      steps: const <CookingSetupStep>[
+        CookingSetupStep(
+          originalStepId: '12000000-0000-0000-0000-000000000001',
+          stepIndex: 0,
+          instruction: '면을 끓인다.',
+          timerSeconds: 120,
+          cautionNote: null,
+          imageUrl: '',
+        ),
+      ],
+    );
+
+    expect(
+      () => PersonalVersionApprovalRequest.fromSnapshot(
+        snapshot: legacyPersonalSnapshot,
+      ),
+      throwsA(
+        isA<PersonalVersionApprovalApiException>().having(
+          (error) => error.message,
+          'message',
+          contains('원본 재료'),
+        ),
+      ),
+    );
+  });
+
+  test('원본 baseline이 완전한 개인 버전 스냅샷은 누적 diff를 만든다', () {
+    final anchoredPersonalSnapshot = CookingSetupSnapshot(
+      recipeId: recipeId,
+      title: '내 라면 v2',
+      description: '',
+      imageUrl: '',
+      baseServings: 1,
+      targetServings: 2,
+      source: CookingRecipeSource.personal,
+      personalVersionId: versionId,
+      ingredients: const <CookingSetupIngredient>[
+        CookingSetupIngredient(
+          originalIngredientId: '11000000-0000-0000-0000-000000000001',
+          originalName: '물',
+          name: '육수',
+          amount: 600,
+          baselineAmount: 500,
+          baselineUnit: 'ml',
+          baselineIsRequired: true,
+          unit: 'ml',
+          isRequired: true,
+        ),
+      ],
+      steps: const <CookingSetupStep>[
+        CookingSetupStep(
+          originalStepId: '12000000-0000-0000-0000-000000000001',
+          stepIndex: 0,
+          instruction: '면을 끓인다.',
+          timerSeconds: 120,
+          cautionNote: null,
+          imageUrl: '',
+        ),
+      ],
+    );
+
+    final request = PersonalVersionApprovalRequest.fromSnapshot(
+      snapshot: anchoredPersonalSnapshot,
+    ).toJson();
+    final setup = request['setup'] as Map<String, Object?>;
+
+    expect(setup['ingredientAdjustments'], <Map<String, Object?>>[
+      <String, Object?>{
+        'originalIngredientId': '11000000-0000-0000-0000-000000000001',
+        'type': 'MODIFY',
+        'name': '육수',
+        'amount': 600.0,
+        'sortOrder': 0,
+      },
+    ]);
+  });
+
   test('원본 재료의 이름과 양이 모두 바뀌면 MODIFY 한 건에 변경값만 보낸다', () {
     final request = PersonalVersionApprovalRequest.fromSnapshot(
       snapshot: _snapshotWith(

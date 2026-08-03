@@ -38,6 +38,21 @@ void main() {
       expect(routeOf('재개'), const VoiceIntent(VoiceIntentType.resumeTimer));
     });
 
+    test('rejects negated timer-start commands', () {
+      for (final command in const [
+        '타이머 시작하지 마',
+        '타이머 켜지 마',
+        '조리 시작하지 말아 줘',
+        '요리 시작하지 않아',
+      ]) {
+        expect(
+          routeOf(command),
+          const VoiceIntent(VoiceIntentType.ignore),
+          reason: command,
+        );
+      }
+    });
+
     test('checks resume before repeat', () {
       expect(
         routeOf('다시 시작해서 계속해'),
@@ -217,6 +232,17 @@ void main() {
       }
     });
 
+    test('replaces only the immediately competing timer extension', () {
+      expect(
+        routeOf('1분 더하고 30초 더 말고 45초 더'),
+        const VoiceIntent(VoiceIntentType.extendTimer, seconds: 105),
+      );
+      expect(
+        routeOf('1분 더하고 30초 더, 아니 45초 더'),
+        const VoiceIntent(VoiceIntentType.extendTimer, seconds: 105),
+      );
+    });
+
     test('requires a lexical boundary after timer extension signals', () {
       expect(
         routeOf('1분 더해줘'),
@@ -282,6 +308,8 @@ void main() {
       );
 
       for (final negatedCompletion in const [
+        '조리 완료하지 마',
+        '요리 끝내지 마',
         '조리 완료는 아직 안 했어',
         '조리 끝난 건 아니야',
         '조리 완료라고 한 건 아니야',
@@ -399,6 +427,17 @@ void main() {
           reason: question,
         );
       }
+    });
+
+    test('recognizes an exact single-token recipe title', () {
+      final result = router.route(
+        '비빔밥 어떻게 해?',
+        recipeTitle: '비빔밥',
+        ingredientNames: const ['고추장', '나물'],
+        currentStepInstruction: '재료를 섞는다',
+      );
+
+      expect(result, const VoiceIntent(VoiceIntentType.exceptionQuestion));
     });
 
     test('keeps one-character Korean ingredient names as cooking context', () {
@@ -621,6 +660,21 @@ void main() {
           reason: problem,
         );
       }
+    });
+
+    test('associates missing predicates with their ingredient clause', () {
+      expect(
+        routeOf('양파를 넣었는데 시간이 없어'),
+        const VoiceIntent(VoiceIntentType.ignore),
+      );
+      expect(
+        routeOf('양파가 다 떨어졌어'),
+        const VoiceIntent(VoiceIntentType.exceptionQuestion),
+      );
+      expect(
+        routeOf('양파를 다 썼어'),
+        const VoiceIntent(VoiceIntentType.exceptionQuestion),
+      );
     });
 
     test('uses recipe ingredients as explicit salty subjects', () {
