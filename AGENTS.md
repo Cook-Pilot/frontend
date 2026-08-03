@@ -116,4 +116,5 @@ test/                   # lib/ 구조를 미러링. test/helpers/에 공용 fake
 
 ## 문서
 
-기능 명세는 `docs/`에 있다. 기능을 수정하기 전에 해당 명세(`docs/feat-*.md`)를 먼저 확인할 것.
+- 기능 명세는 `docs/`에 있다. 기능을 수정하기 전에 해당 명세(`docs/feat-*.md`)를 먼저 확인할 것.
+- PR마다 브랜치 이름으로 작업 명세를 `docs/`에 남긴다. 파일명은 브랜치 이름의 `/`를 `-`로 바꾼 것 (예: `feat/ci-set` → `docs/feat-ci-set.md`, 이슈 번호가 있으면 `fix/token-expire-#99` → `docs/fix-token-expire-#99.md`). 내용은 문제 상황 → 검토한 대안(있다면) → 최종 결정 → 검증 → 이후 작업에서 지킬 것 순서로 기존 명세 형식을 따른다.
