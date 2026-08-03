@@ -129,6 +129,7 @@ final class FakeMonotonicClock implements MonotonicClock {
 final class FakeSpeechOutput implements SpeechOutputPort {
   final List<String> spoken = <String>[];
   int stopCount = 0;
+  int disposeCount = 0;
   Object? error;
   Object? stopError;
   bool hangOnStop = false;
@@ -157,6 +158,12 @@ final class FakeSpeechOutput implements SpeechOutputPort {
     }
   }
 
+  @override
+  void dispose() {
+    disposeCount += 1;
+    completePendingStop();
+  }
+
   void completePendingStop() {
     final completion = pendingStop;
     if (completion != null && !completion.isCompleted) {
@@ -169,6 +176,7 @@ final class DeferredSpeechOutput implements SpeechOutputPort {
   final List<String> spoken = <String>[];
   final List<Completer<void>> completions = <Completer<void>>[];
   int stopCount = 0;
+  int disposeCount = 0;
   bool hangOnStop = false;
   Completer<void>? pendingStop;
 
@@ -187,6 +195,17 @@ final class DeferredSpeechOutput implements SpeechOutputPort {
       pendingStop ??= Completer<void>();
       await pendingStop!.future;
     }
+    for (final completion in completions) {
+      if (!completion.isCompleted) {
+        completion.complete();
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    disposeCount += 1;
+    completePendingStop();
     for (final completion in completions) {
       if (!completion.isCompleted) {
         completion.complete();

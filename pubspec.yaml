@@ -47,6 +47,9 @@ dependencies:
   # 조리 화면에서 짧은 한국어 음성 명령을 네이티브 STT로 인식한다.
   speech_to_text: ^7.4.0
 
+  # 조리 단계와 AI 예외 안내를 기기의 네이티브 음성 합성기로 읽는다.
+  flutter_tts: ^4.2.5
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
