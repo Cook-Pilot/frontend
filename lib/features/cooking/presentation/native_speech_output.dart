@@ -68,6 +68,7 @@ final class NativeSpeechOutput implements SpeechOutputPort {
   final Duration Function(String text) _playbackTimeoutFor;
 
   Future<void> _controlTail = Future<void>.value();
+  Completer<void>? _playbackCancellation;
   int _requestVersion = 0;
   bool _configured = false;
   bool _disposed = false;
@@ -80,8 +81,13 @@ final class NativeSpeechOutput implements SpeechOutputPort {
     }
 
     final requestVersion = ++_requestVersion;
+    _cancelPlaybackWait();
     Future<void>? playback;
+    Completer<void>? playbackCancellation;
     await _enqueueControl(() async {
+      if (!_owns(requestVersion)) {
+        return;
+      }
       // QUEUE_FLUSH behavior is made explicit and cross-platform: every new
       // utterance first drains the previous native playback.
       await _stopEngineBestEffort();
@@ -94,18 +100,31 @@ final class NativeSpeechOutput implements SpeechOutputPort {
       try {
         // Do not await here. Holding the control queue for the full audible
         // duration would prevent the next request from reaching stop().
+        playbackCancellation = Completer<void>();
+        _playbackCancellation = playbackCancellation;
         playback = _engine.speak(normalized);
       } on Object {
+        if (identical(_playbackCancellation, playbackCancellation)) {
+          _playbackCancellation = null;
+        }
         playback = null;
       }
     });
 
     final currentPlayback = playback;
-    if (currentPlayback == null) {
+    final currentCancellation = playbackCancellation;
+    if (currentPlayback == null || currentCancellation == null) {
       return;
     }
     try {
-      await currentPlayback.timeout(_playbackTimeoutFor(normalized));
+      // flutter_tts does not complete an interrupted speak Future on every
+      // platform. Race native completion with local ownership cancellation so
+      // superseded screens and utterances are released immediately. Future.any
+      // keeps a handler on the losing engine Future and absorbs a late error.
+      await Future.any<void>([
+        currentPlayback,
+        currentCancellation.future,
+      ]).timeout(_playbackTimeoutFor(normalized));
     } on TimeoutException {
       // Some OEM engines fail to emit completion. Stop only if this utterance
       // still owns output; an older timeout must never cancel newer speech.
@@ -117,12 +136,20 @@ final class NativeSpeechOutput implements SpeechOutputPort {
     } on Object {
       // Missing voices, unavailable engines, and platform-channel failures
       // must not break cooking controls or AI answer rendering.
+    } finally {
+      if (identical(_playbackCancellation, currentCancellation)) {
+        _playbackCancellation = null;
+      }
     }
   }
 
   @override
   Future<void> stop() async {
+    if (_disposed) {
+      return;
+    }
     _requestVersion++;
+    _cancelPlaybackWait();
     await _enqueueControl(_stopEngineBestEffort);
   }
 
@@ -133,11 +160,19 @@ final class NativeSpeechOutput implements SpeechOutputPort {
     }
     _disposed = true;
     _requestVersion++;
+    _cancelPlaybackWait();
     unawaited(_enqueueControl(_stopEngineBestEffort));
   }
 
   bool _owns(int requestVersion) =>
       !_disposed && requestVersion == _requestVersion;
+
+  void _cancelPlaybackWait() {
+    final cancellation = _playbackCancellation;
+    if (cancellation != null && !cancellation.isCompleted) {
+      cancellation.complete();
+    }
+  }
 
   Future<bool> _configureBestEffort() async {
     if (_configured) {

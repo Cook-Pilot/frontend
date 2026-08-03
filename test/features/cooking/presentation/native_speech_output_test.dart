@@ -26,7 +26,7 @@ void main() {
   );
 
   test('a newer utterance cancels audible playback before it starts', () async {
-    final engine = _FakeSpeechSynthesisEngine();
+    final engine = _FakeSpeechSynthesisEngine(completePlaybackOnStop: false);
     final output = NativeSpeechOutput(engine: engine);
 
     final first = output.speak('이전 안내');
@@ -37,7 +37,7 @@ void main() {
     await engine.waitForSpeakCount(2);
 
     await first;
-    expect(engine.pendingPlaybacks.first.isCompleted, isTrue);
+    expect(engine.pendingPlaybacks.first.isCompleted, isFalse);
     expect(engine.events, <String>[
       'stop',
       'configure',
@@ -48,6 +48,7 @@ void main() {
 
     engine.completeLatestPlayback();
     await second;
+    engine.completeAllPlaybacks();
   });
 
   test('a superseded request waiting on stop never reaches speak', () async {
@@ -91,18 +92,73 @@ void main() {
   test(
     'dispose itself cancels playback and rejects all future speech',
     () async {
-      final engine = _FakeSpeechSynthesisEngine();
+      final engine = _FakeSpeechSynthesisEngine(completePlaybackOnStop: false);
       final output = NativeSpeechOutput(engine: engine);
 
       final playback = output.speak('종료할 안내');
       await engine.waitForSpeakCount(1);
       output.dispose();
       await playback;
+      expect(engine.pendingPlaybacks.single.isCompleted, isFalse);
       await output.speak('폐기 뒤 안내');
       await Future<void>.delayed(Duration.zero);
 
       expect(engine.spoken, <String>['종료할 안내']);
       expect(engine.stopCount, 2);
+      engine.completeAllPlaybacks();
+    },
+  );
+
+  test(
+    'stop releases a never-completing playback and absorbs its late error',
+    () async {
+      final engine = _FakeSpeechSynthesisEngine(completePlaybackOnStop: false);
+      final output = NativeSpeechOutput(
+        engine: engine,
+        playbackTimeoutFor: (_) => const Duration(seconds: 5),
+      );
+
+      final playback = output.speak('iOS에서 취소 완료 콜백이 없는 안내');
+      await engine.waitForSpeakCount(1);
+
+      final stop = output.stop();
+      await playback.timeout(const Duration(milliseconds: 100));
+      await stop;
+      expect(engine.pendingPlaybacks.single.isCompleted, isFalse);
+
+      engine.pendingPlaybacks.single.completeError(
+        StateError('late engine error'),
+      );
+      await Future<void>.delayed(Duration.zero);
+      output.dispose();
+    },
+  );
+
+  test(
+    'stale queued requests skip stop after a timeout and dispose stops once',
+    () async {
+      final blockedStop = Completer<void>();
+      final engine = _FakeSpeechSynthesisEngine()..nextStopGate = blockedStop;
+      final output = NativeSpeechOutput(
+        engine: engine,
+        stopTimeout: const Duration(milliseconds: 20),
+      );
+
+      final first = output.speak('첫 안내');
+      await engine.waitForStopCount(1);
+      final second = output.speak('두 번째 안내');
+      final third = output.speak('세 번째 안내');
+      output.dispose();
+
+      await engine.waitForStopCount(2);
+      await Future.wait<void>([first, second, third]);
+
+      expect(engine.stopCount, 2);
+      expect(engine.configureCount, 0);
+      expect(engine.spoken, isEmpty);
+
+      blockedStop.complete();
+      await Future<void>.delayed(Duration.zero);
     },
   );
 
