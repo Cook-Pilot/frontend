@@ -927,7 +927,7 @@ final class CookingVoiceRouter {
     // Keep the missing predicate in the same clause as the ingredient. A
     // global ingredient flag would turn "양파를 넣었는데 시간이 없어" into a
     // missing-ingredient problem even though the absent subject is time.
-    const particles = r'(?:이|가|은|는|도|만)?';
+    const particles = r'(?:이|가|은|는|을|를|도|만)?';
     const modifiers = r'(?:(?:아예|전혀|정말|너무|좀|조금|거의|다|완전히))*';
     const missingPredicates = r'(?:없어|없는데|다썼|떨어졌|모자라|부족)';
     for (final token in ingredientTokens) {
