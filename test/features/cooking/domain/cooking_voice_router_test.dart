@@ -675,6 +675,14 @@ void main() {
         routeOf('양파를 다 썼어'),
         const VoiceIntent(VoiceIntentType.exceptionQuestion),
       );
+      expect(
+        routeOf('양파를 다 사용했어'),
+        const VoiceIntent(VoiceIntentType.exceptionQuestion),
+      );
+      expect(
+        routeOf('소스가 맛있는데 시간이 없어'),
+        const VoiceIntent(VoiceIntentType.ignore),
+      );
     });
 
     test('uses recipe ingredients as explicit salty subjects', () {
