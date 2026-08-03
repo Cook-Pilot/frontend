@@ -54,6 +54,49 @@ final class PersonalVersionIngredientAdjustment {
   };
 }
 
+sealed class PersonalVersionApprovalPreflightResult {
+  const PersonalVersionApprovalPreflightResult();
+}
+
+final class PersonalVersionApprovalReady
+    extends PersonalVersionApprovalPreflightResult {
+  const PersonalVersionApprovalReady();
+}
+
+final class PersonalVersionApprovalRequiresReanchor
+    extends PersonalVersionApprovalPreflightResult {
+  const PersonalVersionApprovalRequiresReanchor();
+
+  String get message => '이전 앱 버전에서 저장한 개인 레시피 후기는 원본 재료를 다시 확인한 뒤 승인해야 합니다.';
+}
+
+/// 개인 버전 요청이 안전한지 후기 저장 전에 동기적으로 판정한다.
+///
+/// 이 결과는 네트워크 상태와 무관하다. UI는 차단 결과를 후기 POST 전에
+/// 안내해 사용자가 개인 버전 동의를 끄고 후기만 저장할 수 있게 해야 한다.
+PersonalVersionApprovalPreflightResult preflightPersonalVersionApproval(
+  CookingSetupSnapshot snapshot,
+) {
+  if (snapshot.source != CookingRecipeSource.personal) {
+    return const PersonalVersionApprovalReady();
+  }
+
+  // PR #35의 schema-v1 초안은 개인 버전의 합성 재료만 저장했다. 원본의
+  // unit/required baseline과 REMOVE된 재료가 없으므로 여기서 ADD/MODIFY를
+  // 추측하면 다음 개인 버전이 부모 diff를 잃는다. 새 스냅샷은 원본에
+  // re-anchor하면서 모든 재료(ADD/REMOVE 포함)에 두 baseline을 채운다.
+  final requiresReanchor =
+      snapshot.ingredients.isEmpty ||
+      snapshot.ingredients.any(
+        (ingredient) =>
+            ingredient.baselineUnit == null ||
+            ingredient.baselineIsRequired == null,
+      );
+  return requiresReanchor
+      ? const PersonalVersionApprovalRequiresReanchor()
+      : const PersonalVersionApprovalReady();
+}
+
 /// PR #37의 개인 레시피 생성 요청을 조리 시작 시점 snapshot에서 만든다.
 ///
 /// 재료 diff는 원본 레시피 기준 누적 결과다. 현재 조리 준비 UI에는 단계 편집이
@@ -70,10 +113,9 @@ final class PersonalVersionApprovalRequest {
     required CookingSetupSnapshot snapshot,
     String? cookingTranscript,
   }) {
-    if (_requiresPersonalVersionReanchor(snapshot)) {
-      throw const PersonalVersionApprovalApiException(
-        '이전 앱 버전에서 저장한 개인 레시피 후기는 원본 재료를 다시 확인한 뒤 승인해야 합니다.',
-      );
+    if (preflightPersonalVersionApproval(snapshot)
+        case PersonalVersionApprovalRequiresReanchor(:final message)) {
+      throw PersonalVersionApprovalApiException(message);
     }
     final adjustments = <PersonalVersionIngredientAdjustment>[];
     for (final (sortOrder, ingredient) in snapshot.ingredients.indexed) {
@@ -103,23 +145,6 @@ final class PersonalVersionApprovalRequest {
     },
     'cooking': <String, Object?>{'transcript': cookingTranscript},
   };
-}
-
-bool _requiresPersonalVersionReanchor(CookingSetupSnapshot snapshot) {
-  if (snapshot.source != CookingRecipeSource.personal) {
-    return false;
-  }
-
-  // PR #35의 schema-v1 초안은 개인 버전의 합성 재료만 저장했다. 원본의
-  // unit/required baseline과 REMOVE된 재료가 없으므로 여기서 ADD/MODIFY를
-  // 추측하면 다음 개인 버전이 부모 diff를 잃는다. 새 스냅샷은 원본에
-  // re-anchor하면서 모든 재료(ADD/REMOVE 포함)에 두 baseline을 채운다.
-  return snapshot.ingredients.isEmpty ||
-      snapshot.ingredients.any(
-        (ingredient) =>
-            ingredient.baselineUnit == null ||
-            ingredient.baselineIsRequired == null,
-      );
 }
 
 sealed class PersonalVersionApprovalResult {

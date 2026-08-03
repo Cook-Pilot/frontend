@@ -141,6 +141,12 @@ void main() {
       ],
     );
 
+    final preflight = preflightPersonalVersionApproval(legacyPersonalSnapshot);
+    expect(preflight, isA<PersonalVersionApprovalRequiresReanchor>());
+    expect(
+      (preflight as PersonalVersionApprovalRequiresReanchor).message,
+      contains('원본 재료'),
+    );
     expect(
       () => PersonalVersionApprovalRequest.fromSnapshot(
         snapshot: legacyPersonalSnapshot,
@@ -190,6 +196,10 @@ void main() {
       ],
     );
 
+    expect(
+      preflightPersonalVersionApproval(anchoredPersonalSnapshot),
+      isA<PersonalVersionApprovalReady>(),
+    );
     final request = PersonalVersionApprovalRequest.fromSnapshot(
       snapshot: anchoredPersonalSnapshot,
     ).toJson();
