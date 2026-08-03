@@ -1687,6 +1687,7 @@ class _CookSessionScreenState extends State<CookSessionScreen>
   final LocalTimerController _timer = LocalTimerController();
   TimerAlarmPort? _alarm;
   TimerAlarmRegistration? _alarmRegistration;
+  Future<void> _alarmOperationTail = Future<void>.value();
   late final Future<void> _alarmInitialization;
   late AppLifecycleState _appLifecycleState;
   bool _alarmInitializationComplete = false;
@@ -1901,7 +1902,7 @@ class _CookSessionScreenState extends State<CookSessionScreen>
     WidgetsBinding.instance.removeObserver(this);
     _timer.removeListener(_onTimerChanged);
     _voiceSession.dispose();
-    unawaited(_alarm?.cancelScheduledAlarm() ?? Future<void>.value());
+    unawaited(_cancelScheduledAlarm());
     _timer.dispose();
     super.dispose();
   }
@@ -2088,7 +2089,7 @@ class _CookSessionScreenState extends State<CookSessionScreen>
       return;
     }
     _timer.pause();
-    unawaited(_alarm?.cancelScheduledAlarm() ?? Future<void>.value());
+    unawaited(_cancelScheduledAlarm());
     _setVoiceMessage('타이머를 일시정지했어요.');
   }
 
@@ -2139,7 +2140,7 @@ class _CookSessionScreenState extends State<CookSessionScreen>
     if (_timer.status == TimerStatus.running) {
       _timer.pause();
     }
-    unawaited(_cancelAlarmBestEffort(_alarm));
+    final alarmCancellation = _cancelScheduledAlarm();
     // 저장을 기다리는 동안 늦은 음성·도움 응답이 frozen draft의 문맥을
     // 바꾸지 못하게 최초 완료 요청 시점에 즉시 무효화한다.
     _helpRequestVersion++;
@@ -2149,6 +2150,10 @@ class _CookSessionScreenState extends State<CookSessionScreen>
       // 후기 화면으로 넘어가기 전에 완료 사실과 실행 snapshot을 먼저
       // 보존한다. 실패하면 진행 중 세션을 그대로 둔 채 같은 draft로 재시도한다.
       await _pendingReviewDraftStore.save(draft);
+      // 예약 작업이 이미 플러그인 안에서 진행 중이어도 그 완료 뒤 취소가
+      // 실행되도록 직렬화 큐를 기다린다. 후기 화면에는 알람이 실제로
+      // 정리된 뒤에만 진입한다.
+      await alarmCancellation;
     } on Object {
       if (!mounted) {
         return;
@@ -2212,7 +2217,7 @@ class _CookSessionScreenState extends State<CookSessionScreen>
     }
     if (status == TimerStatus.elapsed && _lastStatus != TimerStatus.elapsed) {
       _alarm?.signalTimerElapsed();
-      unawaited(_alarm?.cancelScheduledAlarm() ?? Future<void>.value());
+      unawaited(_cancelScheduledAlarm());
     }
     _lastStatus = status;
     _persist();
@@ -2280,20 +2285,58 @@ class _CookSessionScreenState extends State<CookSessionScreen>
         : Duration(seconds: recordedSeconds);
     _timer.reset(duration, autoStart: false);
     _lastStatus = _timer.status;
-    unawaited(_alarm?.cancelScheduledAlarm() ?? Future<void>.value());
+    unawaited(_cancelScheduledAlarm());
   }
 
   void _scheduleAlarm() {
     if (_disposed || _completed || _completionLocked || !mounted) {
       return;
     }
-    if (_timer.status == TimerStatus.running &&
-        _timer.remaining > Duration.zero) {
-      unawaited(
-        _alarm?.scheduleTimerElapsed(DateTime.now().add(_timer.remaining)) ??
-            Future<void>.value(),
-      );
+    final alarm = _alarm;
+    if (alarm == null ||
+        _timer.status != TimerStatus.running ||
+        _timer.remaining <= Duration.zero) {
+      return;
     }
+    final scheduledAt = DateTime.now().add(_timer.remaining);
+    unawaited(
+      _enqueueAlarmOperation(() async {
+        if (_disposed ||
+            _completed ||
+            _completionLocked ||
+            _timer.status != TimerStatus.running) {
+          return;
+        }
+        await alarm.scheduleTimerElapsed(scheduledAt);
+      }),
+    );
+  }
+
+  Future<void> _cancelScheduledAlarm() {
+    final alarm = _alarm;
+    if (alarm == null) {
+      return Future<void>.value();
+    }
+    return _enqueueAlarmOperation(alarm.cancelScheduledAlarm);
+  }
+
+  Future<void> _enqueueAlarmOperation(Future<void> Function() operation) {
+    final previous = _alarmOperationTail;
+    final next = () async {
+      try {
+        await previous;
+      } on Object {
+        // 각 작업은 아래에서 자체 오류를 흡수하지만, 큐는 이전 구현의
+        // 예외가 남아 있어도 다음 취소까지 반드시 진행한다.
+      }
+      try {
+        await operation();
+      } on Object {
+        // 알림 플러그인 실패가 타이머 UI·완료 저장을 막지 않는다.
+      }
+    }();
+    _alarmOperationTail = next;
+    return next;
   }
 
   Future<void> _cancelAlarmBestEffort(TimerAlarmPort? alarm) async {
@@ -2320,7 +2363,7 @@ class _CookSessionScreenState extends State<CookSessionScreen>
         _scheduleAlarm();
       case TimerStatus.running:
         _timer.pause();
-        unawaited(_alarm?.cancelScheduledAlarm() ?? Future<void>.value());
+        unawaited(_cancelScheduledAlarm());
       case TimerStatus.elapsed:
         break;
     }

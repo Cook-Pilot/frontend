@@ -201,6 +201,44 @@ void main() {
       expect(find.byType(ReviewScreen), findsOneWidget);
     });
 
+    testWidgets('진행 중인 알람 예약이 끝난 뒤 완료 취소를 직렬화한다', (tester) async {
+      final pendingStore = _FakePendingReviewDraftStore();
+      final alarm = _DeferredScheduleTimerAlarm();
+      tester.view.physicalSize = const Size(1200, 1600);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      await _pumpLastCookingStep(
+        tester,
+        pendingStore: pendingStore,
+        recipe: _timedRecipe,
+        alarm: alarm,
+      );
+
+      await tester.tap(find.text('타이머 시작'));
+      await tester.pump();
+      expect(alarm.scheduleStarted, isTrue);
+      expect(alarm.scheduleCompleted, isFalse);
+
+      await tester.tap(find.text('조리 완료'));
+      await tester.pump();
+
+      expect(find.text('완료 저장 중'), findsOneWidget);
+      expect(alarm.cancelCount, 0);
+      expect(find.byType(ReviewScreen), findsNothing);
+
+      alarm.completeSchedule();
+      await _pumpAsyncWork(tester);
+
+      expect(alarm.operations, <String>[
+        'schedule-start',
+        'schedule-end',
+        'cancel',
+      ]);
+      expect(alarm.scheduled, isFalse);
+      expect(find.byType(ReviewScreen), findsOneWidget);
+    });
+
     testWidgets('완료 중 늦게 초기화된 알람은 예약하지 않고 즉시 취소한다', (tester) async {
       final saveGate = Completer<void>();
       final pendingStore = _FakePendingReviewDraftStore(saveGate: saveGate);
@@ -1062,6 +1100,37 @@ final class _FakeCookingSessionStore implements CookingSessionGateway {
       throw StateError('active session cleanup unavailable');
     }
     storedSession = null;
+  }
+}
+
+final class _DeferredScheduleTimerAlarm implements TimerAlarmPort {
+  final Completer<void> _scheduleGate = Completer<void>();
+  final List<String> operations = <String>[];
+  bool scheduleStarted = false;
+  bool scheduleCompleted = false;
+  bool scheduled = false;
+  int cancelCount = 0;
+
+  void completeSchedule() => _scheduleGate.complete();
+
+  @override
+  void signalTimerElapsed() {}
+
+  @override
+  Future<void> scheduleTimerElapsed(DateTime at) async {
+    scheduleStarted = true;
+    operations.add('schedule-start');
+    await _scheduleGate.future;
+    scheduleCompleted = true;
+    scheduled = true;
+    operations.add('schedule-end');
+  }
+
+  @override
+  Future<void> cancelScheduledAlarm() async {
+    cancelCount += 1;
+    scheduled = false;
+    operations.add('cancel');
   }
 }
 
