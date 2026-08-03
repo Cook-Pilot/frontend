@@ -2964,6 +2964,7 @@ class _ReviewScreenState extends State<ReviewScreen>
   bool _finalized = false;
   bool _leaving = false;
   bool _allowPop = false;
+  bool _completedReviewWithoutPersonalVersion = false;
   ReviewSaveResult? _submittedReview;
   ReviewSaveResult? _saved;
   PersonalVersionApprovalResult? _personalVersionResult;
@@ -3164,7 +3165,23 @@ class _ReviewScreenState extends State<ReviewScreen>
     return changes;
   }
 
-  Future<void> _save() async {
+  PersonalVersionApprovalRequiresReanchor? get _personalVersionPreflightBlock {
+    if (!_approvedPersonalVersionCreation || _saved != null) {
+      return null;
+    }
+    return switch (preflightPersonalVersionApproval(_draft.setupSnapshot)) {
+      PersonalVersionApprovalRequiresReanchor block => block,
+      PersonalVersionApprovalReady() => null,
+    };
+  }
+
+  bool get _requiresReviewOnlyRecovery =>
+      _draft.acceptedReviewId != null &&
+      _submittedReview != null &&
+      _personalVersionPreflightBlock != null &&
+      _saved == null;
+
+  Future<void> _save({bool completeBlockedAsReviewOnly = false}) async {
     if (_saving || _leaving || _saved != null) return;
     setState(() {
       _saving = true;
@@ -3178,6 +3195,32 @@ class _ReviewScreenState extends State<ReviewScreen>
       return;
     }
     final submittedDraft = _draft;
+    final personalVersionPreflightBlock =
+        submittedDraft.approvedPersonalVersionCreation
+        ? switch (preflightPersonalVersionApproval(
+            submittedDraft.setupSnapshot,
+          )) {
+            PersonalVersionApprovalRequiresReanchor block => block,
+            PersonalVersionApprovalReady() => null,
+          }
+        : null;
+    final canCompleteBlockedAsReviewOnly =
+        completeBlockedAsReviewOnly &&
+        personalVersionPreflightBlock != null &&
+        submittedDraft.acceptedReviewId != null &&
+        _submittedReview != null;
+    if (personalVersionPreflightBlock != null &&
+        !canCompleteBlockedAsReviewOnly) {
+      if (mounted) {
+        setState(() {
+          _saving = false;
+          _saveError =
+              '${personalVersionPreflightBlock.message} '
+              '개인 버전 저장 선택을 끄면 후기는 정상 저장할 수 있어요.';
+        });
+      }
+      return;
+    }
     var reviewAccepted = _submittedReview != null;
     try {
       final result =
@@ -3193,7 +3236,8 @@ class _ReviewScreenState extends State<ReviewScreen>
       _submittedReview = result;
       reviewAccepted = true;
       PersonalVersionApprovalResult? personalVersionResult;
-      if (submittedDraft.approvedPersonalVersionCreation) {
+      if (submittedDraft.approvedPersonalVersionCreation &&
+          !canCompleteBlockedAsReviewOnly) {
         if (submittedDraft.acceptedReviewId == null) {
           _draft = submittedDraft.copyWith(acceptedReviewId: result.id);
           if (!await _flushDraft()) {
@@ -3230,6 +3274,7 @@ class _ReviewScreenState extends State<ReviewScreen>
       setState(() {
         _saved = result;
         _personalVersionResult = personalVersionResult;
+        _completedReviewWithoutPersonalVersion = canCompleteBlockedAsReviewOnly;
         _saving = false;
         _cleanupWarning = cleanupErrors.isEmpty
             ? null
@@ -3270,6 +3315,9 @@ class _ReviewScreenState extends State<ReviewScreen>
   }
 
   String get _successMessage {
+    if (_completedReviewWithoutPersonalVersion) {
+      return '후기는 저장했고 개인 버전은 만들지 않았어요.';
+    }
     if (!_draft.approvedPersonalVersionCreation) {
       return '후기만 저장했어요. 개인 버전은 만들지 않았어요.';
     }
@@ -3283,6 +3331,8 @@ class _ReviewScreenState extends State<ReviewScreen>
   @override
   Widget build(BuildContext context) {
     final changes = _changeLabels;
+    final personalVersionPreflightBlock = _personalVersionPreflightBlock;
+    final requiresReviewOnlyRecovery = _requiresReviewOnlyRecovery;
     final sourceLabel =
         _draft.setupSnapshot.source == CookingRecipeSource.personal
         ? '개인 버전 기반'
@@ -3411,6 +3461,21 @@ class _ReviewScreenState extends State<ReviewScreen>
               ? null
               : _setPersonalVersionApproval,
         ),
+        if (personalVersionPreflightBlock != null) ...[
+          const SizedBox(height: 8),
+          InfoStrip(
+            key: const Key('review-personal-version-preflight-block'),
+            icon: Icons.warning_amber_rounded,
+            title: requiresReviewOnlyRecovery
+                ? '후기는 이미 저장됐어요'
+                : '개인 버전 저장 선택을 확인해주세요',
+            body: requiresReviewOnlyRecovery
+                ? '${personalVersionPreflightBlock.message} '
+                      '후기를 다시 보내지 않고 개인 버전 없이 안전하게 완료할 수 있어요.'
+                : '${personalVersionPreflightBlock.message} '
+                      '개인 버전 저장 선택을 끄면 후기는 정상 저장할 수 있어요.',
+          ),
+        ],
         if (changes.isNotEmpty) ...[
           const SectionTitle('자동으로 기록한 변경'),
           Wrap(
@@ -3436,7 +3501,10 @@ class _ReviewScreenState extends State<ReviewScreen>
             body: error,
           ),
         ],
-        if (!_saving && _submittedReview != null && _saved == null) ...[
+        if (!_saving &&
+            _submittedReview != null &&
+            _saved == null &&
+            !requiresReviewOnlyRecovery) ...[
           const SizedBox(height: 8),
           const InfoStrip(
             key: Key('review-approval-retry-state'),
@@ -3466,12 +3534,18 @@ class _ReviewScreenState extends State<ReviewScreen>
         child: FilledButton(
           onPressed: _saving || _leaving
               ? null
-              : (_saved == null ? _save : _goHome),
+              : _saved != null
+              ? _goHome
+              : requiresReviewOnlyRecovery
+              ? () => _save(completeBlockedAsReviewOnly: true)
+              : _save,
           child: Text(
             _saving
                 ? '저장 중'
                 : _saved == null
-                ? _submittedReview == null
+                ? requiresReviewOnlyRecovery
+                      ? '개인 버전 없이 완료'
+                      : _submittedReview == null
                       ? '조리 기록 저장'
                       : '개인 버전 다시 저장'
                 : '홈으로',

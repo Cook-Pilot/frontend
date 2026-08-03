@@ -544,6 +544,87 @@ void main() {
       expect(find.text('조리 기록 저장'), findsOneWidget);
     });
 
+    testWidgets('레거시 개인 버전은 후기 전송 전에 차단하고 동의 해제 뒤 후기만 저장한다', (tester) async {
+      final store = _FakePendingReviewDraftStore();
+      final reviewRepository = _FakeReviewRepository();
+      final approvalGateway = _FakeApprovalGateway();
+      await _pumpReview(
+        tester,
+        store: store,
+        reviewRepository: reviewRepository,
+        approvalGateway: approvalGateway,
+        initialDraft: _draft(
+          approved: true,
+          setupSnapshot: _legacyPersonalSnapshot(),
+        ),
+      );
+
+      expect(
+        find.byKey(const Key('review-personal-version-preflight-block')),
+        findsOneWidget,
+      );
+      await tester.tap(find.text('조리 기록 저장'));
+      await tester.pumpAndSettle();
+
+      expect(reviewRepository.calls, 0);
+      expect(approvalGateway.calls, 0);
+      expect(
+        tester
+            .widget<SwitchListTile>(
+              find.byKey(const Key('personal-version-opt-in')),
+            )
+            .onChanged,
+        isNotNull,
+      );
+
+      await tester.tap(find.byKey(const Key('personal-version-opt-in')));
+      await tester.pump();
+      await tester.tap(find.text('조리 기록 저장'));
+      await tester.pumpAndSettle();
+
+      expect(reviewRepository.calls, 1);
+      expect(approvalGateway.calls, 0);
+      expect(await store.load(), isNull);
+      expect(find.text('후기만 저장했어요. 개인 버전은 만들지 않았어요.'), findsOneWidget);
+    });
+
+    testWidgets('체크포인트된 레거시 후기는 중복 전송 없이 개인 버전 없이 완료한다', (tester) async {
+      final store = _FakePendingReviewDraftStore();
+      final reviewRepository = _FakeReviewRepository();
+      final approvalGateway = _FakeApprovalGateway();
+      final initialDraft = _draft(
+        approved: true,
+        acceptedReviewId: '50000000-0000-0000-0000-000000000001',
+        setupSnapshot: _legacyPersonalSnapshot(),
+      );
+      await store.save(initialDraft);
+      await _pumpReview(
+        tester,
+        store: store,
+        reviewRepository: reviewRepository,
+        approvalGateway: approvalGateway,
+        initialDraft: initialDraft,
+      );
+
+      expect(find.text('개인 버전 없이 완료'), findsOneWidget);
+      expect(
+        find.byKey(const Key('review-approval-retry-state')),
+        findsNothing,
+      );
+
+      await tester.tap(find.text('개인 버전 없이 완료'));
+      await tester.pumpAndSettle();
+
+      expect(reviewRepository.calls, 0);
+      expect(approvalGateway.calls, 0);
+      expect(await store.load(), isNull);
+      expect(
+        find.byKey(const Key('review-personal-version-preflight-block')),
+        findsNothing,
+      );
+      expect(find.text('후기는 저장했고 개인 버전은 만들지 않았어요.'), findsOneWidget);
+    });
+
     testWidgets('기본값인 미승인 상태에서는 후기만 저장한다', (tester) async {
       final store = _FakePendingReviewDraftStore();
       final reviewRepository = _FakeReviewRepository();
@@ -954,17 +1035,51 @@ CookingSetupSnapshot _snapshot() {
   );
 }
 
+CookingSetupSnapshot _legacyPersonalSnapshot() {
+  return CookingSetupSnapshot(
+    recipeId: '10000000-0000-0000-0000-000000000092',
+    title: 'F9 레거시 개인 버전 후기 테스트',
+    description: '원본 기준 재료 정보가 없는 이전 개인 버전 스냅샷이다.',
+    imageUrl: '',
+    baseServings: 2,
+    targetServings: 2,
+    source: CookingRecipeSource.personal,
+    personalVersionId: '20000000-0000-0000-0000-000000000001',
+    ingredients: const <CookingSetupIngredient>[
+      CookingSetupIngredient(
+        originalIngredientId: '30000000-0000-0000-0000-000000000001',
+        originalName: '양파',
+        name: '양파',
+        amount: 1,
+        baselineAmount: 1,
+        unit: '개',
+        isRequired: true,
+      ),
+    ],
+    steps: <CookingSetupStep>[
+      CookingSetupStep(
+        stepIndex: 0,
+        instruction: '한 단계를 조리한다.',
+        timerSeconds: 0,
+        cautionNote: null,
+        imageUrl: '',
+      ),
+    ],
+  );
+}
+
 PendingReviewDraft _draft({
   int rating = 5,
   String comment = '',
   String nextTimeNote = '',
   bool approved = false,
   String? acceptedReviewId,
+  CookingSetupSnapshot? setupSnapshot,
 }) {
   return PendingReviewDraft(
     clientSessionId: '40000000-0000-0000-0000-000000000002',
     cookedAt: DateTime.utc(2026, 7, 30, 9),
-    setupSnapshot: _snapshot(),
+    setupSnapshot: setupSnapshot ?? _snapshot(),
     timerSecondsByStep: const <int, int>{},
     rating: rating,
     comment: comment,
