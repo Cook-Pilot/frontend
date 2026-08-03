@@ -181,8 +181,10 @@ final class CookingVoiceRouter {
       ingredientTokens,
     );
     final recipeTokens = <String>{..._contextTokens(recipeTitle)};
+    final normalizedRecipeTitle = _normalize(recipeTitle);
     final hasFullRecipeTitleContext =
-        recipeTokens.length > 1 && text.contains(_normalize(recipeTitle));
+        normalizedRecipeTitle.runes.length > 1 &&
+        text.contains(normalizedRecipeTitle);
     final tasteContextTokens = <String>{...ingredientTokens, ...recipeTokens};
     final dynamicContextTokens = <String>{
       ...recipeTokens,
@@ -275,7 +277,7 @@ final class CookingVoiceRouter {
     if (_isUnsafeRawMeatProblem(text, lowerTranscript)) return true;
     if (_hasAssumedPreparationConsumption(lowerTranscript)) return true;
     if (_isSaltyProblem(text, lowerTranscript, ingredientTokens)) return true;
-    if (_isMissingIngredientProblem(text, hasIngredientContext)) return true;
+    if (_isMissingIngredientProblem(text, ingredientTokens)) return true;
 
     final describesBurning = _hasAny(text, const [
       '타고있',
@@ -904,7 +906,10 @@ final class CookingVoiceRouter {
     ).hasMatch(prefix);
   }
 
-  bool _isMissingIngredientProblem(String text, bool hasIngredientContext) {
+  bool _isMissingIngredientProblem(
+    String text,
+    Iterable<String> ingredientTokens,
+  ) {
     final hasMissingSignal = _hasAny(text, const [
       '없어',
       '없는데',
@@ -918,7 +923,21 @@ final class CookingVoiceRouter {
     if (_hasAny(text, const ['재료가', '재료는', '재료를', '양념이', '소스가'])) {
       return true;
     }
-    return hasIngredientContext;
+
+    // Keep the missing predicate in the same clause as the ingredient. A
+    // global ingredient flag would turn "양파를 넣었는데 시간이 없어" into a
+    // missing-ingredient problem even though the absent subject is time.
+    const particles = r'(?:이|가|은|는|도|만)?';
+    const modifiers = r'(?:(?:아예|전혀|정말|너무|좀|조금|거의|다|완전히))*';
+    const missingPredicates = r'(?:없어|없는데|다썼|떨어졌|모자라|부족)';
+    for (final token in ingredientTokens) {
+      if (token.isEmpty) continue;
+      final pattern = RegExp(
+        '${RegExp.escape(token)}$particles$modifiers$missingPredicates',
+      );
+      if (pattern.hasMatch(text)) return true;
+    }
+    return false;
   }
 
   bool _hasQuestionSignal(String text) => _questionSignals.any(text.contains);
@@ -1329,15 +1348,16 @@ final class CookingVoiceRouter {
       );
     }
 
-    if (_hasAny(text, const [
-      '타이머시작',
-      '타이머켜',
-      '시간재기',
-      '조리시작',
-      '요리시작',
-      '시작했어',
-      '시작했어요',
-    ])) {
+    if (!_isNegatedTimerStartCommand(text) &&
+        _hasAny(text, const [
+          '타이머시작',
+          '타이머켜',
+          '시간재기',
+          '조리시작',
+          '요리시작',
+          '시작했어',
+          '시작했어요',
+        ])) {
       return const VoiceIntent(VoiceIntentType.startTimer);
     }
 
@@ -1371,7 +1391,8 @@ final class CookingVoiceRouter {
       final tail = command.substring(completion.end);
       if (RegExp(
             r'^(?:이|가|은|는|도)?(?:아직|전혀|절대|아예)?'
-            r'(?:(?:안|못)(?:했|됐|끝냈|끝났)|하지않|되지않|끝내지않)',
+            r'(?:(?:안|못)(?:했|됐|끝냈|끝났)|'
+            r'(?:하|되|내)?지(?:는)?(?:마|말|않))',
           ).hasMatch(tail) ||
           RegExp(
             r'^(?:이|가|은|는|도)?'
@@ -1390,6 +1411,13 @@ final class CookingVoiceRouter {
       }
     }
     return false;
+  }
+
+  bool _isNegatedTimerStartCommand(String command) {
+    return RegExp(
+      r'(?:타이머(?:시작|켜)|시간재기|조리시작|요리시작)'
+      r'(?:(?:하)?지(?:는)?(?:마|말|않)|(?:은|는)?안(?:해|하|할|했))',
+    ).hasMatch(command);
   }
 
   bool _isNextCommand(String text) {
@@ -1460,12 +1488,14 @@ final class CookingVoiceRouter {
     durationParts.sort((left, right) => left.start.compareTo(right.start));
 
     final associatedParts = <int>{};
-    final replacementCutoff = _extensionReplacementCutoff(
+    final extensionSignals = _extensionSignalMatches(source).toList();
+    final replacedSignalStarts = _replacedExtensionSignalStarts(
       source,
+      extensionSignals,
       durationParts,
     );
-    for (final signal in _extensionSignalMatches(source)) {
-      if (signal.start < replacementCutoff) continue;
+    for (final signal in extensionSignals) {
+      if (replacedSignalStarts.contains(signal.start)) continue;
       if (_isRejectedExtensionSignal(source, signal)) continue;
 
       int? beforeIndex;
@@ -1508,12 +1538,12 @@ final class CookingVoiceRouter {
     return _boundedSeconds(seconds);
   }
 
-  int _extensionReplacementCutoff(
+  Set<int> _replacedExtensionSignalStarts(
     String source,
+    List<RegExpMatch> extensionSignals,
     List<({int start, int end, int seconds})> durationParts,
   ) {
-    var cutoff = 0;
-    final extensionSignals = _extensionSignalMatches(source)
+    final durationSignals = extensionSignals
         .where(
           (signal) => _isDurationAssociatedExtensionSignal(
             source,
@@ -1522,6 +1552,7 @@ final class CookingVoiceRouter {
           ),
         )
         .toList();
+    final replaced = <int>{};
     final replacementMarkers = <RegExp>[
       RegExp(r'말고(?=$|[\s,，]|\d)'),
       RegExp(r'대신(?:에)?(?=$|[\s,，]|\d)'),
@@ -1531,13 +1562,18 @@ final class CookingVoiceRouter {
     for (final pattern in replacementMarkers) {
       for (final marker in pattern.allMatches(source)) {
         if (_isNegatedReplacementMarker(source, marker)) continue;
-        if (!_isExtensionReplacementMarker(source, marker, extensionSignals)) {
+        if (!_isExtensionReplacementMarker(source, marker, durationSignals)) {
           continue;
         }
-        if (marker.end > cutoff) cutoff = marker.end;
+        RegExpMatch? previousSignal;
+        for (final signal in durationSignals) {
+          if (signal.end > marker.start) break;
+          previousSignal = signal;
+        }
+        if (previousSignal != null) replaced.add(previousSignal.start);
       }
     }
-    return cutoff;
+    return replaced;
   }
 
   bool _isDurationAssociatedExtensionSignal(

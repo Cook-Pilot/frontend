@@ -1927,6 +1927,7 @@ class _CookSessionScreenState extends State<CookSessionScreen>
     }
     // 화면 버튼으로 이동할 때도 진행 중인 음성 세션을 끊어, 이전 단계에서
     // 시작된 인식 결과가 새 단계에 적용되지 않도록 한다.
+    _manualSpeechStartPending = false;
     if (_speechIsActive) {
       unawaited(_deactivateSpeechInput(rearmHandsFree: true));
     }
