@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/data/latest_all.dart' as tzdata;
@@ -58,8 +60,8 @@ final class LocalNotificationTimerAlarm implements TimerAlarmPort {
 
   @override
   void signalTimerElapsed() {
-    SystemSound.play(SystemSoundType.alert);
-    HapticFeedback.heavyImpact();
+    unawaited(SystemSound.play(SystemSoundType.alert));
+    unawaited(HapticFeedback.heavyImpact());
   }
 
   @override
@@ -67,7 +69,9 @@ final class LocalNotificationTimerAlarm implements TimerAlarmPort {
     final now = tz.TZDateTime.now(tz.local);
     final when = tz.TZDateTime.from(at, tz.local);
     // 과거 시각이면 즉시(1초 뒤)로 보정한다.
-    final target = when.isAfter(now) ? when : now.add(const Duration(seconds: 1));
+    final target = when.isAfter(now)
+        ? when
+        : now.add(const Duration(seconds: 1));
     await _plugin.zonedSchedule(
       _notificationId,
       '조리 타이머 완료',
