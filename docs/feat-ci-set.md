@@ -22,6 +22,13 @@ PR 생성 시와 `main` push 시 아래 3단계를 실행한다. 커밋 전에 �
 | 정적 분석 | `flutter analyze` | 이슈 0 |
 | 테스트 | `flutter test` | 전체 통과 |
 
+### Flutter 버전 고정 (`.github/workflows/ci.yml`)
+
+처음에는 `channel: stable`만 지정해 CI가 실행 시점의 최신 stable을 받아왔다. 이 경우 Flutter 새 stable 릴리스 때 `dart format` 결과나 신규 린트가 달라져 코드 변경 없이 CI가 깨질 수 있다.
+
+- 검토한 대안: `pubspec.yaml`에 Flutter 제약(`environment: flutter:`)까지 명시 — 로컬 버전 불일치도 `pub get`에서 잡히지만, 지금은 CI 재현성 확보가 목적이라 최소 변경으로 제외.
+- 최종 결정: 프로젝트 생성 버전이자 로컬 버전인 `flutter-version: 3.44.6`을 워크플로에 고정. 근거는 `.metadata`의 리비전 `ee80f08bbf`(= Flutter 3.44.6). Flutter를 업그레이드할 때는 이 값도 같은 PR에서 함께 올린다.
+
 ### 린트 강화 (`analysis_options.yaml`)
 
 `flutter_lints` 기본 세트에 4개 룰 추가:
