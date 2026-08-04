@@ -39,6 +39,13 @@ PR 생성 시와 `main` push 시 아래 3단계를 실행한다. 커밋 전에 �
 
 PR마다 브랜치 이름으로 `docs/`에 작업 명세를 남기는 규칙을 AGENTS.md에 추가했다. 이 문서가 그 첫 적용 사례다.
 
+### 타임존 의존 테스트 수정 (`test/features/review/data/review_api_test.dart`)
+
+CI 도입 후 '월 범위를 UTC 쿼리로 보내고 조리 이력을 읽는다' 테스트가 CI에서만 실패했다. 로컬 시각 `DateTime(2026, 7, 1)`을 UTC로 변환한 기대값을 `'2026-06-30T15:00:00.000Z'`(KST 기준)로 하드코딩해서, UTC 타임존인 GitHub Actions 러너에서는 실제값이 `2026-07-01T00:00:00.000Z`가 되어 어긋났다.
+
+- 검토한 대안: 입력을 `DateTime.utc(...)`로 고정 — 로컬→UTC 변환 검증 의도가 사라져 제외.
+- 최종 결정: 기대값을 하드코딩 대신 입력에서 파생(`from.toUtc().toIso8601String()`)시켜 어느 타임존에서든 통과하게 수정.
+
 ## 4. 검증
 
 - `dart format --set-exit-if-changed --output=none .` — 39개 파일 변경 필요 0건
