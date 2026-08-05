@@ -1569,9 +1569,6 @@ class _CookSessionScreenState extends State<CookSessionScreen>
   String? _voiceMessage;
   bool _disposed = false;
 
-  String? _voiceMessage;
-  bool _disposed = false;
-
   // 원래 디자인은 그대로 두고 시계(타이머)만 실제로 동작시킨다.
   // 기본 클럭이 WallAnchoredMonotonicClock이라 화면이 꺼져도 시간이 이어진다.
   final LocalTimerController _timer = LocalTimerController();
