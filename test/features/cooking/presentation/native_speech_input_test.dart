@@ -108,6 +108,35 @@ void main() {
     );
   });
 
+  test('권한 확인 자체가 실패하면 보수적으로 permissionDenied로 분류한다', () async {
+    final driver = _FakeSpeechDriver()
+      ..initializeResult = false
+      ..permissionError = StateError('permission channel unavailable');
+
+    expect(
+      await _startAndReadFailure(driver),
+      SpeechInputFailure.permissionDenied,
+    );
+  });
+
+  test('재시도와 사용 불가 단서가 섞인 오류 코드는 재시도로 분류한다', () async {
+    final driver = _FakeSpeechDriver();
+    final failure = Completer<SpeechInputFailure>();
+    final input = NativeSpeechInput(driver: driver);
+    input.start(
+      onReady: () {},
+      onUtterance: (_, _) {},
+      onFailure: failure.complete,
+    );
+    await pumpEventQueue();
+
+    // unavailable 단서(listen_failed)와 재시도 단서(retry)가 섞이면, 핸즈프리를
+    // 영구 해제하는 unavailable 대신 비용이 싼 재시도를 우선한다.
+    driver.emitError('listen_failed: recognizer busy, retry', permanent: true);
+
+    expect(await failure.future, SpeechInputFailure.retryRequired);
+  });
+
   test('final 결과 없이 자연 종료되면 retryRequired를 알린다', () async {
     final driver = _FakeSpeechDriver();
     final failure = Completer<SpeechInputFailure>();
@@ -685,6 +714,7 @@ Future<SpeechInputFailure> _startAndReadFailure(
 final class _FakeSpeechDriver implements NativeSpeechRecognitionDriver {
   bool initializeResult = true;
   bool permissionGranted = true;
+  Object? permissionError;
   Completer<bool>? initializeCompleter;
   Object? listenError;
   int initializeCount = 0;
@@ -702,7 +732,12 @@ final class _FakeSpeechDriver implements NativeSpeechRecognitionDriver {
   NativeSpeechDriverStatusHandler? onStatus;
 
   @override
-  Future<bool> get hasPermission async => permissionGranted;
+  Future<bool> get hasPermission async {
+    if (permissionError case final Object error) {
+      throw error;
+    }
+    return permissionGranted;
+  }
 
   @override
   Future<bool> initialize({

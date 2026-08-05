@@ -217,6 +217,9 @@ class _HomeScreenState extends State<HomeScreen> {
     if (session == null || recipe == null) {
       return;
     }
+    // MaterialPageRoute.builder는 재실행될 수 있으므로 화면이 소유할 포트는
+    // 밖에서 한 번만 만든다.
+    final advicePort = HttpExceptionAdvicePort();
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => CookSessionScreen(
@@ -224,7 +227,7 @@ class _HomeScreenState extends State<HomeScreen> {
           servings: session.servings,
           setupSnapshot: session.setupSnapshot,
           restoredSession: session,
-          advicePort: HttpExceptionAdvicePort(),
+          advicePort: advicePort,
         ),
       ),
     );
@@ -517,11 +520,13 @@ class _MemoryScreenState extends State<MemoryScreen> {
             .where((entry) => entry.recipeId == selected.recipeId)
             .toList(growable: false)
           ..sort((left, right) => right.cookedAt.compareTo(left.cookedAt));
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => CookingHistoryDetailScreen(
-          entry: selected,
-          sameRecipeEntries: sameRecipe,
+    unawaited(
+      Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => CookingHistoryDetailScreen(
+            entry: selected,
+            sameRecipeEntries: sameRecipe,
+          ),
         ),
       ),
     );
