@@ -288,7 +288,16 @@ final class SpeechToTextRecognitionDriver
   }
 
   Future<void> _awaitLifecycleDrain(_SpeechLifecycleDrain drain) async {
-    await drain.done.timeout(_lifecycleDrainTimeout);
+    try {
+      await drain.done.timeout(_lifecycleDrainTimeout);
+    } on TimeoutException {
+      // "2턴 침묵 = 드레인 완료" 휴리스틱이 실기기에서 얼마나 어긋나는지
+      // 관측하기 위한 로그. 특정 기종에서 빈발하면 타임아웃 조정의 근거가 된다.
+      debugPrint(
+        'speech lifecycle drain timed out after $_lifecycleDrainTimeout',
+      );
+      rethrow;
+    }
     if (identical(_lifecycleDrain, drain)) {
       _lifecycleDrain = null;
     }
@@ -529,7 +538,10 @@ final class NativeSpeechInput implements SpeechInputPort {
     try {
       return await _driver.hasPermission;
     } on Object {
-      return true;
+      // 권한 확인 자체가 실패하면 보수적으로 "권한 없음"으로 본다. 반대로
+      // 기울이면 unavailable("기기 미지원")로 보고되어, 권한만 허용하면 되는
+      // 사용자에게 복구 경로 없는 안내가 나간다.
+      return false;
     }
   }
 
@@ -693,12 +705,17 @@ final class NativeSpeechInput implements SpeechInputPort {
     if (_looksLikePermissionError(code)) {
       return SpeechInputFailure.permissionDenied;
     }
-    if (_looksUnavailable(code)) {
-      return SpeechInputFailure.unavailable;
-    }
+    // 재시도 단서와 사용 불가 단서가 한 문자열에 섞이면 재시도를 우선한다.
+    // 오분류 비용이 비대칭이다 — 재시도는 한 번 더 시도할 뿐이지만,
+    // unavailable은 세션 내내 핸즈프리를 영구 해제한다.
     if (_looksRetryable(code)) {
       return SpeechInputFailure.retryRequired;
     }
+    if (_looksUnavailable(code)) {
+      return SpeechInputFailure.unavailable;
+    }
+    // OEM별 오류 문자열 분포를 베타에서 수집하기 위한 로그.
+    debugPrint('unclassified speech error code: ${error.code}');
     return error.permanent
         ? SpeechInputFailure.unavailable
         : SpeechInputFailure.retryRequired;

@@ -107,13 +107,19 @@ void main() {
   });
 
   test('월 범위를 UTC 쿼리로 보내고 조리 이력을 읽는다', () async {
+    // 로컬 타임존과 무관하게 통과하도록 기대값을 입력에서 파생시킨다.
+    final from = DateTime(2026, 7, 1);
+    final to = DateTime(2026, 8, 1);
     final repository = ReviewRepository(
       baseUrl: baseUrl,
       client: MockClient((request) async {
         expect(request.method, 'GET');
         expect(request.url.path, '/api/v1/cooking-history');
-        expect(request.url.queryParameters['from'], '2026-06-30T15:00:00.000Z');
-        expect(request.url.queryParameters['to'], '2026-07-31T15:00:00.000Z');
+        expect(
+          request.url.queryParameters['from'],
+          from.toUtc().toIso8601String(),
+        );
+        expect(request.url.queryParameters['to'], to.toUtc().toIso8601String());
         expect(request.headers[cookPilotUserIdHeader], userId);
         return _jsonResponse('''
           [
@@ -137,10 +143,7 @@ void main() {
       }),
     );
 
-    final history = await repository.findHistory(
-      from: DateTime(2026, 7, 1),
-      to: DateTime(2026, 8, 1),
-    );
+    final history = await repository.findHistory(from: from, to: to);
 
     expect(history, hasLength(1));
     expect(history.single.recipeTitle, '라면');
