@@ -64,6 +64,17 @@ typedef SpeechUtteranceHandler =
 typedef SpeechInputFailureHandler = void Function(SpeechInputFailure failure);
 typedef SpeechInputReadyHandler = void Function();
 
+/// 음성 입력 경계의 계약.
+///
+/// 구현체가 지켜야 하는 보장 — 소비자(session controller)는 방어적으로 이를
+/// 재검증하지만, 새 구현체는 아래를 전제로 작성해야 한다:
+///
+/// - [SpeechUtteranceHandler]에 빈(공백뿐인) 발화를 전달하지 않는다.
+/// - `utteranceId`는 같은 발화의 재전달을 구분할 수 있게 유일해야 한다.
+/// - [stop] 이후에는 그 세션의 결과·실패 콜백을 전달하지 않는다.
+/// - [stop]은 진행 중이던 발화의 최종 결과를 **전달하지 않는다**(취소 의미).
+///   빠른 재시작 시 이전 세션의 결과가 새 세션에 새는 것을 막기 위한
+///   의도적 선택이다.
 abstract interface class SpeechInputPort {
   /// Starts recognition without blocking on the recognition session lifetime.
   /// Readiness and asynchronous failures are reported through callbacks.

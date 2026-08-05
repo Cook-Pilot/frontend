@@ -12,9 +12,13 @@ import '../application/cooking_ports.dart';
 ///
 /// 초기화(권한 요청 포함)는 [initialize]로 한 번만 수행한다.
 final class LocalNotificationTimerAlarm implements TimerAlarmPort {
-  LocalNotificationTimerAlarm(this._plugin);
+  LocalNotificationTimerAlarm._(
+    this._plugin,
+    this._exactAlarmPermissionGranted,
+  );
 
   final FlutterLocalNotificationsPlugin _plugin;
+  final bool? _exactAlarmPermissionGranted;
 
   /// 타이머 알림은 항상 하나만 유지되므로 고정 id를 재사용한다.
   static const int _notificationId = 7001;
@@ -36,15 +40,26 @@ final class LocalNotificationTimerAlarm implements TimerAlarmPort {
   );
 
   /// 플러그인·타임존을 초기화하고 알림/정확 알람 권한을 요청한다.
-  static Future<LocalNotificationTimerAlarm> initialize() async {
+  static Future<LocalNotificationTimerAlarm> initialize({
+    void Function(bool active)? onPermissionFlowChanged,
+  }) async {
+    void notifyPermissionFlow(bool active) {
+      try {
+        onPermissionFlowChanged?.call(active);
+      } catch (_) {
+        // UI lifecycle bookkeeping must not block alarm initialization.
+      }
+    }
+
     tzdata.initializeTimeZones();
     final plugin = FlutterLocalNotificationsPlugin();
     await plugin.initialize(
       const InitializationSettings(
         android: AndroidInitializationSettings('@mipmap/ic_launcher'),
         iOS: DarwinInitializationSettings(
-          requestAlertPermission: true,
-          requestSoundPermission: true,
+          requestAlertPermission: false,
+          requestSoundPermission: false,
+          requestBadgePermission: false,
         ),
       ),
     );
@@ -52,10 +67,24 @@ final class LocalNotificationTimerAlarm implements TimerAlarmPort {
         .resolvePlatformSpecificImplementation<
           AndroidFlutterLocalNotificationsPlugin
         >();
-    await android?.requestNotificationsPermission();
-    // 정확한 시각 알람(Android 12+). 거부되면 inexact로 대체된다.
-    await android?.requestExactAlarmsPermission();
-    return LocalNotificationTimerAlarm(plugin);
+    final ios = plugin
+        .resolvePlatformSpecificImplementation<
+          IOSFlutterLocalNotificationsPlugin
+        >();
+    bool? exactAlarmPermissionGranted;
+    if (android != null || ios != null) {
+      notifyPermissionFlow(true);
+      try {
+        await ios?.requestPermissions(alert: true, badge: true, sound: true);
+        await android?.requestNotificationsPermission();
+        // Android 12+에서 false/null이면 예약 시 inexact로 안전하게 낮춘다.
+        exactAlarmPermissionGranted = await android
+            ?.requestExactAlarmsPermission();
+      } finally {
+        notifyPermissionFlow(false);
+      }
+    }
+    return LocalNotificationTimerAlarm._(plugin, exactAlarmPermissionGranted);
   }
 
   @override
@@ -78,7 +107,9 @@ final class LocalNotificationTimerAlarm implements TimerAlarmPort {
       '설정한 시간이 끝났어요. 다음 단계를 확인하세요.',
       target,
       _details,
-      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+      androidScheduleMode: _exactAlarmPermissionGranted == true
+          ? AndroidScheduleMode.exactAllowWhileIdle
+          : AndroidScheduleMode.inexactAllowWhileIdle,
     );
   }
 
