@@ -254,12 +254,14 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
             child: FilledButton(
               onPressed: canCook
                   ? () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute<void>(
-                          builder: (_) => CookSetupScreen(
-                            recipe: recipe,
-                            recommendationDataSource:
-                                RecommendationRepository(),
+                      unawaited(
+                        Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) => CookSetupScreen(
+                              recipe: recipe,
+                              recommendationDataSource:
+                                  RecommendationRepository(),
+                            ),
                           ),
                         ),
                       );
@@ -845,15 +847,17 @@ class _CookSetupScreenState extends State<CookSetupScreen> {
               ? null
               : () {
                   final snapshot = _buildSnapshot();
-                  Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (_) => CookSessionScreen(
-                        recipe: snapshot.toExecutionRecipe(),
-                        servings: servings,
-                        setupSnapshot: snapshot,
-                        alarm: widget.sessionAlarm,
-                        speechInput: widget.sessionSpeechInput,
-                        handsFreeVoiceEnabled: _handsFreeVoiceEnabled,
+                  unawaited(
+                    Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => CookSessionScreen(
+                          recipe: snapshot.toExecutionRecipe(),
+                          servings: servings,
+                          setupSnapshot: snapshot,
+                          alarm: widget.sessionAlarm,
+                          speechInput: widget.sessionSpeechInput,
+                          handsFreeVoiceEnabled: _handsFreeVoiceEnabled,
+                        ),
                       ),
                     ),
                   );
@@ -2615,9 +2619,11 @@ class _ReviewScreenState extends State<ReviewScreen> {
   }
 
   void _goHome() {
-    Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute<void>(builder: (_) => const MainShell()),
-      (route) => false,
+    unawaited(
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute<void>(builder: (_) => const MainShell()),
+        (route) => false,
+      ),
     );
   }
 
