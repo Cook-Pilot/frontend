@@ -3,6 +3,7 @@ import 'package:cookpilot/features/cooking/application/cooking_session_store.dar
 import 'package:cookpilot/features/cooking/domain/cooking_setup_snapshot.dart';
 import 'package:cookpilot/features/mvp/cook_flow_screens.dart';
 import 'package:cookpilot/features/recipe/domain/recipe.dart';
+import 'package:cookpilot/features/review/application/pending_review_draft_store.dart';
 import 'package:cookpilot/features/review/data/review_api.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -12,7 +13,7 @@ void main() {
   const store = CookingSessionStore();
 
   const recipe = Recipe(
-    id: 'cooking-session-test-recipe',
+    id: '10000000-0000-0000-0000-000000000090',
     title: '조리 세션 테스트 레시피',
     description: '로컬 세션 저장과 복원을 검증한다.',
     baseServings: 2,
@@ -86,9 +87,23 @@ void main() {
     );
   }
 
+  PendingReviewDraft buildDraft({Map<int, int> timerSecondsByStep = const {}}) {
+    return PendingReviewDraft(
+      clientSessionId: '40000000-0000-0000-0000-000000000001',
+      cookedAt: DateTime.utc(2026, 7, 26),
+      setupSnapshot: buildSnapshot(),
+      timerSecondsByStep: timerSecondsByStep,
+      rating: 5,
+      comment: '',
+      nextTimeNote: '',
+      approvedPersonalVersionCreation: false,
+    );
+  }
+
   Future<void> pumpSession(
     WidgetTester tester, {
     PersistedCookingSession? restoredSession,
+    PendingReviewDraftGateway? pendingReviewDraftStore,
   }) async {
     await tester.pumpWidget(
       MaterialApp(
@@ -97,6 +112,7 @@ void main() {
           servings: 2,
           restoredSession: restoredSession,
           alarm: SilentTimerAlarm(),
+          pendingReviewDraftStore: pendingReviewDraftStore,
         ),
       ),
     );
@@ -139,7 +155,7 @@ void main() {
   group('CookSessionScreen 저장', () {
     testWidgets('분으로 나누어지지 않는 단계 타이머도 정확한 초로 시작한다', (tester) async {
       const exactSecondsRecipe = Recipe(
-        id: 'exact-seconds-recipe',
+        id: '10000000-0000-0000-0000-000000000091',
         title: '90초 타이머 레시피',
         description: '초 단위 타이머를 검증한다.',
         baseServings: 1,
@@ -192,26 +208,33 @@ void main() {
       expect(saved!.stepIndex, 1);
     });
 
-    testWidgets('조리를 완료해도 후기 저장 전까지 저장본을 유지한다', (tester) async {
+    testWidgets('완료 초안을 저장한 뒤 진행 중 세션을 정리한다', (tester) async {
+      final pendingReviewDraftStore = _MemoryPendingReviewDraftStore();
       await pumpSession(
         tester,
         restoredSession: buildSession(stepIndex: recipe.steps.length - 1),
+        pendingReviewDraftStore: pendingReviewDraftStore,
       );
 
       await tester.tap(find.text('조리 완료'));
       await tester.pumpAndSettle();
 
-      expect(await store.load(), isNotNull);
+      expect(await store.load(), isNull);
+      expect(await pendingReviewDraftStore.load(), isNotNull);
     });
 
-    testWidgets('완료 후 전환 중 타이머가 만료돼도 저장본을 덮어쓰지 않는다', (tester) async {
+    testWidgets('완료 후 전환 중 타이머가 만료돼도 active 세션을 되살리지 않는다', (tester) async {
+      final pendingReviewDraftStore = _MemoryPendingReviewDraftStore();
       final restored = buildSession(
         stepIndex: recipe.steps.length - 1,
         timerStatus: 'running',
         timerRemainingMs: 400,
       );
-      await pumpSession(tester, restoredSession: restored);
-      final sessionIdBeforeCompletion = (await store.load())!.sessionId;
+      await pumpSession(
+        tester,
+        restoredSession: restored,
+        pendingReviewDraftStore: pendingReviewDraftStore,
+      );
 
       await tester.tap(find.text('조리 완료'));
       // 전환 애니메이션 중에는 이전 화면 State와 타이머 콜백이 살아 있다.
@@ -224,21 +247,20 @@ void main() {
       await tester.pumpAndSettle();
 
       final saved = await store.load();
-      expect(saved, isNotNull);
-      expect(saved!.sessionId, sessionIdBeforeCompletion);
+      expect(saved, isNull);
+      expect(await pendingReviewDraftStore.load(), isNotNull);
     });
   });
 
   group('ReviewScreen 저장', () {
     testWidgets('후기 저장이 성공한 뒤에만 조리 세션을 정리한다', (tester) async {
+      final pendingReviewDraftStore = _MemoryPendingReviewDraftStore();
       await store.save(buildSession());
       await tester.pumpWidget(
         MaterialApp(
           home: ReviewScreen(
-            setupSnapshot: buildSnapshot(),
-            clientSessionId: '40000000-0000-0000-0000-000000000001',
-            cookedAt: DateTime(2026, 7, 26),
-            timerSecondsByStep: const {},
+            initialDraft: buildDraft(),
+            pendingReviewDraftStore: pendingReviewDraftStore,
             reviewRepository: _FakeReviewRepository(),
           ),
         ),
@@ -254,10 +276,7 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(
           home: ReviewScreen(
-            setupSnapshot: buildSnapshot(),
-            clientSessionId: '40000000-0000-0000-0000-000000000001',
-            cookedAt: DateTime(2026, 7, 26),
-            timerSecondsByStep: const {0: 240},
+            initialDraft: buildDraft(timerSecondsByStep: const {0: 240}),
             reviewRepository: _FakeReviewRepository(),
           ),
         ),
@@ -270,19 +289,18 @@ void main() {
       await tester.drag(find.byType(ListView), const Offset(0, -600));
       await tester.pumpAndSettle();
 
-      expect(find.text('후기를 조리 기록에 저장했어요.'), findsOneWidget);
+      expect(find.text('후기만 저장했어요. 개인 버전은 만들지 않았어요.'), findsOneWidget);
       expect(find.textContaining('실행 변경이 없어'), findsNothing);
     });
 
     testWidgets('후기 저장에 실패하면 재시도할 조리 세션을 유지한다', (tester) async {
+      final pendingReviewDraftStore = _MemoryPendingReviewDraftStore();
       await store.save(buildSession());
       await tester.pumpWidget(
         MaterialApp(
           home: ReviewScreen(
-            setupSnapshot: buildSnapshot(),
-            clientSessionId: '40000000-0000-0000-0000-000000000001',
-            cookedAt: DateTime(2026, 7, 26),
-            timerSecondsByStep: const {},
+            initialDraft: buildDraft(),
+            pendingReviewDraftStore: pendingReviewDraftStore,
             reviewRepository: _FakeReviewRepository(shouldFail: true),
           ),
         ),
@@ -294,6 +312,24 @@ void main() {
       expect(await store.load(), isNotNull);
     });
   });
+}
+
+final class _MemoryPendingReviewDraftStore
+    implements PendingReviewDraftGateway {
+  PendingReviewDraft? _draft;
+
+  @override
+  Future<void> save(PendingReviewDraft draft) async {
+    _draft = draft;
+  }
+
+  @override
+  Future<PendingReviewDraft?> load() async => _draft;
+
+  @override
+  Future<void> clear() async {
+    _draft = null;
+  }
 }
 
 final class _FakeReviewRepository extends ReviewRepository {

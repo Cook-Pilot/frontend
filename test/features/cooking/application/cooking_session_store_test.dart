@@ -5,6 +5,7 @@ import 'package:cookpilot/features/cooking/domain/cooking_setup_snapshot.dart';
 import 'package:cookpilot/features/cooking/domain/cooking_session_state.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:shared_preferences_platform_interface/shared_preferences_platform_interface.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -148,6 +149,174 @@ void main() {
       expect(await store.load(), isNull);
     });
 
+    test('플랫폼 저장이 false면 이전 영속 세션을 캐시에 복원한다', () async {
+      final persistedSession = buildSession(sessionStatus: 'paused');
+      final platform = _FailingSetSharedPreferencesStore({
+        _platformStorageKey: jsonEncode(persistedSession.toJson()),
+      });
+      final originalPlatform = SharedPreferencesStorePlatform.instance;
+      addTearDown(() {
+        SharedPreferencesStorePlatform.instance = originalPlatform;
+      });
+      SharedPreferencesStorePlatform.instance = platform;
+      final preferences = await SharedPreferences.getInstance();
+      final failingStore = CookingSessionStore(
+        preferencesLoader: () async => preferences,
+      );
+
+      await expectLater(
+        failingStore.save(buildSession(sessionStatus: 'cooking')),
+        throwsA(
+          isA<StateError>().having(
+            (error) => error.message,
+            'message',
+            '진행 중 조리 세션을 로컬에 저장하지 못했습니다.',
+          ),
+        ),
+      );
+
+      final restored = await failingStore.load();
+      expect(restored, isNotNull);
+      expect(restored!.sessionStatus, 'paused');
+      expect(platform.setKeys, const [_platformStorageKey]);
+      expect(platform.getAllCalls, 2);
+    });
+
+    test('플랫폼 저장 예외 뒤 이전 세션과 원래 stack을 복원한다', () async {
+      final persistedSession = buildSession(sessionStatus: 'paused');
+      final writeError = StateError('platform write failed');
+      final writeStackTrace = StackTrace.fromString(
+        'platform session write failure stack',
+      );
+      final platform = _FailingSetSharedPreferencesStore(
+        {_platformStorageKey: jsonEncode(persistedSession.toJson())},
+        writeError: writeError,
+        writeStackTrace: writeStackTrace,
+      );
+      final originalPlatform = SharedPreferencesStorePlatform.instance;
+      addTearDown(() {
+        SharedPreferencesStorePlatform.instance = originalPlatform;
+      });
+      SharedPreferencesStorePlatform.instance = platform;
+      final preferences = await SharedPreferences.getInstance();
+      final failingStore = CookingSessionStore(
+        preferencesLoader: () async => preferences,
+      );
+      Object? caughtError;
+      StackTrace? caughtStackTrace;
+
+      try {
+        await failingStore.save(buildSession(sessionStatus: 'cooking'));
+      } on Object catch (error, stackTrace) {
+        caughtError = error;
+        caughtStackTrace = stackTrace;
+      }
+
+      expect(caughtError, same(writeError));
+      expect(caughtStackTrace.toString(), writeStackTrace.toString());
+      final restored = await failingStore.load();
+      expect(restored, isNotNull);
+      expect(restored!.sessionStatus, 'paused');
+      expect(platform.getAllCalls, 2);
+    });
+
+    for (final hasPreviousSession in [true, false]) {
+      for (final writeThrows in [false, true]) {
+        final previousState = hasPreviousSession ? '이전 세션이 있으면' : '이전 세션이 없으면';
+        final failureMode = writeThrows ? '저장 예외' : '저장 false';
+
+        test(
+          '$failureMode 뒤 reload도 실패해도 $previousState cache와 최초 오류를 보존한다',
+          () async {
+            final previousSession = buildSession(sessionStatus: 'paused');
+            final persistedValues = <String, Object>{
+              if (hasPreviousSession)
+                _platformStorageKey: jsonEncode(previousSession.toJson()),
+            };
+            final writeError = StateError('initial platform write failed');
+            final writeStackTrace = StackTrace.fromString(
+              'initial platform session write failure stack',
+            );
+            final reloadError = StateError('reload failed');
+            final reloadStackTrace = StackTrace.fromString(
+              'session reload failure stack',
+            );
+            final restoreError = StateError('cache restore failed');
+            final restoreStackTrace = StackTrace.fromString(
+              'session cache restore failure stack',
+            );
+            final platform = _FailingSetSharedPreferencesStore(
+              persistedValues,
+              writeError: writeThrows ? writeError : null,
+              writeStackTrace: writeThrows ? writeStackTrace : null,
+              reloadError: reloadError,
+              reloadStackTrace: reloadStackTrace,
+              restoreError: restoreError,
+              restoreStackTrace: restoreStackTrace,
+            );
+            final originalPlatform = SharedPreferencesStorePlatform.instance;
+            addTearDown(() {
+              SharedPreferencesStorePlatform.instance = originalPlatform;
+            });
+            SharedPreferencesStorePlatform.instance = platform;
+            final preferences = await SharedPreferences.getInstance();
+            final failingStore = CookingSessionStore(
+              preferencesLoader: () async => preferences,
+            );
+            Object? caughtError;
+            StackTrace? caughtStackTrace;
+
+            try {
+              await failingStore.save(buildSession(sessionStatus: 'cooking'));
+            } on Object catch (error, stackTrace) {
+              caughtError = error;
+              caughtStackTrace = stackTrace;
+            }
+
+            if (writeThrows) {
+              expect(caughtError, same(writeError));
+              expect(caughtStackTrace.toString(), writeStackTrace.toString());
+            } else {
+              expect(
+                caughtError,
+                isA<StateError>().having(
+                  (error) => error.message,
+                  'message',
+                  '진행 중 조리 세션을 로컬에 저장하지 못했습니다.',
+                ),
+              );
+              expect(caughtError, isNot(same(reloadError)));
+              expect(caughtError, isNot(same(restoreError)));
+              expect(
+                caughtStackTrace.toString(),
+                contains('cooking_session_store.dart'),
+              );
+            }
+
+            final restored = await failingStore.load();
+            if (hasPreviousSession) {
+              expect(restored, isNotNull);
+              expect(restored!.sessionStatus, 'paused');
+            } else {
+              expect(restored, isNull);
+              expect(preferences.containsKey(_storageKey), isFalse);
+            }
+            expect(platform.getAllCalls, 2);
+          },
+        );
+      }
+    }
+
+    test('저장소를 열지 못한 오류를 세션 없음으로 숨기지 않는다', () async {
+      final failingStore = CookingSessionStore(
+        preferencesLoader: () async {
+          throw StateError('preferences unavailable');
+        },
+      );
+
+      await expectLater(failingStore.load(), throwsStateError);
+    });
+
     test('손상된 저장값은 null을 돌려주고 정리한다', () async {
       SharedPreferences.setMockInitialValues(<String, Object>{
         'cookpilot.active_cooking_session.v1': '{broken json',
@@ -159,12 +328,266 @@ void main() {
       expect(prefs.getString('cookpilot.active_cooking_session.v1'), isNull);
     });
 
+    test('손상값 remove가 false면 캐시를 복원해 다음 load가 다시 정리한다', () async {
+      final platform = _FailingRemoveSharedPreferencesStore({
+        _platformStorageKey: '{broken json',
+      });
+      final originalPlatform = SharedPreferencesStorePlatform.instance;
+      addTearDown(() {
+        SharedPreferencesStorePlatform.instance = originalPlatform;
+      });
+      SharedPreferencesStorePlatform.instance = platform;
+      final preferences = await SharedPreferences.getInstance();
+      final failingStore = CookingSessionStore(
+        preferencesLoader: () async => preferences,
+      );
+
+      expect(await failingStore.load(), isNull);
+      expect(preferences.getString(_storageKey), '{broken json');
+      expect(await failingStore.load(), isNull);
+
+      expect(platform.removedKeys, const [
+        _platformStorageKey,
+        _platformStorageKey,
+      ]);
+      expect(platform.getAllCalls, 3);
+    });
+
+    test('손상값 remove 예외도 캐시를 복원해 다음 load가 다시 정리한다', () async {
+      final platform = _FailingRemoveSharedPreferencesStore({
+        _platformStorageKey: '{broken json',
+      }, removeError: StateError('platform remove failed'));
+      final originalPlatform = SharedPreferencesStorePlatform.instance;
+      addTearDown(() {
+        SharedPreferencesStorePlatform.instance = originalPlatform;
+      });
+      SharedPreferencesStorePlatform.instance = platform;
+      final preferences = await SharedPreferences.getInstance();
+      final failingStore = CookingSessionStore(
+        preferencesLoader: () async => preferences,
+      );
+
+      expect(await failingStore.load(), isNull);
+      expect(preferences.getString(_storageKey), '{broken json');
+      expect(await failingStore.load(), isNull);
+
+      expect(platform.removedKeys, const [
+        _platformStorageKey,
+        _platformStorageKey,
+      ]);
+      expect(platform.getAllCalls, 3);
+    });
+
+    for (final removeThrows in [false, true]) {
+      final failureMode = removeThrows ? 'remove 예외' : 'remove false';
+
+      test(
+        '손상값 $failureMode 뒤 reload와 fallback도 실패하면 cache를 복원해 정리를 재시도한다',
+        () async {
+          final removeError = StateError('initial cleanup remove failed');
+          final platform = _FailingRemoveSharedPreferencesStore(
+            {_platformStorageKey: '{reload also fails'},
+            removeError: removeThrows ? removeError : null,
+            reloadError: StateError('cleanup reload failed'),
+            reloadStackTrace: StackTrace.fromString('cleanup reload stack'),
+            restoreError: StateError('cleanup cache restore failed'),
+            restoreStackTrace: StackTrace.fromString(
+              'cleanup cache restore stack',
+            ),
+          );
+          final originalPlatform = SharedPreferencesStorePlatform.instance;
+          addTearDown(() {
+            SharedPreferencesStorePlatform.instance = originalPlatform;
+          });
+          SharedPreferencesStorePlatform.instance = platform;
+          final preferences = await SharedPreferences.getInstance();
+          final failingStore = CookingSessionStore(
+            preferencesLoader: () async => preferences,
+          );
+
+          expect(await failingStore.load(), isNull);
+          expect(preferences.getString(_storageKey), '{reload also fails');
+          expect(await failingStore.load(), isNull);
+          expect(preferences.getString(_storageKey), '{reload also fails');
+
+          expect(platform.removedKeys, const [
+            _platformStorageKey,
+            _platformStorageKey,
+          ]);
+          expect(platform.setKeys, const [
+            _platformStorageKey,
+            _platformStorageKey,
+          ]);
+          expect(platform.getAllCalls, 3);
+        },
+      );
+    }
+
     test('clear 후에는 세션이 남지 않는다', () async {
       await store.save(buildSession());
       await store.clear();
 
       expect(await store.load(), isNull);
     });
+
+    test('플랫폼 remove가 false면 실제 세션을 캐시에 복원하고 실패를 전달한다', () async {
+      final persistedSession = buildSession(sessionStatus: 'paused');
+      final platform = _FailingRemoveSharedPreferencesStore({
+        _platformStorageKey: jsonEncode(persistedSession.toJson()),
+      });
+      final originalPlatform = SharedPreferencesStorePlatform.instance;
+      addTearDown(() {
+        SharedPreferencesStorePlatform.instance = originalPlatform;
+      });
+      SharedPreferencesStorePlatform.instance = platform;
+      final preferences = await SharedPreferences.getInstance();
+      final failingStore = CookingSessionStore(
+        preferencesLoader: () async => preferences,
+      );
+
+      await expectLater(
+        failingStore.clear(),
+        throwsA(
+          isA<StateError>().having(
+            (error) => error.message,
+            'message',
+            '진행 중 조리 세션을 로컬에서 정리하지 못했습니다.',
+          ),
+        ),
+      );
+
+      final restored = await failingStore.load();
+      expect(restored, isNotNull);
+      expect(restored!.sessionStatus, 'paused');
+      expect(platform.removedKeys, const [_platformStorageKey]);
+      expect(platform.getAllCalls, 2);
+    });
+
+    test('플랫폼 remove 예외 뒤 실제 세션과 원래 stack을 복원한다', () async {
+      final persistedSession = buildSession(sessionStatus: 'paused');
+      final removeError = StateError('platform remove failed');
+      final removeStackTrace = StackTrace.fromString(
+        'platform session remove failure stack',
+      );
+      final platform = _FailingRemoveSharedPreferencesStore(
+        {_platformStorageKey: jsonEncode(persistedSession.toJson())},
+        removeError: removeError,
+        removeStackTrace: removeStackTrace,
+      );
+      final originalPlatform = SharedPreferencesStorePlatform.instance;
+      addTearDown(() {
+        SharedPreferencesStorePlatform.instance = originalPlatform;
+      });
+      SharedPreferencesStorePlatform.instance = platform;
+      final preferences = await SharedPreferences.getInstance();
+      final failingStore = CookingSessionStore(
+        preferencesLoader: () async => preferences,
+      );
+      Object? caughtError;
+      StackTrace? caughtStackTrace;
+
+      try {
+        await failingStore.clear();
+      } on Object catch (error, stackTrace) {
+        caughtError = error;
+        caughtStackTrace = stackTrace;
+      }
+
+      expect(caughtError, same(removeError));
+      expect(caughtStackTrace.toString(), removeStackTrace.toString());
+      final restored = await failingStore.load();
+      expect(restored, isNotNull);
+      expect(restored!.sessionStatus, 'paused');
+      expect(platform.removedKeys, const [_platformStorageKey]);
+      expect(platform.getAllCalls, 2);
+    });
+
+    for (final hasPreviousSession in [true, false]) {
+      for (final removeThrows in [false, true]) {
+        final previousState = hasPreviousSession ? '이전 세션이 있으면' : '이전 세션이 없으면';
+        final failureMode = removeThrows ? 'remove 예외' : 'remove false';
+
+        test(
+          'clear $failureMode 뒤 reload도 실패해도 $previousState cache와 최초 오류를 보존한다',
+          () async {
+            final previousSession = buildSession(sessionStatus: 'paused');
+            final persistedValues = <String, Object>{
+              if (hasPreviousSession)
+                _platformStorageKey: jsonEncode(previousSession.toJson()),
+            };
+            final removeError = StateError('initial platform remove failed');
+            final removeStackTrace = StackTrace.fromString(
+              'initial platform session remove failure stack',
+            );
+            final reloadError = StateError('reload failed');
+            final reloadStackTrace = StackTrace.fromString(
+              'session reload failure stack',
+            );
+            final restoreError = StateError('cache restore failed');
+            final restoreStackTrace = StackTrace.fromString(
+              'session cache restore failure stack',
+            );
+            final platform = _FailingRemoveSharedPreferencesStore(
+              persistedValues,
+              removeError: removeThrows ? removeError : null,
+              removeStackTrace: removeThrows ? removeStackTrace : null,
+              reloadError: reloadError,
+              reloadStackTrace: reloadStackTrace,
+              restoreError: restoreError,
+              restoreStackTrace: restoreStackTrace,
+            );
+            final originalPlatform = SharedPreferencesStorePlatform.instance;
+            addTearDown(() {
+              SharedPreferencesStorePlatform.instance = originalPlatform;
+            });
+            SharedPreferencesStorePlatform.instance = platform;
+            final preferences = await SharedPreferences.getInstance();
+            final failingStore = CookingSessionStore(
+              preferencesLoader: () async => preferences,
+            );
+            Object? caughtError;
+            StackTrace? caughtStackTrace;
+
+            try {
+              await failingStore.clear();
+            } on Object catch (error, stackTrace) {
+              caughtError = error;
+              caughtStackTrace = stackTrace;
+            }
+
+            if (removeThrows) {
+              expect(caughtError, same(removeError));
+              expect(caughtStackTrace.toString(), removeStackTrace.toString());
+            } else {
+              expect(
+                caughtError,
+                isA<StateError>().having(
+                  (error) => error.message,
+                  'message',
+                  '진행 중 조리 세션을 로컬에서 정리하지 못했습니다.',
+                ),
+              );
+              expect(caughtError, isNot(same(reloadError)));
+              expect(caughtError, isNot(same(restoreError)));
+              expect(
+                caughtStackTrace.toString(),
+                contains('cooking_session_store.dart'),
+              );
+            }
+
+            final restored = await failingStore.load();
+            if (hasPreviousSession) {
+              expect(restored, isNotNull);
+              expect(restored!.sessionStatus, 'paused');
+            } else {
+              expect(restored, isNull);
+              expect(preferences.containsKey(_storageKey), isFalse);
+            }
+            expect(platform.getAllCalls, 2);
+          },
+        );
+      }
+    }
   });
 
   group('PersistedCookingSession.timerSnapshotAt', () {
@@ -238,4 +661,142 @@ void main() {
       expect(buildSession(sessionStatus: 'aborted').isResumable, isFalse);
     });
   });
+}
+
+const _storageKey = 'cookpilot.active_cooking_session.v1';
+const _platformStorageKey = 'flutter.$_storageKey';
+
+final class _FailingSetSharedPreferencesStore
+    extends SharedPreferencesStorePlatform {
+  _FailingSetSharedPreferencesStore(
+    Map<String, Object> persistedValues, {
+    this.writeError,
+    this.writeStackTrace,
+    this.reloadError,
+    this.reloadStackTrace,
+    this.restoreError,
+    this.restoreStackTrace,
+  }) : _persistedValues = Map<String, Object>.from(persistedValues);
+
+  final Map<String, Object> _persistedValues;
+  final Object? writeError;
+  final StackTrace? writeStackTrace;
+  final Object? reloadError;
+  final StackTrace? reloadStackTrace;
+  final Object? restoreError;
+  final StackTrace? restoreStackTrace;
+  final List<String> setKeys = [];
+  final List<String> removedKeys = [];
+  var getAllCalls = 0;
+
+  @override
+  Future<bool> clear() async {
+    _persistedValues.clear();
+    return true;
+  }
+
+  @override
+  Future<Map<String, Object>> getAll() async {
+    getAllCalls += 1;
+    final error = reloadError;
+    if (getAllCalls > 1 && error != null) {
+      Error.throwWithStackTrace(error, reloadStackTrace ?? StackTrace.current);
+    }
+    return Map<String, Object>.from(_persistedValues);
+  }
+
+  @override
+  Future<bool> remove(String key) async {
+    removedKeys.add(key);
+    final error = restoreError;
+    if (error != null) {
+      Error.throwWithStackTrace(error, restoreStackTrace ?? StackTrace.current);
+    }
+    _persistedValues.remove(key);
+    return true;
+  }
+
+  @override
+  Future<bool> setValue(String valueType, String key, Object value) async {
+    setKeys.add(key);
+    final cacheRestoreError = restoreError;
+    if (setKeys.length > 1 && cacheRestoreError != null) {
+      Error.throwWithStackTrace(
+        cacheRestoreError,
+        restoreStackTrace ?? StackTrace.current,
+      );
+    }
+    final error = writeError;
+    if (error != null) {
+      Error.throwWithStackTrace(error, writeStackTrace ?? StackTrace.current);
+    }
+    return false;
+  }
+}
+
+final class _FailingRemoveSharedPreferencesStore
+    extends SharedPreferencesStorePlatform {
+  _FailingRemoveSharedPreferencesStore(
+    Map<String, Object> persistedValues, {
+    this.removeError,
+    this.removeStackTrace,
+    this.reloadError,
+    this.reloadStackTrace,
+    this.restoreError,
+    this.restoreStackTrace,
+  }) : _persistedValues = Map<String, Object>.from(persistedValues);
+
+  final Map<String, Object> _persistedValues;
+  final Object? removeError;
+  final StackTrace? removeStackTrace;
+  final Object? reloadError;
+  final StackTrace? reloadStackTrace;
+  final Object? restoreError;
+  final StackTrace? restoreStackTrace;
+  final List<String> removedKeys = [];
+  final List<String> setKeys = [];
+  var getAllCalls = 0;
+
+  @override
+  Future<bool> clear() async {
+    _persistedValues.clear();
+    return true;
+  }
+
+  @override
+  Future<Map<String, Object>> getAll() async {
+    getAllCalls += 1;
+    final error = reloadError;
+    if (getAllCalls > 1 && error != null) {
+      Error.throwWithStackTrace(error, reloadStackTrace ?? StackTrace.current);
+    }
+    return Map<String, Object>.from(_persistedValues);
+  }
+
+  @override
+  Future<bool> remove(String key) async {
+    removedKeys.add(key);
+    final cacheRestoreError = restoreError;
+    if (removedKeys.length > 1 && cacheRestoreError != null) {
+      Error.throwWithStackTrace(
+        cacheRestoreError,
+        restoreStackTrace ?? StackTrace.current,
+      );
+    }
+    final error = removeError;
+    if (error != null) {
+      Error.throwWithStackTrace(error, removeStackTrace ?? StackTrace.current);
+    }
+    return false;
+  }
+
+  @override
+  Future<bool> setValue(String valueType, String key, Object value) async {
+    setKeys.add(key);
+    final error = restoreError;
+    if (error != null) {
+      Error.throwWithStackTrace(error, restoreStackTrace ?? StackTrace.current);
+    }
+    return true;
+  }
 }

@@ -23,8 +23,14 @@ final class PendingReviewDraft {
     required String comment,
     required String nextTimeNote,
     required bool approvedPersonalVersionCreation,
+    String? acceptedReviewId,
   }) {
     _requireCanonicalUuid(clientSessionId, 'clientSessionId');
+    if (acceptedReviewId != null) {
+      // 서버가 리뷰를 수락했다는 사실은 개인 버전 승인 여부와 무관하다 —
+      // 비승인 경로도 clear 실패 후 재진입의 중복 POST를 막는 checkpoint로 쓴다.
+      _requireCanonicalUuid(acceptedReviewId, 'acceptedReviewId');
+    }
     _validateSetupSnapshot(setupSnapshot);
     if (rating < minimumRating || rating > maximumRating) {
       throw ArgumentError.value(
@@ -56,6 +62,7 @@ final class PendingReviewDraft {
       comment: comment,
       nextTimeNote: nextTimeNote,
       approvedPersonalVersionCreation: approvedPersonalVersionCreation,
+      acceptedReviewId: acceptedReviewId,
     );
   }
 
@@ -68,16 +75,17 @@ final class PendingReviewDraft {
     required this.comment,
     required this.nextTimeNote,
     required this.approvedPersonalVersionCreation,
+    required this.acceptedReviewId,
   });
 
-  static const currentSchemaVersion = 1;
+  static const currentSchemaVersion = 2;
   static const minimumRating = 1;
   static const maximumRating = 5;
   static const maximumCommentCodePoints = 1000;
   static const maximumNextTimeNoteCodePoints = 500;
   static const maximumTimerSeconds = 2147483647;
 
-  static const _jsonFields = <String>{
+  static const _v1JsonFields = <String>{
     'schemaVersion',
     'clientSessionId',
     'cookedAt',
@@ -88,6 +96,7 @@ final class PendingReviewDraft {
     'nextTimeNote',
     'approvedPersonalVersionCreation',
   };
+  static const _v2JsonFields = <String>{..._v1JsonFields, 'acceptedReviewId'};
 
   static const _setupSnapshotJsonFields = <String>{
     'schemaVersion',
@@ -137,12 +146,14 @@ final class PendingReviewDraft {
   final String comment;
   final String nextTimeNote;
   final bool approvedPersonalVersionCreation;
+  final String? acceptedReviewId;
 
   PendingReviewDraft copyWith({
     int? rating,
     String? comment,
     String? nextTimeNote,
     bool? approvedPersonalVersionCreation,
+    String? acceptedReviewId,
   }) {
     return PendingReviewDraft(
       clientSessionId: clientSessionId,
@@ -155,6 +166,7 @@ final class PendingReviewDraft {
       approvedPersonalVersionCreation:
           approvedPersonalVersionCreation ??
           this.approvedPersonalVersionCreation,
+      acceptedReviewId: acceptedReviewId ?? this.acceptedReviewId,
     );
   }
 
@@ -170,15 +182,25 @@ final class PendingReviewDraft {
     'comment': comment,
     'nextTimeNote': nextTimeNote,
     'approvedPersonalVersionCreation': approvedPersonalVersionCreation,
+    'acceptedReviewId': acceptedReviewId,
   };
 
-  /// 저장소 입력을 엄격히 읽는다. 현재 최상위 스키마의 필드가 빠지거나
-  /// 추가돼도, 또는 중첩 실행 스냅샷이 유효하지 않아도 복구값으로 사용하지
-  /// 않는다.
+  /// 저장소 입력을 엄격히 읽는다. v1은 서버가 수락한 후기 ID가 없는 v2
+  /// draft로 마이그레이션한다. 각 버전의 필드가 빠지거나 추가돼도, 또는
+  /// 중첩 실행 스냅샷이 유효하지 않아도 복구값으로 사용하지 않는다.
   static PendingReviewDraft? fromJson(Map<String, Object?> json) {
-    if (json.length != _jsonFields.length ||
-        !_jsonFields.every(json.containsKey) ||
-        json['schemaVersion'] != currentSchemaVersion) {
+    final expectedFields = switch (json['schemaVersion']) {
+      1 => _v1JsonFields,
+      currentSchemaVersion => _v2JsonFields,
+      _ => null,
+    };
+    if (expectedFields == null ||
+        json.length != expectedFields.length ||
+        !expectedFields.every(json.containsKey)) {
+      return null;
+    }
+    final acceptedReviewIdValue = json['acceptedReviewId'];
+    if (acceptedReviewIdValue != null && acceptedReviewIdValue is! String) {
       return null;
     }
     if (json case {
@@ -228,6 +250,7 @@ final class PendingReviewDraft {
           comment: comment,
           nextTimeNote: nextTimeNote,
           approvedPersonalVersionCreation: approved,
+          acceptedReviewId: acceptedReviewIdValue as String?,
         );
       } on Object {
         return null;
@@ -306,11 +329,19 @@ final class PendingReviewDraft {
       expectedFields.every(json.containsKey);
 }
 
+abstract interface class PendingReviewDraftGateway {
+  Future<void> save(PendingReviewDraft draft);
+
+  Future<PendingReviewDraft?> load();
+
+  Future<void> clear();
+}
+
 /// 데모에서 작성 중인 후기 한 건만 보관하는 SharedPreferences 저장소.
 ///
 /// 모든 인스턴스가 같은 직렬화 큐를 공유한다. 앞선 저장이 늦게 끝나더라도
 /// 뒤에 요청한 저장보다 나중에 디스크에 반영되어 최신 초안을 덮어쓸 수 없다.
-final class PendingReviewDraftStore {
+final class PendingReviewDraftStore implements PendingReviewDraftGateway {
   PendingReviewDraftStore({PendingReviewPreferencesLoader? preferencesLoader})
     : _preferencesLoader = preferencesLoader ?? SharedPreferences.getInstance;
 
@@ -320,6 +351,7 @@ final class PendingReviewDraftStore {
 
   final PendingReviewPreferencesLoader _preferencesLoader;
 
+  @override
   Future<void> save(PendingReviewDraft draft) {
     return _serialize(() async {
       final preferences = await _preferencesLoader();
@@ -351,6 +383,7 @@ final class PendingReviewDraftStore {
   ///
   /// 손상된 타입·JSON·스키마·도메인 값은 같은 직렬화 큐 안에서 제거해 다음
   /// 실행에서 반복해서 복구를 시도하지 않게 한다.
+  @override
   Future<PendingReviewDraft?> load() {
     return _serialize(() async {
       final preferences = await _preferencesLoader();
@@ -379,6 +412,7 @@ final class PendingReviewDraftStore {
     });
   }
 
+  @override
   Future<void> clear() {
     return _serialize(() async {
       final preferences = await _preferencesLoader();

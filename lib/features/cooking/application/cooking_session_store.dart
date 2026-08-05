@@ -175,51 +175,151 @@ final class PersistedCookingSession {
   }
 }
 
+abstract interface class CookingSessionGateway {
+  Future<void> save(PersistedCookingSession session);
+
+  Future<PersistedCookingSession?> load();
+
+  Future<void> clear();
+}
+
+typedef CookingSessionPreferencesLoader = Future<SharedPreferences> Function();
+
 /// 진행 중 조리 세션을 shared_preferences에 하나만 보관한다.
-final class CookingSessionStore {
-  const CookingSessionStore();
+final class CookingSessionStore implements CookingSessionGateway {
+  const CookingSessionStore({this.preferencesLoader});
 
   static const _key = 'cookpilot.active_cooking_session.v1';
 
+  final CookingSessionPreferencesLoader? preferencesLoader;
+
+  Future<SharedPreferences> _loadPreferences() =>
+      (preferencesLoader ?? SharedPreferences.getInstance)();
+
+  @override
   Future<void> save(PersistedCookingSession session) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_key, jsonEncode(session.toJson()));
+    final prefs = await _loadPreferences();
+    final cachedBeforeWrite = _copyCachedValue(prefs.get(_key));
+    late final Object writeError;
+    late final StackTrace writeStackTrace;
+    try {
+      final saved = await prefs.setString(_key, jsonEncode(session.toJson()));
+      if (saved) {
+        return;
+      }
+      writeError = StateError('진행 중 조리 세션을 로컬에 저장하지 못했습니다.');
+      writeStackTrace = StackTrace.current;
+    } on Object catch (error, stackTrace) {
+      writeError = error;
+      writeStackTrace = stackTrace;
+    }
+
+    // SharedPreferences는 플랫폼 저장 결과보다 먼저 메모리 캐시를 갱신한다.
+    // 디스크 reload까지 실패하면 작업 전 캐시를 best-effort로 되돌리고,
+    // 복구 오류가 최초 저장 오류와 stack을 가리지 않게 한다.
+    await _recoverCacheAfterFailedMutation(prefs, cachedBeforeWrite);
+    Error.throwWithStackTrace(writeError, writeStackTrace);
   }
 
   /// 저장된 세션이 없거나 값이 손상됐으면 null. 손상값은 함께 정리한다.
+  /// 저장소를 열지 못한 오류는 복구 UI가 안내할 수 있도록 호출자에게 전달한다.
+  @override
   Future<PersistedCookingSession?> load() async {
-    final SharedPreferences prefs;
-    try {
-      prefs = await SharedPreferences.getInstance();
-    } catch (_) {
-      return null;
-    }
-    final raw = prefs.getString(_key);
+    final prefs = await _loadPreferences();
+    final raw = prefs.get(_key);
     if (raw == null) {
       return null;
     }
-    try {
-      final decoded = jsonDecode(raw);
-      if (decoded is Map<String, Object?>) {
-        final session = PersistedCookingSession.fromJson(decoded);
-        if (session != null) {
-          return session;
+    if (raw is String) {
+      try {
+        final decoded = jsonDecode(raw);
+        if (decoded is Map<String, Object?>) {
+          final session = PersistedCookingSession.fromJson(decoded);
+          if (session != null) {
+            return session;
+          }
         }
+      } catch (_) {
+        // 손상된 JSON은 아래에서 제거한다.
       }
-    } catch (_) {
-      // 손상된 JSON은 아래에서 제거한다.
     }
-    await prefs.remove(_key);
+    await _removeBestEffort(prefs);
     return null;
   }
 
+  @override
   Future<void> clear() async {
-    final SharedPreferences prefs;
+    final prefs = await _loadPreferences();
+    final cachedBeforeRemove = _copyCachedValue(prefs.get(_key));
+    late final Object removeError;
+    late final StackTrace removeStackTrace;
     try {
-      prefs = await SharedPreferences.getInstance();
-    } catch (_) {
-      return;
+      final removed = await prefs.remove(_key);
+      if (removed) {
+        return;
+      }
+      removeError = StateError('진행 중 조리 세션을 로컬에서 정리하지 못했습니다.');
+      removeStackTrace = StackTrace.current;
+    } on Object catch (error, stackTrace) {
+      removeError = error;
+      removeStackTrace = stackTrace;
     }
-    await prefs.remove(_key);
+
+    // remove도 플랫폼 결과보다 먼저 캐시를 지운다. reload 실패 시에는 작업
+    // 전 캐시를 되돌린 뒤 최초 remove 오류와 stack을 그대로 전달한다.
+    await _recoverCacheAfterFailedMutation(prefs, cachedBeforeRemove);
+    Error.throwWithStackTrace(removeError, removeStackTrace);
+  }
+
+  static Future<void> _removeBestEffort(SharedPreferences prefs) async {
+    final cachedBeforeRemove = _copyCachedValue(prefs.get(_key));
+    try {
+      final removed = await prefs.remove(_key);
+      if (removed) {
+        return;
+      }
+    } on Object {
+      // false 반환과 예외 모두 아래에서 디스크 상태를 다시 읽는다.
+    }
+
+    // reload도 실패하면 손상값을 작업 전 캐시에 되돌려 다음 load가 정리를
+    // 재시도할 수 있게 한다.
+    await _recoverCacheAfterFailedMutation(prefs, cachedBeforeRemove);
+  }
+
+  static Object? _copyCachedValue(Object? value) {
+    return value is List<String> ? List<String>.of(value) : value;
+  }
+
+  static Future<void> _recoverCacheAfterFailedMutation(
+    SharedPreferences prefs,
+    Object? cachedBeforeMutation,
+  ) async {
+    try {
+      await prefs.reload();
+      return;
+    } on Object {
+      // reload 성공 시 디스크 상태를 신뢰한다. 실패한 경우에만 eager cache
+      // 변이를 이용해 작업 전 상태를 best-effort로 되돌린다.
+    }
+
+    try {
+      if (cachedBeforeMutation == null) {
+        await prefs.remove(_key);
+      } else if (cachedBeforeMutation is bool) {
+        await prefs.setBool(_key, cachedBeforeMutation);
+      } else if (cachedBeforeMutation is int) {
+        await prefs.setInt(_key, cachedBeforeMutation);
+      } else if (cachedBeforeMutation is double) {
+        await prefs.setDouble(_key, cachedBeforeMutation);
+      } else if (cachedBeforeMutation is String) {
+        await prefs.setString(_key, cachedBeforeMutation);
+      } else if (cachedBeforeMutation is List<String>) {
+        await prefs.setStringList(_key, cachedBeforeMutation);
+      }
+    } on Object {
+      // setter/remove는 플랫폼 Future를 만들기 전에 캐시를 바꾼다. 반환값과
+      // 예외는 복구에 영향을 주지 않으며 최초 save/clear 오류도 가리지 않는다.
+    }
   }
 }

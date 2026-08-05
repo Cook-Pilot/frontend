@@ -1,6 +1,7 @@
 import 'package:cookpilot/features/cooking/application/cooking_ports.dart';
 import 'package:cookpilot/features/mvp/cook_flow_screens.dart';
 import 'package:cookpilot/features/recipe/domain/recipe.dart';
+import 'package:cookpilot/features/review/application/pending_review_draft_store.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -90,6 +91,7 @@ void main() {
           alarm: const SilentTimerAlarm(),
           advicePort: advicePort,
           speechInput: speechInput,
+          pendingReviewDraftStore: _MemoryPendingReviewDraftStore(),
         ),
       ),
     );
@@ -432,4 +434,22 @@ void main() {
     expect(find.byKey(const Key('help-suggested-action')), findsNothing);
     expect(find.text('타이머 없음'), findsOneWidget);
   });
+}
+
+final class _MemoryPendingReviewDraftStore
+    implements PendingReviewDraftGateway {
+  PendingReviewDraft? _draft;
+
+  @override
+  Future<void> save(PendingReviewDraft draft) async {
+    _draft = draft;
+  }
+
+  @override
+  Future<PendingReviewDraft?> load() async => _draft;
+
+  @override
+  Future<void> clear() async {
+    _draft = null;
+  }
 }
