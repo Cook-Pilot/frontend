@@ -150,7 +150,13 @@ void main() {
 
   testWidgets('핸즈프리는 명령 처리 후 이전 마이크가 닫힌 뒤 다시 듣는다', (tester) async {
     final speech = FakeSpeechInput()..hangOnStop = true;
-    await pumpSession(tester, speechInput: speech, handsFreeVoiceEnabled: true);
+    await pumpSession(
+      tester,
+      speechInput: speech,
+      handsFreeVoiceEnabled: true,
+      pendingReviewDraftStore: _MemoryPendingReviewDraftStore(),
+      cookingSessionStore: _MemoryCookingSessionStore(),
+    );
 
     expect(speech.startCount, 1);
     expect(find.text('듣는 중'), findsOneWidget);
@@ -176,7 +182,13 @@ void main() {
 
   testWidgets('핸즈프리 중 화면 단계 버튼은 이전 세션을 닫고 새 단계에서 다시 듣는다', (tester) async {
     final speech = FakeSpeechInput()..hangOnStop = true;
-    await pumpSession(tester, speechInput: speech, handsFreeVoiceEnabled: true);
+    await pumpSession(
+      tester,
+      speechInput: speech,
+      handsFreeVoiceEnabled: true,
+      pendingReviewDraftStore: _MemoryPendingReviewDraftStore(),
+      cookingSessionStore: _MemoryCookingSessionStore(),
+    );
     final staleHandler = speech.utteranceHandlers.single;
 
     await tester.tap(find.widgetWithText(FilledButton, '다음 단계'));
@@ -199,7 +211,13 @@ void main() {
     final speech = FakeSpeechInput();
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
 
-    await pumpSession(tester, speechInput: speech, handsFreeVoiceEnabled: true);
+    await pumpSession(
+      tester,
+      speechInput: speech,
+      handsFreeVoiceEnabled: true,
+      pendingReviewDraftStore: _MemoryPendingReviewDraftStore(),
+      cookingSessionStore: _MemoryCookingSessionStore(),
+    );
     expect(speech.startCount, 0);
 
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
@@ -622,7 +640,13 @@ void main() {
 
   testWidgets('핸즈프리도 백그라운드에서 멈춘 뒤 자동으로 다시 시작하지 않는다', (tester) async {
     final speech = FakeSpeechInput();
-    await pumpSession(tester, speechInput: speech, handsFreeVoiceEnabled: true);
+    await pumpSession(
+      tester,
+      speechInput: speech,
+      handsFreeVoiceEnabled: true,
+      pendingReviewDraftStore: _MemoryPendingReviewDraftStore(),
+      cookingSessionStore: _MemoryCookingSessionStore(),
+    );
     expect(speech.startCount, 1);
 
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
@@ -636,7 +660,13 @@ void main() {
 
   testWidgets('핸즈프리에서 직접 입력을 열면 닫은 뒤에도 자동 듣기를 재개하지 않는다', (tester) async {
     final speech = FakeSpeechInput();
-    await pumpSession(tester, speechInput: speech, handsFreeVoiceEnabled: true);
+    await pumpSession(
+      tester,
+      speechInput: speech,
+      handsFreeVoiceEnabled: true,
+      pendingReviewDraftStore: _MemoryPendingReviewDraftStore(),
+      cookingSessionStore: _MemoryCookingSessionStore(),
+    );
     expect(speech.startCount, 1);
 
     await tester.tap(find.byKey(const Key('help-request')));
@@ -700,7 +730,13 @@ void main() {
 
   testWidgets('완료 확인 대기 중 다른 명령이 오면 확인이 취소된다', (tester) async {
     final speech = FakeSpeechInput();
-    await pumpSession(tester, speechInput: speech, handsFreeVoiceEnabled: true);
+    await pumpSession(
+      tester,
+      speechInput: speech,
+      handsFreeVoiceEnabled: true,
+      pendingReviewDraftStore: _MemoryPendingReviewDraftStore(),
+      cookingSessionStore: _MemoryCookingSessionStore(),
+    );
 
     speech.emitUtterance('조리 완료', utteranceId: 'finish-ask');
     await tester.pumpAndSettle();
@@ -721,7 +757,13 @@ void main() {
 
   testWidgets('완료 확인 대기 중 소음(ignore)은 확인을 유지한다', (tester) async {
     final speech = FakeSpeechInput();
-    await pumpSession(tester, speechInput: speech, handsFreeVoiceEnabled: true);
+    await pumpSession(
+      tester,
+      speechInput: speech,
+      handsFreeVoiceEnabled: true,
+      pendingReviewDraftStore: _MemoryPendingReviewDraftStore(),
+      cookingSessionStore: _MemoryCookingSessionStore(),
+    );
 
     speech.emitUtterance('조리 완료', utteranceId: 'noise-finish-ask');
     await tester.pumpAndSettle();
@@ -739,7 +781,13 @@ void main() {
 
   testWidgets('마지막 단계 이전의 완료 명령은 두 갈래를 안내하고 중도 종료도 허용한다', (tester) async {
     final speech = FakeSpeechInput();
-    await pumpSession(tester, speechInput: speech, handsFreeVoiceEnabled: true);
+    await pumpSession(
+      tester,
+      speechInput: speech,
+      handsFreeVoiceEnabled: true,
+      pendingReviewDraftStore: _MemoryPendingReviewDraftStore(),
+      cookingSessionStore: _MemoryCookingSessionStore(),
+    );
 
     // 1/3단계에서의 완료 명령은 단계 문맥을 알려주고 두 갈래를 안내한다.
     speech.emitUtterance('조리 완료', utteranceId: 'early-finish-ask');

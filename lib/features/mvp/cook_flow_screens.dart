@@ -2884,6 +2884,15 @@ class _CookSessionScreenState extends State<CookSessionScreen>
                 ),
               ],
             ],
+            if (_finishError case final String error) ...[
+              const SizedBox(height: 12),
+              InfoStrip(
+                key: const Key('cooking-completion-error'),
+                icon: Icons.error_outline_rounded,
+                title: '완료 정보를 저장하지 못했어요',
+                body: error,
+              ),
+            ],
           ],
         ),
       ),
