@@ -1,5 +1,7 @@
 import 'package:flutter/foundation.dart';
 
+const int maxExceptionAdviceQuestionLength = 500;
+
 @immutable
 final class ExceptionAdviceEvent {
   const ExceptionAdviceEvent({
@@ -44,9 +46,41 @@ final class ExceptionAdviceContext {
 
 @immutable
 final class ExceptionAdvice {
-  const ExceptionAdvice({required this.message});
+  const ExceptionAdvice({
+    String? message,
+    String? speechText,
+    String? screenText,
+    this.suggestedAction,
+    this.isMock = false,
+    this.eventPayload = const <String, Object?>{},
+  }) : assert(
+         message != null || speechText != null || screenText != null,
+         'At least one advice text is required.',
+       ),
+       speechText = speechText ?? screenText ?? message ?? '',
+       screenText = screenText ?? speechText ?? message ?? '';
 
-  final String message;
+  final String speechText;
+  final String screenText;
+  final ExceptionAdviceSuggestedAction? suggestedAction;
+  final bool isMock;
+  final Map<String, Object?> eventPayload;
+
+  /// 기존 도움 UI와 fake가 사용하던 이름을 유지한다.
+  String get message => screenText;
+}
+
+enum ExceptionAdviceActionType { extendTimer }
+
+@immutable
+final class ExceptionAdviceSuggestedAction {
+  const ExceptionAdviceSuggestedAction({
+    required this.type,
+    required this.seconds,
+  });
+
+  final ExceptionAdviceActionType type;
+  final int seconds;
 }
 
 abstract interface class SpeechOutputPort {

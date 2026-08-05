@@ -7,6 +7,7 @@ import '../../core/identity/uuid_v4.dart';
 import '../cooking/application/cooking_ports.dart';
 import '../cooking/application/cooking_session_store.dart';
 import '../cooking/application/timer_controller.dart';
+import '../cooking/data/exception_advice_api.dart';
 import '../cooking/domain/cooking_setup_snapshot.dart';
 import '../cooking/domain/cooking_session_state.dart';
 import '../cooking/domain/cooking_voice_router.dart';
@@ -847,6 +848,10 @@ class _CookSetupScreenState extends State<CookSetupScreen> {
               ? null
               : () {
                   final snapshot = _buildSnapshot();
+                  // MaterialPageRoute.builder는 재실행될 수 있으므로 화면이
+                  // 소유할 포트는 탭 콜백에서 한 번만 만든다. 빌더 안에서
+                  // 만들면 재실행마다 http.Client가 닫히지 않은 채 쌓인다.
+                  final advicePort = HttpExceptionAdvicePort();
                   unawaited(
                     Navigator.of(context).push(
                       MaterialPageRoute<void>(
@@ -855,6 +860,7 @@ class _CookSetupScreenState extends State<CookSetupScreen> {
                           servings: servings,
                           setupSnapshot: snapshot,
                           alarm: widget.sessionAlarm,
+                          advicePort: advicePort,
                           speechInput: widget.sessionSpeechInput,
                           handsFreeVoiceEnabled: _handsFreeVoiceEnabled,
                         ),
@@ -1527,7 +1533,7 @@ class CookSessionScreen extends StatefulWidget {
   /// 실제 구현처럼 앱이 시작한 권한-flow 시작/종료를 callback으로 알린다.
   final TimerAlarmResolver? alarmResolver;
 
-  /// 도움 질문에 답하는 포트. AI 파트가 완성되면 실제 구현으로 교체한다.
+  /// 테스트에서는 fake를 주입하고, 실제 앱에서는 백엔드 F-08 API를 사용한다.
   final ExceptionAdvicePort? advicePort;
 
   /// 테스트에서는 fake를, 실제 앱에서는 네이티브 STT 구현을 사용한다.
@@ -1552,12 +1558,17 @@ class _CookSessionScreenState extends State<CookSessionScreen>
 
   // 도움 질문(음성 폴백) 상태. 답변은 현재 단계에 묶이므로 단계가 바뀌면 버린다.
   late final ExceptionAdvicePort _advice =
-      widget.advicePort ?? DemoExceptionAdvicePort();
+      widget.advicePort ?? HttpExceptionAdvicePort();
   late final CookingVoiceSessionController _voiceSession;
   static const CookingVoiceRouter _voiceRouter = CookingVoiceRouter();
   String? _helpAnswer;
+  ExceptionAdviceSuggestedAction? _helpSuggestedAction;
   bool _helpLoading = false;
   int _helpRequestVersion = 0;
+  int? _helpRequestOwnerVersion;
+
+  bool get _helpRequestInFlight =>
+      _helpRequestOwnerVersion == _helpRequestVersion;
 
   String? _voiceMessage;
   bool _disposed = false;
@@ -1943,6 +1954,7 @@ class _CookSessionScreenState extends State<CookSessionScreen>
     setState(() {
       step = target;
       _helpAnswer = null;
+      _helpSuggestedAction = null;
       _helpLoading = false;
       _voiceMessage = fromVoice ? '$target단계로 이동했어요.' : null;
     });
@@ -2177,14 +2189,30 @@ class _CookSessionScreenState extends State<CookSessionScreen>
   }
 
   Future<void> _requestAdvice(String question) async {
-    if (_disposed || _completed || !mounted) {
+    final normalizedQuestion = question.trim();
+    if (_disposed ||
+        _completed ||
+        !mounted ||
+        _helpRequestInFlight ||
+        normalizedQuestion.isEmpty) {
+      return;
+    }
+    if (normalizedQuestion.characters.length >
+        maxExceptionAdviceQuestionLength) {
+      setState(() {
+        _helpLoading = false;
+        _helpAnswer = '질문은 $maxExceptionAdviceQuestionLength자 이하로 줄여주세요.';
+        _helpSuggestedAction = null;
+      });
       return;
     }
     final requestVersion = ++_helpRequestVersion;
     final requestedStep = step;
+    _helpRequestOwnerVersion = requestVersion;
     setState(() {
       _helpLoading = true;
       _helpAnswer = null;
+      _helpSuggestedAction = null;
     });
     ExceptionAdvice advice;
     try {
@@ -2195,34 +2223,87 @@ class _CookSessionScreenState extends State<CookSessionScreen>
           recipeVersionId: 'mvp',
           stepIndex: requestedStep - 1,
           requestContextVersion: requestVersion,
+          // 개인 버전의 현재 실행 단계 문장뿐 아니라 주의사항까지 함께 보낸다.
+          // 서버의 원본 stepIndex는 ADD/REMOVE로 재인덱싱된 실행 스냅샷과
+          // 다를 수 있으므로 이 description이 F8 현재 단계 문맥의 정본이다.
           instruction: widget.recipe.steps[requestedStep - 1].description,
           remaining: _timer.remaining,
-          utterance: question,
+          utterance: normalizedQuestion,
           recentEvents: const [],
         ),
       );
     } catch (_) {
-      if (!mounted ||
-          requestVersion != _helpRequestVersion ||
-          step != requestedStep) {
+      if (!_ownsCurrentHelpRequest(requestVersion, requestedStep)) {
+        _releaseHelpRequest(requestVersion);
         return;
       }
       setState(() {
+        _helpRequestOwnerVersion = null;
         _helpLoading = false;
         _helpAnswer = '답변을 불러오지 못했어요. 버튼과 타이머는 계속 사용할 수 있어요.';
+        _helpSuggestedAction = null;
       });
       return;
     }
-    // 기다리는 사이 단계가 바뀌었으면 낡은 답변을 표시하지 않는다.
-    if (!mounted ||
-        requestVersion != _helpRequestVersion ||
-        step != requestedStep) {
+    // 기다리는 사이 단계가 바뀌었거나 새 요청이 시작됐으면 낡은 답변을
+    // 표시하지 않고 새 요청의 진행 상태도 건드리지 않는다.
+    if (!_ownsCurrentHelpRequest(requestVersion, requestedStep)) {
+      _releaseHelpRequest(requestVersion);
       return;
     }
     setState(() {
+      _helpRequestOwnerVersion = null;
       _helpLoading = false;
       _helpAnswer = advice.message;
+      _helpSuggestedAction = advice.isMock
+          ? null
+          : _safeSuggestedAction(advice.suggestedAction);
     });
+  }
+
+  bool _ownsCurrentHelpRequest(int requestVersion, int requestedStep) =>
+      mounted &&
+      !_disposed &&
+      !_completed &&
+      _helpRequestOwnerVersion == requestVersion &&
+      _helpRequestVersion == requestVersion &&
+      step == requestedStep;
+
+  void _releaseHelpRequest(int requestVersion) {
+    if (_helpRequestOwnerVersion == requestVersion) {
+      _helpRequestOwnerVersion = null;
+    }
+  }
+
+  ExceptionAdviceSuggestedAction? _safeSuggestedAction(
+    ExceptionAdviceSuggestedAction? action,
+  ) {
+    if (action == null ||
+        !_currentStepHasTimer ||
+        action.type != ExceptionAdviceActionType.extendTimer ||
+        (action.seconds != 30 && action.seconds != 60)) {
+      return null;
+    }
+    return action;
+  }
+
+  void _applySuggestedAction() {
+    final action = _helpSuggestedAction;
+    if (action == null || _disposed || _completed || !mounted) {
+      return;
+    }
+    setState(() => _helpSuggestedAction = null);
+    switch (action.type) {
+      case ExceptionAdviceActionType.extendTimer:
+        // API 파서가 30/60초만 통과시키지만 화면 경계에서도 한 번 더 막는다.
+        if (action.seconds != 30 && action.seconds != 60) {
+          return;
+        }
+        _extendCurrentTimer(Duration(seconds: action.seconds));
+        _setVoiceMessage(
+          action.seconds == 60 ? '타이머에 1분을 추가했어요.' : '타이머에 30초를 추가했어요.',
+        );
+    }
   }
 
   String _timerLabel(int stepMinutes) {
@@ -2472,12 +2553,21 @@ class _CookSessionScreenState extends State<CookSessionScreen>
                 Expanded(
                   child: OutlinedButton.icon(
                     key: const Key('help-request'),
-                    onPressed: _openHelpSheet,
+                    onPressed: _helpRequestInFlight ? null : _openHelpSheet,
                     icon: const Icon(Icons.keyboard_rounded, size: 20),
                     label: const Text('직접 입력'),
                   ),
                 ),
               ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'AI 질문은 답변 생성을 위해 Google Gemini로 전송될 수 있어요. '
+              '개인정보·건강정보는 말하거나 입력하지 마세요.',
+              key: const Key('ai-data-disclosure'),
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
             ),
             if (_helpLoading) ...[
               const SizedBox(height: 12),
@@ -2493,6 +2583,19 @@ class _CookSessionScreenState extends State<CookSessionScreen>
                 title: '도움 답변',
                 body: answer,
               ),
+              if (_helpSuggestedAction
+                  case final ExceptionAdviceSuggestedAction action) ...[
+                const SizedBox(height: 8),
+                OutlinedButton.icon(
+                  key: const Key('help-suggested-action'),
+                  onPressed: _applySuggestedAction,
+                  icon: const Icon(Icons.timer_outlined, size: 18),
+                  label: Text(
+                    '제안 적용 · '
+                    '${action.seconds == 60 ? '1분' : '${action.seconds}초'} 추가',
+                  ),
+                ),
+              ],
             ],
           ],
         ),

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../app/app_theme.dart';
 import '../cooking/application/cooking_session_store.dart';
+import '../cooking/data/exception_advice_api.dart';
 import '../recipe/data/recipe_api.dart';
 import '../recipe/domain/recipe.dart';
 import '../review/data/review_api.dart';
@@ -216,6 +217,9 @@ class _HomeScreenState extends State<HomeScreen> {
     if (session == null || recipe == null) {
       return;
     }
+    // MaterialPageRoute.builder는 재실행될 수 있으므로 화면이 소유할 포트는
+    // 밖에서 한 번만 만든다.
+    final advicePort = HttpExceptionAdvicePort();
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => CookSessionScreen(
@@ -223,6 +227,7 @@ class _HomeScreenState extends State<HomeScreen> {
           servings: session.servings,
           setupSnapshot: session.setupSnapshot,
           restoredSession: session,
+          advicePort: advicePort,
         ),
       ),
     );
