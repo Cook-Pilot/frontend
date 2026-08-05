@@ -675,11 +675,96 @@ void main() {
     );
     expect(speech.startCount, 1);
 
+    // 1회차 완료 명령은 확인만 요청하고 종료하지 않는다. 확인 발화를 들으러
+    // 핸즈프리 마이크는 다시 열린다.
     speech.emitUtterance('조리 완료', utteranceId: 'hands-free-finish');
     await tester.pumpAndSettle();
+    expect(find.byType(ReviewScreen), findsNothing);
+    expect(find.textContaining('완료할까요'), findsOneWidget);
+    expect(speech.startCount, 2);
 
+    // 확인 발화가 오면 완료하고, 그 뒤에는 새 듣기 세션을 시작하지 않는다.
+    speech.emitUtterance('조리 완료', utteranceId: 'hands-free-finish-confirm');
+    await tester.pumpAndSettle();
     expect(find.byType(ReviewScreen), findsOneWidget);
-    expect(speech.startCount, 1);
+    expect(speech.startCount, 2);
+  });
+
+  testWidgets('완료 확인 대기 중 다른 명령이 오면 확인이 취소된다', (tester) async {
+    final speech = FakeSpeechInput();
+    await pumpSession(tester, speechInput: speech, handsFreeVoiceEnabled: true);
+
+    speech.emitUtterance('조리 완료', utteranceId: 'finish-ask');
+    await tester.pumpAndSettle();
+    expect(find.textContaining('완료할까요'), findsOneWidget);
+
+    // 다른 명령이 확인을 번복한다. (핸즈프리 재개 문구가 이동 안내를 덮을 수
+    // 있으므로 확인 문구가 사라졌는지로 취소를 검증한다.)
+    speech.emitUtterance('다음 단계', utteranceId: 'finish-cancel-move');
+    await tester.pumpAndSettle();
+    expect(find.textContaining('완료할까요'), findsNothing);
+
+    // 취소 이후의 완료 명령은 다시 확인부터 요청한다.
+    speech.emitUtterance('조리 완료', utteranceId: 'finish-ask-again');
+    await tester.pumpAndSettle();
+    expect(find.byType(ReviewScreen), findsNothing);
+    expect(find.textContaining('완료할까요'), findsOneWidget);
+  });
+
+  testWidgets('완료 확인 대기 중 소음(ignore)은 확인을 유지한다', (tester) async {
+    final speech = FakeSpeechInput();
+    await pumpSession(tester, speechInput: speech, handsFreeVoiceEnabled: true);
+
+    speech.emitUtterance('조리 완료', utteranceId: 'noise-finish-ask');
+    await tester.pumpAndSettle();
+    expect(find.textContaining('완료할까요'), findsOneWidget);
+
+    // 잡담·소음은 확인 상태를 풀지 않고 확인 안내를 다시 보여준다.
+    speech.emitUtterance('어쩌구저쩌구', utteranceId: 'noise-chatter');
+    await tester.pumpAndSettle();
+    expect(find.textContaining('완료 확인 중이에요'), findsOneWidget);
+
+    speech.emitUtterance('조리 완료', utteranceId: 'noise-finish-confirm');
+    await tester.pumpAndSettle();
+    expect(find.byType(ReviewScreen), findsOneWidget);
+  });
+
+  testWidgets('마지막 단계 이전의 완료 명령은 두 갈래를 안내하고 중도 종료도 허용한다', (tester) async {
+    final speech = FakeSpeechInput();
+    await pumpSession(tester, speechInput: speech, handsFreeVoiceEnabled: true);
+
+    // 1/3단계에서의 완료 명령은 단계 문맥을 알려주고 두 갈래를 안내한다.
+    speech.emitUtterance('조리 완료', utteranceId: 'early-finish-ask');
+    await tester.pumpAndSettle();
+    expect(find.textContaining('마지막 단계가 아니에요'), findsOneWidget);
+    expect(find.byType(ReviewScreen), findsNothing);
+
+    // 그래도 완료를 반복하면 중도 종료를 허용한다.
+    speech.emitUtterance('조리 완료', utteranceId: 'early-finish-confirm');
+    await tester.pumpAndSettle();
+    expect(find.byType(ReviewScreen), findsOneWidget);
+  });
+
+  testWidgets('백그라운드에 다녀오면 완료 확인이 만료된다', (tester) async {
+    final speech = FakeSpeechInput();
+    await pumpSession(tester, speechInput: speech);
+
+    await tapVoiceButton(tester);
+    speech.onUtterance!('조리 완료', 'expiry-finish-ask');
+    await tester.pumpAndSettle();
+    expect(find.textContaining('완료할까요'), findsOneWidget);
+
+    backgroundApp(tester);
+    await tester.pumpAndSettle();
+    resumeApp(tester);
+    await tester.pumpAndSettle();
+
+    // 복귀 후 첫 완료 명령은 즉시 종료하지 않고 다시 확인부터 받는다.
+    await tapVoiceButton(tester);
+    speech.onUtterance!('조리 완료', 'expiry-finish-after-resume');
+    await tester.pumpAndSettle();
+    expect(find.byType(ReviewScreen), findsNothing);
+    expect(find.textContaining('완료할까요'), findsOneWidget);
   });
 
   testWidgets('권한 실패 상태를 표시하고 직접 입력 질문은 계속 처리한다', (tester) async {
@@ -960,10 +1045,18 @@ void main() {
     expect(find.byType(ReviewScreen), findsNothing);
 
     await tapVoiceButton(tester);
-    final finishHandler = speech.onUtterance!;
-    finishHandler('조리 완료', 'finish');
+    // 1회차 완료 명령은 확인을 요청한다.
+    speech.onUtterance!('조리 완료', 'finish');
+    await tester.pumpAndSettle();
+    expect(find.byType(ReviewScreen), findsNothing);
+    expect(find.textContaining('완료할까요'), findsOneWidget);
+
+    // 수동 모드에서는 확인 발화를 위해 마이크를 다시 연다.
+    await tapVoiceButton(tester);
+    final confirmHandler = speech.onUtterance!;
+    confirmHandler('조리 완료', 'finish-confirm');
     // 동일 완료 콜백이 한 번 더 와도 첫 전환에서 이미 무효화된다.
-    finishHandler('조리 완료', 'finish-duplicate');
+    confirmHandler('조리 완료', 'finish-duplicate');
     await tester.pumpAndSettle();
     expect(find.byType(ReviewScreen), findsOneWidget);
   });

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/data/latest_all.dart' as tzdata;
@@ -87,8 +89,8 @@ final class LocalNotificationTimerAlarm implements TimerAlarmPort {
 
   @override
   void signalTimerElapsed() {
-    SystemSound.play(SystemSoundType.alert);
-    HapticFeedback.heavyImpact();
+    unawaited(SystemSound.play(SystemSoundType.alert));
+    unawaited(HapticFeedback.heavyImpact());
   }
 
   @override

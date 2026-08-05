@@ -255,12 +255,14 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
             child: FilledButton(
               onPressed: canCook
                   ? () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute<void>(
-                          builder: (_) => CookSetupScreen(
-                            recipe: recipe,
-                            recommendationDataSource:
-                                RecommendationRepository(),
+                      unawaited(
+                        Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) => CookSetupScreen(
+                              recipe: recipe,
+                              recommendationDataSource:
+                                  RecommendationRepository(),
+                            ),
                           ),
                         ),
                       );
@@ -846,16 +848,18 @@ class _CookSetupScreenState extends State<CookSetupScreen> {
               ? null
               : () {
                   final snapshot = _buildSnapshot();
-                  Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (_) => CookSessionScreen(
-                        recipe: snapshot.toExecutionRecipe(),
-                        servings: servings,
-                        setupSnapshot: snapshot,
-                        alarm: widget.sessionAlarm,
-                        advicePort: HttpExceptionAdvicePort(),
-                        speechInput: widget.sessionSpeechInput,
-                        handsFreeVoiceEnabled: _handsFreeVoiceEnabled,
+                  unawaited(
+                    Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => CookSessionScreen(
+                          recipe: snapshot.toExecutionRecipe(),
+                          servings: servings,
+                          setupSnapshot: snapshot,
+                          alarm: widget.sessionAlarm,
+                          advicePort: HttpExceptionAdvicePort(),
+                          speechInput: widget.sessionSpeechInput,
+                          handsFreeVoiceEnabled: _handsFreeVoiceEnabled,
+                        ),
                       ),
                     ),
                   );
@@ -1565,6 +1569,9 @@ class _CookSessionScreenState extends State<CookSessionScreen>
   String? _voiceMessage;
   bool _disposed = false;
 
+  String? _voiceMessage;
+  bool _disposed = false;
+
   // 원래 디자인은 그대로 두고 시계(타이머)만 실제로 동작시킨다.
   // 기본 클럭이 WallAnchoredMonotonicClock이라 화면이 꺼져도 시간이 이어진다.
   final LocalTimerController _timer = LocalTimerController();
@@ -1592,6 +1599,10 @@ class _CookSessionScreenState extends State<CookSessionScreen>
   bool _completed = false;
   bool _closingSession = false;
   bool _allowSessionPop = false;
+  // 음성 finish는 오인식 한 번으로 조리가 통째로 끝나는 비가역 동작이라
+  // 확인 발화를 한 번 더 받는다. 화면 버튼 탭은 의도가 명시적이므로 확인
+  // 없이 즉시 완료한다.
+  bool _voiceFinishPending = false;
 
   @override
   void initState() {
@@ -1751,6 +1762,9 @@ class _CookSessionScreenState extends State<CookSessionScreen>
         (isOwnedPermissionBackgroundState && !preserveOwnedPermissionStart);
     if (cancelsPendingSpeech) {
       _cancelPendingSpeechStarts();
+      // 수명이 무한한 확인은 확인이 아니다 — 10분 뒤 복귀한 사용자의 첫
+      // "조리 완료"가 재확인 없이 즉시 종료되는 것을 막는다.
+      _voiceFinishPending = false;
     }
     _voiceSession.handleLifecycleStateChanged(
       state,
@@ -1806,12 +1820,21 @@ class _CookSessionScreenState extends State<CookSessionScreen>
     _startPendingSpeechIfReady();
   }
 
-  void _onSpeechStateChanged(_CookSpeechPhase _, String? message) {
+  void _onSpeechStateChanged(_CookSpeechPhase phase, String? message) {
     if (_disposed || !mounted) {
       return;
     }
     setState(() {
-      if (message != null) {
+      // 완료 확인을 기다리는 동안에는 "듣고 있어요" 같은 진행 문구가 확인
+      // 질문을 덮어쓰지 않는다. 다만 마이크가 죽는 실패는 음성으로 답할 수
+      // 없으므로 확인을 접고 실패 안내(직접 입력 등)를 그대로 보여준다.
+      final micUnusable =
+          phase == _CookSpeechPhase.permissionDenied ||
+          phase == _CookSpeechPhase.unavailable;
+      if (micUnusable) {
+        _voiceFinishPending = false;
+      }
+      if (message != null && !_voiceFinishPending) {
         _voiceMessage = message;
       }
     });
@@ -1832,6 +1855,15 @@ class _CookSessionScreenState extends State<CookSessionScreen>
   void _applyVoiceIntent(VoiceIntent intent, {required String transcript}) {
     if (_disposed || _completed || !mounted) {
       return;
+    }
+    // 짧은 토큰 오탐("잠깐만요"→pauseTimer)의 실사용 빈도를 베타에서 관측해
+    // 단독 발화 판정 도입 여부를 데이터로 결정하기 위한 로그.
+    debugPrint('voice intent: "$transcript" -> ${intent.type.name}');
+    // 완료 확인 대기 중 다른 명령이 오면 확인을 취소한다. ignore(소음·잡담)는
+    // 사용자의 번복이 아니므로 확인 상태를 유지한다.
+    if (intent.type != VoiceIntentType.finish &&
+        intent.type != VoiceIntentType.ignore) {
+      _voiceFinishPending = false;
     }
     switch (intent.type) {
       case VoiceIntentType.next:
@@ -1857,12 +1889,35 @@ class _CookSessionScreenState extends State<CookSessionScreen>
       case VoiceIntentType.resumeTimer:
         _resumeTimerFromVoice();
       case VoiceIntentType.finish:
-        _finishCooking();
+        _handleVoiceFinish();
       case VoiceIntentType.exceptionQuestion:
         unawaited(_requestAdvice(transcript));
       case VoiceIntentType.ignore:
-        _setVoiceMessage('명령을 이해하지 못했어요. 다시 말하거나 직접 입력을 이용해주세요.');
+        if (_voiceFinishPending) {
+          _setVoiceMessage('완료 확인 중이에요. 완료하려면 “조리 완료”라고 말해주세요.');
+        } else {
+          _setVoiceMessage('명령을 이해하지 못했어요. 다시 말하거나 직접 입력을 이용해주세요.');
+        }
     }
+  }
+
+  void _handleVoiceFinish() {
+    if (_voiceFinishPending) {
+      _voiceFinishPending = false;
+      _finishCooking();
+      return;
+    }
+    _voiceFinishPending = true;
+    // 마지막 단계 이전의 "조리 완료"는 "이 단계 끝났어"(다음 단계)일 가능성이
+    // 높지만, 중도 종료도 정당한 의도라 자동 변환하지 않고 질문이 두 갈래를
+    // 안내한다. "다음"이라 답하면 위의 확인 취소 규칙이 그대로 이동을 처리한다.
+    // TTS(F-08 음성 안내)가 연결되면 이 안내를 소리로도 읽어줘야 한다.
+    final totalSteps = widget.recipe.steps.length;
+    final prompt = step >= totalSteps
+        ? '조리를 완료할까요? 완료하려면 “조리 완료”라고 한 번 더 말해주세요.'
+        : '아직 마지막 단계가 아니에요($step/$totalSteps단계). 그래도 완료할까요? '
+              '완료하려면 “조리 완료”, 다음 단계로 가려면 “다음”이라고 말해주세요.';
+    _setVoiceMessage(prompt);
   }
 
   void _setVoiceMessage(String message) {
@@ -1876,6 +1931,9 @@ class _CookSessionScreenState extends State<CookSessionScreen>
     if (_completed) {
       return;
     }
+    // 화면 버튼 이동도 완료 확인의 번복이다(음성 경로는 _applyVoiceIntent가
+    // 이미 취소함).
+    _voiceFinishPending = false;
     final target = step + delta;
     if (target < 1) {
       _setVoiceMessage('첫 단계예요. 이전 단계가 없어요.');
@@ -1988,13 +2046,15 @@ class _CookSessionScreenState extends State<CookSessionScreen>
     _helpRequestVersion++;
     _cancelPendingSpeechStarts();
     _voiceSession.complete();
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute<void>(
-        builder: (_) => ReviewScreen(
-          setupSnapshot: _reviewSnapshot(),
-          clientSessionId: _sessionId,
-          cookedAt: DateTime.now(),
-          timerSecondsByStep: Map.unmodifiable(_timerSecondsByStep),
+    unawaited(
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute<void>(
+          builder: (_) => ReviewScreen(
+            setupSnapshot: _reviewSnapshot(),
+            clientSessionId: _sessionId,
+            cookedAt: DateTime.now(),
+            timerSecondsByStep: Map.unmodifiable(_timerSecondsByStep),
+          ),
         ),
       ),
     );
@@ -2714,9 +2774,11 @@ class _ReviewScreenState extends State<ReviewScreen> {
   }
 
   void _goHome() {
-    Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute<void>(builder: (_) => const MainShell()),
-      (route) => false,
+    unawaited(
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute<void>(builder: (_) => const MainShell()),
+        (route) => false,
+      ),
     );
   }
 

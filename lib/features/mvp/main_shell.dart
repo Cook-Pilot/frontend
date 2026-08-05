@@ -517,11 +517,13 @@ class _MemoryScreenState extends State<MemoryScreen> {
             .where((entry) => entry.recipeId == selected.recipeId)
             .toList(growable: false)
           ..sort((left, right) => right.cookedAt.compareTo(left.cookedAt));
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => CookingHistoryDetailScreen(
-          entry: selected,
-          sameRecipeEntries: sameRecipe,
+    unawaited(
+      Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => CookingHistoryDetailScreen(
+            entry: selected,
+            sameRecipeEntries: sameRecipe,
+          ),
         ),
       ),
     );
