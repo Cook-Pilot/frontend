@@ -2204,13 +2204,14 @@ class _CookSessionScreenState extends State<CookSessionScreen>
     // 마지막 단계 이전의 "조리 완료"는 "이 단계 끝났어"(다음 단계)일 가능성이
     // 높지만, 중도 종료도 정당한 의도라 자동 변환하지 않고 질문이 두 갈래를
     // 안내한다. "다음"이라 답하면 위의 확인 취소 규칙이 그대로 이동을 처리한다.
-    // TTS(F-08 음성 안내)가 연결되면 이 안내를 소리로도 읽어줘야 한다.
+    // 핸즈프리 사용자는 화면을 보지 않으므로 확인 질문을 소리로도 읽어준다.
     final totalSteps = widget.recipe.steps.length;
     final prompt = step >= totalSteps
         ? '조리를 완료할까요? 완료하려면 “조리 완료”라고 한 번 더 말해주세요.'
         : '아직 마지막 단계가 아니에요($step/$totalSteps단계). 그래도 완료할까요? '
               '완료하려면 “조리 완료”, 다음 단계로 가려면 “다음”이라고 말해주세요.';
     _setVoiceMessage(prompt);
+    unawaited(_speakSpeechOutput(prompt));
   }
 
   void _setVoiceMessage(String message) {

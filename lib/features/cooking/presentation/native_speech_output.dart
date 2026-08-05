@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter_tts/flutter_tts.dart';
 
@@ -28,6 +29,17 @@ final class FlutterTtsSpeechSynthesisEngine implements SpeechSynthesisEngine {
     // The cooking port promises playback completion rather than merely method
     // channel submission. Korean is preferred, while the platform remains free
     // to fall back to its installed default voice.
+    if (Platform.isIOS) {
+      // speech_to_text가 세션을 .playAndRecord로 바꾸고 정지 시 비활성화하므로,
+      // 공유 AVAudioSession에 참여하지 않으면 인식 직후의 TTS가 무음이 될 수
+      // 있다. duckOthers로 안내 중에는 배경 음악을 낮춘다.
+      await _flutterTts.setSharedInstance(true);
+      await _flutterTts.setIosAudioCategory(
+        IosTextToSpeechAudioCategory.playback,
+        const [IosTextToSpeechAudioCategoryOptions.duckOthers],
+        IosTextToSpeechAudioMode.voicePrompt,
+      );
+    }
     await _flutterTts.awaitSpeakCompletion(true);
     await _flutterTts.setLanguage('ko-KR');
     await _flutterTts.setSpeechRate(0.48);
