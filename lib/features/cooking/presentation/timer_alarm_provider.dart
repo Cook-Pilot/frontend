@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import '../application/cooking_ports.dart';
 import 'local_notification_timer_alarm.dart';
 
@@ -72,7 +74,25 @@ final class TimerAlarmProvider {
       }
     }
 
-    final resolution = _pending ??= _initialize(_broadcastPermissionFlow);
+    var resolution = _pending;
+    if (resolution == null) {
+      final started = _initialize(_broadcastPermissionFlow);
+      _pending = started;
+      // 실패한 초기화를 캐시에 남기면 앱 재시작 전까지 모든 조리 화면이 같은
+      // 실패를 재사용해 백그라운드 알람이 조용히 죽는다(호출부 catch가 삼킴).
+      // 실패는 잊고 다음 resolve가 재시도하게 한다.
+      unawaited(
+        started.then<void>(
+          (_) {},
+          onError: (Object _, StackTrace _) {
+            if (identical(_pending, started)) {
+              _pending = null;
+            }
+          },
+        ),
+      );
+      resolution = started;
+    }
     late final TimerAlarmRegistration registration;
     registration = TimerAlarmRegistration(
       alarm: resolution.whenComplete(() => registration.cancel()),

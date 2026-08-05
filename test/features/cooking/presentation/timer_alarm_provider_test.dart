@@ -34,6 +34,25 @@ void main() {
     expect(lateEvents, <bool>[true, false]);
   });
 
+  test('실패한 초기화는 캐시하지 않아 다음 resolve가 재시도한다', () async {
+    var attempts = 0;
+    final provider = TimerAlarmProvider(
+      initialize: (_) async {
+        attempts += 1;
+        if (attempts == 1) {
+          throw StateError('plugin init failed');
+        }
+        return const SilentTimerAlarm();
+      },
+    );
+
+    await expectLater(provider.resolve().alarm, throwsStateError);
+    final alarm = await provider.resolve().alarm;
+
+    expect(alarm, isA<SilentTimerAlarm>());
+    expect(attempts, 2);
+  });
+
   test('명시 cancel은 shared 초기화를 유지하고 해당 listener만 즉시 제거한다', () async {
     final completion = Completer<TimerAlarmPort>();
     late TimerAlarmPermissionFlowChanged broadcast;
