@@ -3,12 +3,24 @@ on:
   pull_request:
   push:
     branches: [main]
+
+# CI 토큰은 소스 읽기만 필요하다.
+permissions:
+  contents: read
+
+# 같은 브랜치에 새 푸시가 오면 이전 실행을 취소해 CI 시간을 아낀다.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   check:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
-      - uses: subosito/flutter-action@v2
+      # 액션은 태그 탈취에 대비해 커밋 digest로 고정한다.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
         with:
           flutter-version: 3.44.6
           channel: stable
