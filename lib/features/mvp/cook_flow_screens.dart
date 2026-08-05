@@ -2763,55 +2763,6 @@ class _CookSessionScreenState extends State<CookSessionScreen>
     }
   }
 
-  bool _ownsCurrentHelpRequest(int requestVersion, int requestedStep) =>
-      mounted &&
-      !_disposed &&
-      !_completed &&
-      _helpRequestOwnerVersion == requestVersion &&
-      _helpRequestVersion == requestVersion &&
-      step == requestedStep;
-
-  void _releaseHelpRequest(int requestVersion) {
-    if (_helpRequestOwnerVersion == requestVersion) {
-      _helpRequestOwnerVersion = null;
-    }
-  }
-
-  ExceptionAdviceSuggestedAction? _safeSuggestedAction(
-    ExceptionAdviceSuggestedAction? action,
-  ) {
-    if (action == null ||
-        !_currentStepHasTimer ||
-        action.type != ExceptionAdviceActionType.extendTimer ||
-        (action.seconds != 30 && action.seconds != 60)) {
-      return null;
-    }
-    return action;
-  }
-
-  void _applySuggestedAction() {
-    final action = _helpSuggestedAction;
-    if (action == null ||
-        _disposed ||
-        _completed ||
-        _completionLocked ||
-        !mounted) {
-      return;
-    }
-    setState(() => _helpSuggestedAction = null);
-    switch (action.type) {
-      case ExceptionAdviceActionType.extendTimer:
-        // API 파서가 30/60초만 통과시키지만 화면 경계에서도 한 번 더 막는다.
-        if (action.seconds != 30 && action.seconds != 60) {
-          return;
-        }
-        _extendCurrentTimer(Duration(seconds: action.seconds));
-        _setVoiceMessage(
-          action.seconds == 60 ? '타이머에 1분을 추가했어요.' : '타이머에 30초를 추가했어요.',
-        );
-    }
-  }
-
   String _timerLabel(int stepMinutes) {
     if (stepMinutes <= 0) {
       return '타이머 없음';
@@ -3521,18 +3472,21 @@ class _ReviewScreenState extends State<ReviewScreen>
           );
       _submittedReview = result;
       reviewAccepted = true;
+      // 수락된 리뷰 id는 승인 여부와 무관하게 즉시 기록한다. 비승인 경로에서도
+      // clear 실패 후 재진입이 같은 리뷰를 다시 POST하지 않게 하는 1차
+      // 방어다(서버 clientSessionId 멱등은 2차 방어).
+      if (submittedDraft.acceptedReviewId == null) {
+        _draft = submittedDraft.copyWith(acceptedReviewId: result.id);
+        if (!await _flushDraft()) {
+          if (mounted) {
+            setState(() => _saving = false);
+          }
+          return;
+        }
+      }
       PersonalVersionApprovalResult? personalVersionResult;
       if (submittedDraft.approvedPersonalVersionCreation &&
           !canCompleteBlockedAsReviewOnly) {
-        if (submittedDraft.acceptedReviewId == null) {
-          _draft = submittedDraft.copyWith(acceptedReviewId: result.id);
-          if (!await _flushDraft()) {
-            if (mounted) {
-              setState(() => _saving = false);
-            }
-            return;
-          }
-        }
         personalVersionResult = await _personalVersionApprovalGateway
             .createFromApprovedReview(
               reviewId: result.id,
@@ -3833,7 +3787,10 @@ class _ReviewScreenState extends State<ReviewScreen>
                 : _saved == null
                 ? requiresReviewOnlyRecovery
                       ? '개인 버전 없이 완료'
-                      : _submittedReview == null
+                      // 비승인 재진입은 남은 작업이 정리뿐이라 "개인 버전 다시
+                      // 저장"이 어울리지 않는다.
+                      : _submittedReview == null ||
+                            !_approvedPersonalVersionCreation
                       ? '조리 기록 저장'
                       : '개인 버전 다시 저장'
                 : '홈으로',
