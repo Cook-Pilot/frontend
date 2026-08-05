@@ -971,6 +971,40 @@ void main() {
       expect(find.text('저장하지 못했어요'), findsNothing);
       expect(await store.load(), isNull);
     });
+
+    testWidgets('비승인 경로도 수락된 리뷰 id를 기록해 재진입 재POST를 막는다', (tester) async {
+      final store = _FakePendingReviewDraftStore(failClear: true);
+      final reviewRepository = _FakeReviewRepository();
+      await _pumpReview(
+        tester,
+        store: store,
+        reviewRepository: reviewRepository,
+      );
+
+      await tester.tap(find.text('조리 기록 저장'));
+      await tester.pumpAndSettle();
+
+      expect(reviewRepository.calls, 1);
+      expect(find.textContaining('정리를 완료하지 못해'), findsOneWidget);
+      // clear 실패로 살아남은 초안에는 수락된 리뷰 id가 남아 있어야 한다.
+      final survivor = await store.load();
+      expect(
+        survivor?.acceptedReviewId,
+        '50000000-0000-0000-0000-000000000001',
+      );
+
+      // 살아남은 초안으로 재진입해 다시 저장해도 리뷰 POST는 반복되지 않는다.
+      await tester.pumpWidget(const SizedBox.shrink());
+      await _pumpReview(
+        tester,
+        store: _FakePendingReviewDraftStore(),
+        reviewRepository: reviewRepository,
+        initialDraft: survivor,
+      );
+      await tester.tap(find.text('조리 기록 저장'));
+      await tester.pumpAndSettle();
+      expect(reviewRepository.calls, 1);
+    });
   });
 }
 
@@ -1305,12 +1339,14 @@ final class _FakePendingReviewDraftStore implements PendingReviewDraftGateway {
     this.saveFailuresRemaining = 0,
     this.failAllSaves = false,
     this.failingSaveCalls = const {},
+    this.failClear = false,
   });
 
   final Completer<void>? saveGate;
   int saveFailuresRemaining;
   final bool failAllSaves;
   final Set<int> failingSaveCalls;
+  final bool failClear;
   final List<PendingReviewDraft> saveAttempts = <PendingReviewDraft>[];
   PendingReviewDraft? _storedDraft;
 
@@ -1337,6 +1373,9 @@ final class _FakePendingReviewDraftStore implements PendingReviewDraftGateway {
 
   @override
   Future<void> clear() async {
+    if (failClear) {
+      throw StateError('temporary clear failure');
+    }
     _storedDraft = null;
   }
 }

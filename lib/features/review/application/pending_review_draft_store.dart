@@ -27,14 +27,9 @@ final class PendingReviewDraft {
   }) {
     _requireCanonicalUuid(clientSessionId, 'clientSessionId');
     if (acceptedReviewId != null) {
+      // 서버가 리뷰를 수락했다는 사실은 개인 버전 승인 여부와 무관하다 —
+      // 비승인 경로도 clear 실패 후 재진입의 중복 POST를 막는 checkpoint로 쓴다.
       _requireCanonicalUuid(acceptedReviewId, 'acceptedReviewId');
-      if (!approvedPersonalVersionCreation) {
-        throw ArgumentError.value(
-          acceptedReviewId,
-          'acceptedReviewId',
-          'requires approvedPersonalVersionCreation',
-        );
-      }
     }
     _validateSetupSnapshot(setupSnapshot);
     if (rating < minimumRating || rating > maximumRating) {

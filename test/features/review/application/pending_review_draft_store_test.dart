@@ -146,9 +146,10 @@ void main() {
         ),
         throwsArgumentError,
       );
+      // 비승인 초안도 수락된 리뷰 checkpoint를 가질 수 있다.
       expect(
-        () => buildDraft(acceptedReviewId: acceptedReviewId),
-        throwsArgumentError,
+        buildDraft(acceptedReviewId: acceptedReviewId).acceptedReviewId,
+        acceptedReviewId,
       );
       expect(() => buildDraft(comment: '앞\u0000뒤'), throwsArgumentError);
       expect(
