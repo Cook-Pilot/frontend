@@ -70,6 +70,7 @@ final class CookingVoiceSessionController {
   bool _handsFreeAutoRearm;
   bool _handsFreeStartRequested = false;
   bool _handsFreeHasStarted = false;
+  bool _speechOutputActive = false;
   bool _completed = false;
   bool _disposed = false;
 
@@ -81,6 +82,15 @@ final class CookingVoiceSessionController {
       _phase == CookingVoiceSpeechPhase.stopping;
 
   bool get shouldAutoStartHandsFree => _handsFreeAutoRearm;
+
+  /// Prevents automatic or manual microphone starts while native TTS owns the
+  /// audio session. The screen clears this only for the latest output request.
+  void setSpeechOutputActive(bool active) {
+    if (_disposed || _completed) {
+      return;
+    }
+    _speechOutputActive = active;
+  }
 
   /// Starts the explicit hands-free choice, or defers it across a transient
   /// inactive permission overlay. A hidden/paused transition disarms it unless
@@ -253,6 +263,7 @@ final class CookingVoiceSessionController {
       return;
     }
     _completed = true;
+    _speechOutputActive = false;
     disableAutomaticRearm();
     _sessionGeneration++;
     unawaited(_stopSpeechPort());
@@ -263,6 +274,7 @@ final class CookingVoiceSessionController {
       return;
     }
     _disposed = true;
+    _speechOutputActive = false;
     disableAutomaticRearm();
     _sessionGeneration++;
     unawaited(_stopSpeechPort());
@@ -271,6 +283,7 @@ final class CookingVoiceSessionController {
   bool get _canStart =>
       !_disposed &&
       !_completed &&
+      !_speechOutputActive &&
       _appLifecycleState == AppLifecycleState.resumed;
 
   bool get _canRearmHandsFree => _handsFreeAutoRearm && _canStart && !isActive;

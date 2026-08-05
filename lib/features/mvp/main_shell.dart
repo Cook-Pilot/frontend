@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../app/app_theme.dart';
 import '../cooking/application/cooking_session_store.dart';
 import '../cooking/data/exception_advice_api.dart';
+import '../cooking/presentation/native_speech_output.dart';
 import '../recipe/data/recipe_api.dart';
 import '../recipe/domain/recipe.dart';
 import '../review/application/pending_review_draft_store.dart';
@@ -369,6 +370,7 @@ class _HomeScreenState extends State<HomeScreen> {
       // MaterialPageRoute.builder는 재실행될 수 있으므로 화면이 소유할 포트는
       // 밖에서 한 번만 만든다.
       final advicePort = HttpExceptionAdvicePort();
+      final speechOutput = NativeSpeechOutput();
       await Navigator.of(context).push(
         MaterialPageRoute<void>(
           builder: (_) =>
@@ -379,6 +381,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 setupSnapshot: session.setupSnapshot,
                 restoredSession: session,
                 advicePort: advicePort,
+                speechOutput: speechOutput,
               ),
         ),
       );

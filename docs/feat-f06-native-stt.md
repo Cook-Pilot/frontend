@@ -3,8 +3,9 @@
 ## 범위
 
 `NativeSpeechInput`은 기존 `SpeechInputPort`를 Android/iOS의
-`speech_to_text` 플러그인에 연결한다. 화면과 F-07 Command Router 연결,
-TTS 출력은 후속 작업이다.
+`speech_to_text` 플러그인에 연결한다. 화면과 F-07 Command Router는 후속
+스택에서 연결됐고, 네이티브 출력은 `NativeSpeechOutput`으로 구현했다.
+입출력 오디오 세션의 인계 규칙은 `feat-native-tts.md`를 따른다.
 
 ## 동작
 

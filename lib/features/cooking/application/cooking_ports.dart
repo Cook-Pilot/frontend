@@ -89,6 +89,9 @@ abstract interface class SpeechOutputPort {
 
   /// Completes after the current playback has actually stopped.
   Future<void> stop();
+
+  /// Invalidates future playback and starts releasing native resources.
+  void dispose();
 }
 
 enum SpeechInputFailure { retryRequired, permissionDenied, unavailable }
@@ -172,6 +175,9 @@ final class DemoSpeechOutput implements SpeechOutputPort {
 
   @override
   Future<void> stop() async {}
+
+  @override
+  void dispose() {}
 }
 
 final class DemoExceptionAdvicePort implements ExceptionAdvicePort {

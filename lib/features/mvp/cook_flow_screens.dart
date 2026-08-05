@@ -14,6 +14,7 @@ import '../cooking/domain/cooking_session_state.dart';
 import '../cooking/domain/cooking_voice_router.dart';
 import '../cooking/presentation/cooking_voice_session_controller.dart';
 import '../cooking/presentation/native_speech_input.dart';
+import '../cooking/presentation/native_speech_output.dart';
 import '../cooking/presentation/timer_alarm_provider.dart';
 import '../cooking/presentation/widgets/help_question_sheet.dart';
 import '../recipe/data/recipe_api.dart';
@@ -265,6 +266,8 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
                               recipe: recipe,
                               recommendationDataSource:
                                   RecommendationRepository(),
+                              sessionSpeechOutputFactory:
+                                  NativeSpeechOutput.new,
                             ),
                           ),
                         ),
@@ -414,6 +417,7 @@ class CookSetupScreen extends StatefulWidget {
     this.recommendationDataSource,
     this.sessionAlarm,
     this.sessionSpeechInput,
+    this.sessionSpeechOutputFactory,
     this.pendingReviewDraftStore,
     this.pendingReviewScreenBuilder,
     this.cookSessionScreenBuilder,
@@ -424,6 +428,10 @@ class CookSetupScreen extends StatefulWidget {
   final RecommendationDataSource? recommendationDataSource;
   final TimerAlarmPort? sessionAlarm;
   final SpeechInputPort? sessionSpeechInput;
+
+  /// Creates a fresh output owner for each cooking session. A completed
+  /// session disposes its port, so the instance must not be reused.
+  final SpeechOutputPort Function()? sessionSpeechOutputFactory;
   final PendingReviewDraftGateway? pendingReviewDraftStore;
   final Widget Function(PendingReviewDraft draft)? pendingReviewScreenBuilder;
   final WidgetBuilder? cookSessionScreenBuilder;
@@ -521,6 +529,7 @@ class _CookSetupScreenState extends State<CookSetupScreen> {
                 alarm: widget.sessionAlarm,
                 advicePort: HttpExceptionAdvicePort(),
                 speechInput: widget.sessionSpeechInput,
+                speechOutput: widget.sessionSpeechOutputFactory?.call(),
                 handsFreeVoiceEnabled: _handsFreeVoiceEnabled,
               ),
         ),
@@ -1616,6 +1625,7 @@ class CookSessionScreen extends StatefulWidget {
     this.alarmResolver,
     this.advicePort,
     this.speechInput,
+    this.speechOutput,
     this.handsFreeVoiceEnabled = false,
     this.pendingReviewDraftStore,
     this.cookingSessionStore,
@@ -1640,6 +1650,10 @@ class CookSessionScreen extends StatefulWidget {
 
   /// 테스트에서는 fake를, 실제 앱에서는 네이티브 STT 구현을 사용한다.
   final SpeechInputPort? speechInput;
+
+  /// 테스트에서는 fake를 주입한다. 실제 앱 진입점은 네이티브 TTS를
+  /// 명시적으로 전달한다. 포트 수명은 이 화면이 소유한다.
+  final SpeechOutputPort? speechOutput;
 
   /// 조리 설정에서 사용자가 명시적으로 핸즈프리를 선택한 경우에만 true다.
   ///
@@ -1670,6 +1684,8 @@ class _CookSessionScreenState extends State<CookSessionScreen>
   // 도움 질문(음성 폴백) 상태. 답변은 현재 단계에 묶이므로 단계가 바뀌면 버린다.
   late final ExceptionAdvicePort _advice =
       widget.advicePort ?? HttpExceptionAdvicePort();
+  late final SpeechOutputPort _speechOutput =
+      widget.speechOutput ?? DemoSpeechOutput();
   late final CookingVoiceSessionController _voiceSession;
   static const CookingVoiceRouter _voiceRouter = CookingVoiceRouter();
   String? _helpAnswer;
@@ -1683,6 +1699,11 @@ class _CookSessionScreenState extends State<CookSessionScreen>
 
   String? _voiceMessage;
   bool _disposed = false;
+  int _speechOutputVersion = 0;
+  bool _speechOutputActive = false;
+  bool _initialSpeechOutputComplete = false;
+
+  bool get _speechOutputEnabled => widget.speechOutput != null;
 
   // 원래 디자인은 그대로 두고 시계(타이머)만 실제로 동작시킨다.
   // 기본 클럭이 WallAnchoredMonotonicClock이라 화면이 꺼져도 시간이 이어진다.
@@ -1761,6 +1782,7 @@ class _CookSessionScreenState extends State<CookSessionScreen>
     _alarmInitialization = _initAlarm();
     unawaited(_observeAlarmInitialization());
     _persist();
+    _initialSpeechOutputComplete = !_speechOutputEnabled;
     _initialHandsFreeStartPending = _voiceSession.shouldAutoStartHandsFree;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _firstFrameRendered = true;
@@ -1786,6 +1808,17 @@ class _CookSessionScreenState extends State<CookSessionScreen>
         !_alarmInitializationComplete ||
         _alarmPermissionFlowActive ||
         _appLifecycleState != AppLifecycleState.resumed) {
+      return;
+    }
+    // The first spoken step owns the audio session before hands-free STT. This
+    // prevents the recognizer from hearing CookPilot's own guidance.
+    if (!_initialSpeechOutputComplete) {
+      if (!_speechOutputActive) {
+        unawaited(_speakCurrentStep(completesStartup: true));
+      }
+      return;
+    }
+    if (_speechOutputActive) {
       return;
     }
     if (_initialHandsFreeStartPending) {
@@ -1894,6 +1927,9 @@ class _CookSessionScreenState extends State<CookSessionScreen>
       preservePendingHandsFreeStart:
           preserveOwnedPermissionStart && _initialHandsFreeStartPending,
     );
+    if (state != AppLifecycleState.resumed && _speechOutputActive) {
+      unawaited(_stopSpeechOutput());
+    }
     if (state == AppLifecycleState.resumed) {
       if (_alarmPermissionFlowEndedWhileBackgrounded) {
         _alarmPermissionFlowActive = false;
@@ -1912,6 +1948,7 @@ class _CookSessionScreenState extends State<CookSessionScreen>
     WidgetsBinding.instance.removeObserver(this);
     _timer.removeListener(_onTimerChanged);
     _voiceSession.dispose();
+    _speechOutput.dispose();
     unawaited(_cancelScheduledAlarm());
     _timer.dispose();
     super.dispose();
@@ -1929,7 +1966,138 @@ class _CookSessionScreenState extends State<CookSessionScreen>
       ? _voiceSession.deactivateAndRearmHandsFree(message: message)
       : _voiceSession.deactivate(forceStop: forceStop, message: message);
 
+  Future<void> _speakCurrentStep({bool completesStartup = false}) =>
+      _speakSpeechOutput(
+        '$step단계. ${widget.recipe.steps[step - 1].description}',
+        completesStartup: completesStartup,
+      );
+
+  Future<void> _speakSpeechOutput(
+    String text, {
+    bool completesStartup = false,
+  }) async {
+    if (!_speechOutputEnabled) {
+      if (completesStartup) {
+        _initialSpeechOutputComplete = true;
+      }
+      return;
+    }
+    if (_disposed ||
+        _completed ||
+        _completionLocked ||
+        !mounted ||
+        _appLifecycleState != AppLifecycleState.resumed) {
+      if (completesStartup && !_disposed) {
+        _initialSpeechOutputComplete = true;
+        _startPendingSpeechIfReady();
+      }
+      return;
+    }
+
+    final outputVersion = ++_speechOutputVersion;
+    final shouldRearmHandsFree = _voiceSession.shouldAutoStartHandsFree;
+    _speechOutputActive = true;
+    _voiceSession.setSpeechOutputActive(true);
+    try {
+      // A recognizer stop already in flight after a command is awaited here.
+      // TTS never starts while the microphone still owns the audio session.
+      await _deactivateSpeechInput(forceStop: true);
+      if (!_ownsSpeechOutput(outputVersion)) {
+        return;
+      }
+      await _speechOutput.speak(text);
+    } on Object {
+      // Native output is optional enhancement. Visual instructions, timers,
+      // and AI answers remain usable when an engine or voice is unavailable.
+    } finally {
+      if (_ownsSpeechOutput(outputVersion)) {
+        _speechOutputActive = false;
+        _voiceSession.setSpeechOutputActive(false);
+        if (completesStartup) {
+          _initialSpeechOutputComplete = true;
+        }
+        final hadPendingSpeechStart = _hasPendingSpeechStart;
+        _startPendingSpeechIfReady();
+        if (!hadPendingSpeechStart &&
+            shouldRearmHandsFree &&
+            _appLifecycleState == AppLifecycleState.resumed) {
+          await _voiceSession.startHandsFree();
+        }
+      }
+    }
+  }
+
+  Future<void> _stopSpeechOutput({
+    bool rearmHandsFree = false,
+    bool completesStartup = false,
+  }) async {
+    if (!_speechOutputEnabled) {
+      if (completesStartup) {
+        _initialSpeechOutputComplete = true;
+      }
+      return;
+    }
+    final outputVersion = ++_speechOutputVersion;
+    final shouldRearmHandsFree =
+        rearmHandsFree && _voiceSession.shouldAutoStartHandsFree;
+    try {
+      await _speechOutput.stop();
+    } on Object {
+      // Session transitions must never wait on a failed native TTS engine.
+    }
+    if (!_ownsSpeechOutput(outputVersion)) {
+      return;
+    }
+    _speechOutputActive = false;
+    _voiceSession.setSpeechOutputActive(false);
+    if (completesStartup) {
+      _initialSpeechOutputComplete = true;
+    }
+    final hadPendingSpeechStart = _hasPendingSpeechStart;
+    _startPendingSpeechIfReady();
+    if (!hadPendingSpeechStart &&
+        shouldRearmHandsFree &&
+        _appLifecycleState == AppLifecycleState.resumed) {
+      await _voiceSession.startHandsFree();
+    }
+  }
+
+  bool _ownsSpeechOutput(int outputVersion) =>
+      mounted &&
+      !_disposed &&
+      !_completed &&
+      outputVersion == _speechOutputVersion;
+
+  void _stopSpeechOutputForSessionEnd() {
+    if (!_speechOutputEnabled) {
+      return;
+    }
+    _speechOutputVersion++;
+    _speechOutputActive = false;
+    _initialSpeechOutputComplete = true;
+    _voiceSession.setSpeechOutputActive(false);
+    unawaited(_stopSpeechOutputPortBestEffort());
+  }
+
+  Future<void> _stopSpeechOutputPortBestEffort() async {
+    try {
+      await _speechOutput.stop();
+    } on Object {
+      // Completion, back navigation, and storage recovery must remain usable
+      // even when an injected or native output port rejects its stop future.
+    }
+  }
+
   void _toggleSpeechInput() {
+    if (_speechOutputActive) {
+      if (_manualSpeechStartPending) {
+        _manualSpeechStartPending = false;
+        return;
+      }
+      _manualSpeechStartPending = true;
+      unawaited(_stopSpeechOutput(completesStartup: true));
+      return;
+    }
     if (_speechIsActive) {
       _manualSpeechStartPending = false;
       _voiceSession.toggle();
@@ -1998,11 +2166,13 @@ class _CookSessionScreenState extends State<CookSessionScreen>
           '현재 안내를 다시 보여드릴게요. '
           '${widget.recipe.steps[step - 1].description}',
         );
+        unawaited(_speakCurrentStep());
       case VoiceIntentType.currentStep:
         _setVoiceMessage(
           '현재는 $step단계예요. '
           '${widget.recipe.steps[step - 1].description}',
         );
+        unawaited(_speakCurrentStep());
       case VoiceIntentType.startTimer:
         _startTimerFromVoice();
       case VoiceIntentType.extendTimer:
@@ -2034,17 +2204,18 @@ class _CookSessionScreenState extends State<CookSessionScreen>
     // 마지막 단계 이전의 "조리 완료"는 "이 단계 끝났어"(다음 단계)일 가능성이
     // 높지만, 중도 종료도 정당한 의도라 자동 변환하지 않고 질문이 두 갈래를
     // 안내한다. "다음"이라 답하면 위의 확인 취소 규칙이 그대로 이동을 처리한다.
-    // TTS(F-08 음성 안내)가 연결되면 이 안내를 소리로도 읽어줘야 한다.
+    // 핸즈프리 사용자는 화면을 보지 않으므로 확인 질문을 소리로도 읽어준다.
     final totalSteps = widget.recipe.steps.length;
     final prompt = step >= totalSteps
         ? '조리를 완료할까요? 완료하려면 “조리 완료”라고 한 번 더 말해주세요.'
         : '아직 마지막 단계가 아니에요($step/$totalSteps단계). 그래도 완료할까요? '
               '완료하려면 “조리 완료”, 다음 단계로 가려면 “다음”이라고 말해주세요.';
     _setVoiceMessage(prompt);
+    unawaited(_speakSpeechOutput(prompt));
   }
 
   void _setVoiceMessage(String message) {
-    if (_disposed || _completed || !mounted) {
+    if (_disposed || _completed || _completionLocked || !mounted) {
       return;
     }
     setState(() => _voiceMessage = message);
@@ -2069,7 +2240,9 @@ class _CookSessionScreenState extends State<CookSessionScreen>
     // 화면 버튼으로 이동할 때도 진행 중인 음성 세션을 끊어, 이전 단계에서
     // 시작된 인식 결과가 새 단계에 적용되지 않도록 한다.
     _manualSpeechStartPending = false;
-    if (_speechIsActive) {
+    // Silent/test sessions preserve the original STT-only handoff. Native TTS
+    // sessions serialize this same stop inside _speakSpeechOutput instead.
+    if (!_speechOutputEnabled && _speechIsActive) {
       unawaited(_deactivateSpeechInput(rearmHandsFree: true));
     }
     _helpRequestVersion++;
@@ -2082,6 +2255,9 @@ class _CookSessionScreenState extends State<CookSessionScreen>
     });
     _resetTimerForStep(keepRecordedDuration: true);
     _persist();
+    // 새 단계 발화가 마이크 정지와 이전 TTS 취소를 직렬화한다. 발화가
+    // 끝난 뒤에만 opt-in 된 핸즈프리를 다시 연다.
+    unawaited(_speakCurrentStep());
   }
 
   bool get _currentStepHasTimer =>
@@ -2189,6 +2365,7 @@ class _CookSessionScreenState extends State<CookSessionScreen>
       _finishError = null;
     });
     _completed = true;
+    _stopSpeechOutputForSessionEnd();
     // draft 저장을 기다리는 동안 타이머가 만료되거나, 늦게 초기화된 OS
     // 알림이 다시 예약되지 않도록 완료 시작 시점에 즉시 정지·취소한다.
     if (_timer.status == TimerStatus.running) {
@@ -2254,6 +2431,7 @@ class _CookSessionScreenState extends State<CookSessionScreen>
     // Invalidate callbacks and begin closing the microphone before the route
     // transition reveals the previous screen.
     _cancelPendingSpeechStarts();
+    _stopSpeechOutputForSessionEnd();
     _voiceSession.complete();
     setState(() => _allowSessionPop = true);
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -2476,6 +2654,9 @@ class _CookSessionScreenState extends State<CookSessionScreen>
       });
       return;
     }
+    // A new owned question supersedes any step/advice speech already playing.
+    // The network request does not wait for best-effort native cancellation.
+    unawaited(_stopSpeechOutput(rearmHandsFree: true, completesStartup: true));
     final requestVersion = ++_helpRequestVersion;
     final requestedStep = step;
     _helpRequestOwnerVersion = requestVersion;
@@ -2529,6 +2710,9 @@ class _CookSessionScreenState extends State<CookSessionScreen>
           ? null
           : _safeSuggestedAction(advice.suggestedAction);
     });
+    // Use the server's separately safety-filtered speech channel, and only
+    // after requestVersion + requestedStep ownership has passed above.
+    unawaited(_speakSpeechOutput(advice.speechText));
   }
 
   bool _ownsCurrentHelpRequest(int requestVersion, int requestedStep) =>
