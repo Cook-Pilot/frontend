@@ -103,7 +103,7 @@ final class PendingReviewDraft {
     'steps',
   };
 
-  static const _setupIngredientJsonFields = <String>{
+  static const _legacySetupIngredientJsonFields = <String>{
     'originalIngredientId',
     'originalName',
     'name',
@@ -112,6 +112,12 @@ final class PendingReviewDraft {
     'unit',
     'isRequired',
     'omitted',
+  };
+
+  static const _currentSetupIngredientJsonFields = <String>{
+    ..._legacySetupIngredientJsonFields,
+    'baselineUnit',
+    'baselineIsRequired',
   };
 
   static const _setupStepJsonFields = <String>{
@@ -192,8 +198,10 @@ final class PendingReviewDraft {
             cookedAt.toIso8601String() != cookedAtValue) {
           return null;
         }
-        final setupSnapshotJson = Map<String, Object?>.from(setupSnapshotValue);
-        if (!_hasExactCurrentSetupSnapshotShape(setupSnapshotJson)) {
+        final setupSnapshotJson = _normalizeSetupSnapshotJson(
+          Map<String, Object?>.from(setupSnapshotValue),
+        );
+        if (setupSnapshotJson == null) {
           return null;
         }
         final setupSnapshot = CookingSetupSnapshot.fromJson(setupSnapshotJson);
@@ -228,25 +236,52 @@ final class PendingReviewDraft {
     return null;
   }
 
-  static bool _hasExactCurrentSetupSnapshotShape(Map<String, Object?> json) {
+  static Map<String, Object?>? _normalizeSetupSnapshotJson(
+    Map<String, Object?> json,
+  ) {
     if (!_hasExactFields(json, _setupSnapshotJsonFields) ||
         json['schemaVersion'] != CookingSetupSnapshot.currentSchemaVersion) {
-      return false;
+      return null;
     }
     final ingredientValues = json['ingredients'];
     final stepValues = json['steps'];
     if (ingredientValues is! List || stepValues is! List) {
-      return false;
+      return null;
     }
+    // PR #35 used the same outer schema and storage key, but every ingredient
+    // omitted these two baseline fields. Accept only that complete legacy shape.
+    bool? usesLegacyIngredientShape;
+    final normalizedIngredientValues = <Object?>[];
     for (final value in ingredientValues) {
       if (value is! Map) {
-        return false;
+        return null;
       }
       final ingredientJson = Map<String, Object?>.from(value);
-      if (!_hasExactFields(ingredientJson, _setupIngredientJsonFields) ||
-          ingredientJson['omitted'] is! bool) {
-        return false;
+      final isCurrent = _hasExactFields(
+        ingredientJson,
+        _currentSetupIngredientJsonFields,
+      );
+      final isLegacy = _hasExactFields(
+        ingredientJson,
+        _legacySetupIngredientJsonFields,
+      );
+      if ((!isCurrent && !isLegacy) || ingredientJson['omitted'] is! bool) {
+        return null;
       }
+      if (usesLegacyIngredientShape != null &&
+          usesLegacyIngredientShape != isLegacy) {
+        return null;
+      }
+      usesLegacyIngredientShape ??= isLegacy;
+      normalizedIngredientValues.add(
+        isLegacy
+            ? <String, Object?>{
+                ...ingredientJson,
+                'baselineUnit': null,
+                'baselineIsRequired': null,
+              }
+            : ingredientJson,
+      );
     }
     for (final value in stepValues) {
       if (value is! Map ||
@@ -254,10 +289,13 @@ final class PendingReviewDraft {
             Map<String, Object?>.from(value),
             _setupStepJsonFields,
           )) {
-        return false;
+        return null;
       }
     }
-    return true;
+    return <String, Object?>{
+      ...json,
+      'ingredients': normalizedIngredientValues,
+    };
   }
 
   static bool _hasExactFields(
@@ -493,6 +531,13 @@ void _validateSetupSnapshot(CookingSetupSnapshot snapshot) {
       ingredient.unit,
       field: 'setupSnapshot.ingredients.unit',
     );
+    final baselineUnit = ingredient.baselineUnit;
+    if (baselineUnit != null) {
+      _validateDatabaseText(
+        baselineUnit,
+        field: 'setupSnapshot.ingredients.baselineUnit',
+      );
+    }
     final amount = ingredient.amount;
     if (amount != null && (!amount.isFinite || amount < 0)) {
       throw ArgumentError.value(

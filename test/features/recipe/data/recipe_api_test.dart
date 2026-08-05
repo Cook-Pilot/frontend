@@ -86,7 +86,13 @@ void main() {
             "baseServings": 1.0,
             "imageUrl": null,
             "ingredients": [
-              {"name": "물", "amount": 500.0, "unit": "ml", "required": true}
+              {
+                "id": "11000000-0000-0000-0000-000000000001",
+                "name": "물",
+                "amount": 500.0,
+                "unit": "ml",
+                "required": true
+              }
             ],
             "steps": [
               {
@@ -113,12 +119,90 @@ void main() {
 
     expect(recipe.id, recipeId);
     expect(recipe.baseServings, 1);
+    expect(
+      recipe.ingredients.single.originalIngredientId,
+      '11000000-0000-0000-0000-000000000001',
+    );
     expect(recipe.ingredients.single.amountLabel, '500ml');
     expect(recipe.steps, hasLength(2));
     expect(recipe.steps.first.timerDuration, const Duration(seconds: 90));
     expect(recipe.steps.first.minutes, 2);
     expect(recipe.steps.first.description, contains('화상 주의'));
     expect(recipe.timerMinutes, 2);
+  });
+
+  test('기본 재료 ID 누락은 Recipe 생성 전에 거부해 ADD 경로에 들어가지 않는다', () async {
+    const summary = RecipeSummary(
+      id: recipeId,
+      title: '라면',
+      description: '기본 라면',
+      imageUrl: '',
+      hasPersonalVersion: false,
+      latestPersonalVersionId: null,
+    );
+    final missingIdBody = _baseRecipeJson.replaceFirst(
+      '"id": "11000000-0000-0000-0000-000000000001", ',
+      '',
+    );
+    final repository = RecipeRepository(
+      baseUrl: baseUrl,
+      client: MockClient((_) async => _jsonResponse(missingIdBody)),
+    );
+
+    await expectLater(
+      repository.findById(summary),
+      throwsA(
+        isA<RecipeApiException>().having(
+          (exception) => exception.message,
+          'message',
+          contains('재료 ID'),
+        ),
+      ),
+    );
+  });
+
+  test('기본 재료 ID가 canonical UUID가 아니면 상세 응답을 거부한다', () async {
+    const summary = RecipeSummary(
+      id: recipeId,
+      title: '라면',
+      description: '기본 라면',
+      imageUrl: '',
+      hasPersonalVersion: false,
+      latestPersonalVersionId: null,
+    );
+    final invalidBodies = <String>[
+      _baseRecipeJson.replaceFirst('11000000-0000-0000-0000-000000000001', ''),
+      _baseRecipeJson.replaceFirst(
+        '11000000-0000-0000-0000-000000000001',
+        'not-a-uuid',
+      ),
+      _baseRecipeJson.replaceFirst(
+        '11000000-0000-0000-0000-000000000001',
+        '00000000-0000-0000-0000-000000000000',
+      ),
+      _baseRecipeJson.replaceFirst(
+        '"id": "11000000-0000-0000-0000-000000000001"',
+        '"id": 7',
+      ),
+    ];
+
+    for (final body in invalidBodies) {
+      final repository = RecipeRepository(
+        baseUrl: baseUrl,
+        client: MockClient((_) async => _jsonResponse(body)),
+      );
+
+      await expectLater(
+        repository.findById(summary),
+        throwsA(
+          isA<RecipeApiException>().having(
+            (exception) => exception.message,
+            'message',
+            contains('재료 ID'),
+          ),
+        ),
+      );
+    }
   });
 
   test('개인 버전 상세의 합성된 재료와 단계를 읽는다', () async {
@@ -142,12 +226,20 @@ void main() {
             },
             "ingredients": [
               {
-                "originalIngredientId": null,
+                "originalIngredientId": "11000000-0000-0000-0000-000000000001",
                 "name": "물",
                 "amount": 550,
                 "unit": "ml",
                 "required": true,
                 "origin": "MODIFIED"
+              },
+              {
+                "originalIngredientId": null,
+                "name": "치즈",
+                "amount": 1,
+                "unit": "장",
+                "required": false,
+                "origin": "ADDED"
               }
             ],
             "steps": [
@@ -173,8 +265,100 @@ void main() {
     expect(version.versionNumber, 2);
     expect(version.title, '덜 짠 라면 v2');
     expect(version.summary, '스프를 줄인 버전');
-    expect(version.ingredients.single.amountLabel, '550ml');
+    expect(version.ingredients, hasLength(2));
+    expect(
+      version.ingredients.first.originalIngredientId,
+      '11000000-0000-0000-0000-000000000001',
+    );
+    expect(version.ingredients.first.amountLabel, '550ml');
+    expect(version.ingredients.last.originalIngredientId, isNull);
+    expect(version.ingredients.last.amountLabel, '1장');
     expect(version.steps.single.timerSeconds, 90);
+  });
+
+  test('개인 버전 ORIGINAL MODIFIED는 canonical ID가 필요하고 ADDED는 ID가 없어야 한다', () {
+    final addedWithoutIdKey = _personalVersionIngredient(
+      origin: 'ADDED',
+      originalIngredientId: null,
+    )..remove('originalIngredientId');
+    final invalidIngredients = <Map<String, dynamic>>[
+      addedWithoutIdKey,
+      _personalVersionIngredient(
+        origin: 'ORIGINAL',
+        originalIngredientId: null,
+      ),
+      _personalVersionIngredient(
+        origin: 'MODIFIED',
+        originalIngredientId: null,
+      ),
+      _personalVersionIngredient(
+        origin: 'ORIGINAL',
+        originalIngredientId: 'not-a-uuid',
+      ),
+      _personalVersionIngredient(
+        origin: 'MODIFIED',
+        originalIngredientId: '00000000-0000-0000-0000-000000000000',
+      ),
+      _personalVersionIngredient(
+        origin: 'ORIGINAL',
+        originalIngredientId: '11000000-0000-0000-0000-00000000000A',
+      ),
+      _personalVersionIngredient(origin: 'MODIFIED', originalIngredientId: 7),
+      _personalVersionIngredient(
+        origin: 'ADDED',
+        originalIngredientId: '11000000-0000-0000-0000-000000000001',
+      ),
+    ];
+
+    for (final ingredient in invalidIngredients) {
+      expect(
+        () => PersonalRecipeVersionDetail.fromJson(
+          _personalVersionDetailJson(ingredient),
+        ),
+        throwsA(
+          isA<RecipeApiException>().having(
+            (exception) => exception.message,
+            'message',
+            contains('재료 ID'),
+          ),
+        ),
+        reason: '잘못된 origin/ID 조합: $ingredient',
+      );
+    }
+  });
+
+  test('개인 버전 재료 origin 누락 unknown 잘못된 타입은 fail closed한다', () {
+    final missingOrigin = _personalVersionIngredient(
+      origin: 'ORIGINAL',
+      originalIngredientId: '11000000-0000-0000-0000-000000000001',
+    )..remove('origin');
+    final invalidIngredients = <Map<String, dynamic>>[
+      missingOrigin,
+      _personalVersionIngredient(
+        origin: 'REMOVED',
+        originalIngredientId: '11000000-0000-0000-0000-000000000001',
+      ),
+      _personalVersionIngredient(
+        origin: 1,
+        originalIngredientId: '11000000-0000-0000-0000-000000000001',
+      ),
+    ];
+
+    for (final ingredient in invalidIngredients) {
+      expect(
+        () => PersonalRecipeVersionDetail.fromJson(
+          _personalVersionDetailJson(ingredient),
+        ),
+        throwsA(
+          isA<RecipeApiException>().having(
+            (exception) => exception.message,
+            'message',
+            contains('origin'),
+          ),
+        ),
+        reason: '잘못된 origin: $ingredient',
+      );
+    }
   });
 
   test('레시피의 최근 개인 버전 목록을 읽는다', () async {
@@ -253,6 +437,7 @@ void main() {
             "title": "다른 레시피",
             "ingredients": [
               {
+                "id": "11000000-0000-0000-0000-000000000001",
                 "name": "물",
                 "amount": 500,
                 "unit": "ml",
@@ -443,7 +628,7 @@ const _baseRecipeJson = '''
     "baseServings": 1,
     "imageUrl": null,
     "ingredients": [
-      {"name": "물", "amount": 500, "unit": "ml", "required": true}
+      {"id": "11000000-0000-0000-0000-000000000001", "name": "물", "amount": 500, "unit": "ml", "required": true}
     ],
     "steps": [
       {
@@ -456,3 +641,29 @@ const _baseRecipeJson = '''
     ]
   }
 ''';
+
+Map<String, dynamic> _personalVersionIngredient({
+  required Object? origin,
+  required Object? originalIngredientId,
+}) => <String, dynamic>{
+  'originalIngredientId': originalIngredientId,
+  'name': '물',
+  'amount': 500,
+  'unit': 'ml',
+  'required': true,
+  'origin': origin,
+};
+
+Map<String, dynamic> _personalVersionDetailJson(
+  Map<String, dynamic> ingredient,
+) => <String, dynamic>{
+  'version': <String, dynamic>{
+    'id': '20000000-0000-0000-0000-000000000001',
+    'versionNumber': 2,
+    'title': '덜 짠 라면 v2',
+    'summary': '스프를 줄인 버전',
+    'createdAt': '2026-07-26T01:00:00Z',
+  },
+  'ingredients': <Object?>[ingredient],
+  'steps': <Object?>[],
+};

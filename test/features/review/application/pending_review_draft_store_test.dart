@@ -247,6 +247,33 @@ void main() {
       }
     });
 
+    test('재료 baselineUnit의 DB 비호환 문자를 거부한다', () {
+      for (final invalidUnit in <String>[
+        '앞\u0000뒤',
+        String.fromCharCode(0xd800),
+        String.fromCharCode(0xdc00),
+      ]) {
+        expect(
+          () => buildDraft(
+            setupSnapshot: buildSetupSnapshot(
+              ingredientBaselineUnit: invalidUnit,
+            ),
+          ),
+          throwsArgumentError,
+          reason: 'baselineUnit의 DB 비호환 문자는 모델 생성에서 거부해야 한다.',
+        );
+        final corrupted = _mutatedDraftJson(
+          (setupSnapshot, ingredient, step) =>
+              ingredient['baselineUnit'] = invalidUnit,
+        );
+        expect(
+          PendingReviewDraft.fromJson(corrupted),
+          isNull,
+          reason: 'baselineUnit의 DB 비호환 문자는 저장값 복원에서 거부해야 한다.',
+        );
+      }
+    });
+
     test('실행 단계 기본 타이머는 null과 지원 범위 경계만 허용한다', () {
       for (final timerSeconds in <int?>[
         null,
@@ -315,6 +342,63 @@ void main() {
       }
     });
 
+    test('PR35 legacy 재료 shape를 current nullable baseline shape로 보완한다', () {
+      final legacyJson = _pr35LegacyDraftJson();
+
+      final restored = PendingReviewDraft.fromJson(legacyJson);
+
+      expect(restored, isNotNull);
+      final restoredIngredient = restored!.setupSnapshot.ingredients.single;
+      expect(restoredIngredient.baselineUnit, isNull);
+      expect(restoredIngredient.baselineIsRequired, isNull);
+
+      final migratedJson = restored.toJson();
+      expect(
+        migratedJson['schemaVersion'],
+        PendingReviewDraft.currentSchemaVersion,
+      );
+      final migratedIngredient = _firstIngredientJson(migratedJson);
+      expect(migratedIngredient, containsPair('baselineUnit', isNull));
+      expect(migratedIngredient, containsPair('baselineIsRequired', isNull));
+      final originalLegacyIngredient = _firstIngredientJson(legacyJson);
+      expect(originalLegacyIngredient.containsKey('baselineUnit'), isFalse);
+      expect(
+        originalLegacyIngredient.containsKey('baselineIsRequired'),
+        isFalse,
+      );
+    });
+
+    test('legacy 재료의 누락 hybrid unknown 및 current 혼합 shape는 거부한다', () {
+      final missing = _mutatedDraftJsonFrom(
+        _pr35LegacyDraftJson(),
+        (setupSnapshot, ingredient, step) =>
+            ingredient.remove('baselineAmount'),
+      );
+      final hybrid = _mutatedDraftJsonFrom(
+        _pr35LegacyDraftJson(),
+        (setupSnapshot, ingredient, step) => ingredient['baselineUnit'] = null,
+      );
+      final unknown = _mutatedDraftJsonFrom(
+        _pr35LegacyDraftJson(),
+        (setupSnapshot, ingredient, step) => ingredient['futureField'] = true,
+      );
+      final mixed = _mutatedDraftJsonFrom(_pr35LegacyDraftJson(), (
+        setupSnapshot,
+        ingredient,
+        step,
+      ) {
+        setupSnapshot['ingredients'] = <Object?>[
+          ingredient,
+          buildSetupSnapshot().ingredients.single.toJson(),
+        ];
+      });
+
+      expect(PendingReviewDraft.fromJson(missing), isNull);
+      expect(PendingReviewDraft.fromJson(hybrid), isNull);
+      expect(PendingReviewDraft.fromJson(unknown), isNull);
+      expect(PendingReviewDraft.fromJson(mixed), isNull);
+    });
+
     test('현재 후기 실행 스냅샷은 모든 최상위 필드를 요구한다', () {
       const fields = <String>[
         'schemaVersion',
@@ -350,6 +434,8 @@ void main() {
         'name',
         'amount',
         'baselineAmount',
+        'baselineUnit',
+        'baselineIsRequired',
         'unit',
         'isRequired',
         'omitted',
@@ -421,6 +507,8 @@ void main() {
         setupSnapshot['personalVersionId'] = null;
         ingredient['originalIngredientId'] = null;
         ingredient['baselineAmount'] = null;
+        ingredient['baselineUnit'] = null;
+        ingredient['baselineIsRequired'] = null;
         ingredient['omitted'] = true;
         step['originalStepId'] = null;
         step['timerSeconds'] = null;
@@ -435,6 +523,8 @@ void main() {
       expect(ingredient.originalIngredientId, isNull);
       expect(ingredient.amount, 1);
       expect(ingredient.baselineAmount, isNull);
+      expect(ingredient.baselineUnit, isNull);
+      expect(ingredient.baselineIsRequired, isNull);
       expect(ingredient.omitted, isTrue);
       final step = restored.setupSnapshot.steps.single;
       expect(step.originalStepId, isNull);
@@ -464,6 +554,41 @@ void main() {
       expect(restored.nextTimeNote, '다음에는 덜 짜게');
       expect(restored.timerSecondsByStep, const {0: 180});
       expect(restored.approvedPersonalVersionCreation, isFalse);
+    });
+
+    test('PR35 legacy 초안을 같은 저장키에서 삭제하지 않고 복원한다', () async {
+      final legacyJson = _pr35LegacyDraftJson();
+      SharedPreferences.setMockInitialValues(<String, Object>{
+        PendingReviewDraftStore.storageKey: jsonEncode(legacyJson),
+      });
+      final store = PendingReviewDraftStore();
+
+      final restored = await store.load();
+
+      expect(restored, isNotNull);
+      expect(restored!.setupSnapshot.ingredients.single.baselineUnit, isNull);
+      expect(
+        restored.setupSnapshot.ingredients.single.baselineIsRequired,
+        isNull,
+      );
+      final preferences = await SharedPreferences.getInstance();
+      expect(
+        preferences.getString(PendingReviewDraftStore.storageKey),
+        isNotNull,
+      );
+
+      await store.save(restored);
+      final migrated = Map<String, Object?>.from(
+        jsonDecode(preferences.getString(PendingReviewDraftStore.storageKey)!)
+            as Map,
+      );
+      expect(
+        migrated['schemaVersion'],
+        PendingReviewDraft.currentSchemaVersion,
+      );
+      final migratedIngredient = _firstIngredientJson(migrated);
+      expect(migratedIngredient, containsPair('baselineUnit', isNull));
+      expect(migratedIngredient, containsPair('baselineIsRequired', isNull));
     });
 
     test('새 저장은 데모의 기존 단일 초안을 교체한다', () async {
@@ -1424,6 +1549,7 @@ CookingSetupSnapshot buildSetupSnapshot({
   double baseServings = 2,
   double? ingredientAmount = 1,
   double? ingredientBaselineAmount = 1,
+  String? ingredientBaselineUnit,
   String ingredientName = '두부',
   String ingredientUnit = '모',
   String stepInstruction = '두부를 부친다.',
@@ -1447,6 +1573,7 @@ CookingSetupSnapshot buildSetupSnapshot({
         name: ingredientName,
         amount: ingredientAmount,
         baselineAmount: ingredientBaselineAmount,
+        baselineUnit: ingredientBaselineUnit,
         unit: ingredientUnit,
         isRequired: true,
       ),
@@ -1469,6 +1596,22 @@ CookingSetupSnapshot buildSetupSnapshot({
 Map<String, Object?> _deepCopy(Map<String, Object?> value) =>
     Map<String, Object?>.from(jsonDecode(jsonEncode(value)) as Map);
 
+Map<String, Object?> _pr35LegacyDraftJson() {
+  final json = _mutatedDraftJson((setupSnapshot, ingredient, step) {
+    ingredient.remove('baselineUnit');
+    ingredient.remove('baselineIsRequired');
+  });
+  json['schemaVersion'] = 1;
+  json.remove('acceptedReviewId');
+  return json;
+}
+
+Map<String, Object?> _firstIngredientJson(Map<String, Object?> draftJson) {
+  final setupSnapshot = draftJson['setupSnapshot']! as Map;
+  final ingredients = setupSnapshot['ingredients']! as List;
+  return Map<String, Object?>.from(ingredients.first! as Map);
+}
+
 Map<String, Object?> _mutatedDraftJson(
   void Function(
     Map<String, Object?> setupSnapshot,
@@ -1476,8 +1619,18 @@ Map<String, Object?> _mutatedDraftJson(
     Map<String, Object?> step,
   )
   mutate,
+) => _mutatedDraftJsonFrom(buildDraft().toJson(), mutate);
+
+Map<String, Object?> _mutatedDraftJsonFrom(
+  Map<String, Object?> source,
+  void Function(
+    Map<String, Object?> setupSnapshot,
+    Map<String, Object?> ingredient,
+    Map<String, Object?> step,
+  )
+  mutate,
 ) {
-  final json = _deepCopy(buildDraft().toJson());
+  final json = _deepCopy(source);
   final setupSnapshot = Map<String, Object?>.from(
     json['setupSnapshot']! as Map,
   );

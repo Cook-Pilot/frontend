@@ -250,6 +250,30 @@ void main() {
       expect(await store.load(), isNull);
     });
 
+    testWidgets('실행 변경이 있어도 생성 ID가 없으면 변경 없음으로 단정하지 않는다', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ReviewScreen(
+            setupSnapshot: buildSnapshot(),
+            clientSessionId: '40000000-0000-0000-0000-000000000001',
+            cookedAt: DateTime(2026, 7, 26),
+            timerSecondsByStep: const {0: 240},
+            reviewRepository: _FakeReviewRepository(),
+          ),
+        ),
+      );
+
+      expect(find.text('1단계 타이머 4분'), findsOneWidget);
+
+      await tester.tap(find.text('조리 기록 저장'));
+      await tester.pumpAndSettle();
+      await tester.drag(find.byType(ListView), const Offset(0, -600));
+      await tester.pumpAndSettle();
+
+      expect(find.text('후기를 조리 기록에 저장했어요.'), findsOneWidget);
+      expect(find.textContaining('실행 변경이 없어'), findsNothing);
+    });
+
     testWidgets('후기 저장에 실패하면 재시도할 조리 세션을 유지한다', (tester) async {
       await store.save(buildSession());
       await tester.pumpWidget(
@@ -283,7 +307,6 @@ final class _FakeReviewRepository extends ReviewRepository {
     required String clientSessionId,
     required DateTime cookedAt,
     required CookingSetupSnapshot snapshot,
-    required Map<int, int> timerSecondsByStep,
     required int rating,
     required String comment,
     required String nextTimeNote,

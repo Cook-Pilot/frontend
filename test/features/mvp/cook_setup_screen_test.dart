@@ -3,6 +3,7 @@ import 'package:cookpilot/features/mvp/cook_flow_screens.dart';
 import 'package:cookpilot/features/recipe/data/recipe_api.dart';
 import 'package:cookpilot/features/recipe/domain/recipe.dart';
 import 'package:cookpilot/features/recommendation/data/recommendation_api.dart';
+import 'package:cookpilot/features/review/data/personal_version_approval_api.dart';
 import 'package:cookpilot/features/user/data/beta_user_repository.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -56,7 +57,8 @@ void main() {
             },
             "ingredients": [
               {
-                "originalIngredientId": null,
+                "originalIngredientId":
+                  "20000000-0000-0000-0000-000000000501",
                 "name": "밥",
                 "amount": 0.8,
                 "unit": "공기",
@@ -122,6 +124,128 @@ void main() {
     expect(find.text('1인분 · 기본'), findsOneWidget);
   });
 
+  testWidgets('개인 버전으로 시작한 snapshot은 원본 기준 누적 diff를 유지한다', (tester) async {
+    final repository = RecipeRepository(
+      baseUrl: 'http://example.test',
+      client: MockClient((request) async {
+        if (request.url.path.endsWith('/personal-versions')) {
+          return http.Response(
+            '''
+            [{
+              "id": "$versionId",
+              "recipeId": "10000000-0000-0000-0000-000000000001",
+              "versionNumber": 1,
+              "title": "현미 치즈 볶음밥 v1",
+              "summary": "밥을 바꾸고 계란을 뺌",
+              "createdAt": "2026-07-26T01:00:00Z"
+            }]
+            ''',
+            200,
+            headers: {'content-type': 'application/json; charset=utf-8'},
+          );
+        }
+        return http.Response(
+          '''
+          {
+            "version": {
+              "id": "$versionId",
+              "versionNumber": 1,
+              "title": "현미 치즈 볶음밥 v1",
+              "summary": "밥을 바꾸고 계란을 뺌",
+              "createdAt": "2026-07-26T01:00:00Z"
+            },
+            "ingredients": [
+              {
+                "originalIngredientId":
+                  "20000000-0000-0000-0000-000000000501",
+                "name": "현미밥",
+                "amount": 0.8,
+                "unit": "그릇",
+                "required": false,
+                "origin": "MODIFIED"
+              },
+              {
+                "originalIngredientId": null,
+                "name": "치즈",
+                "amount": 1,
+                "unit": "장",
+                "required": false,
+                "origin": "ADDED"
+              }
+            ],
+            "steps": [
+              {
+                "stepIndex": 0,
+                "originalStepId": null,
+                "instruction": "볶으세요.",
+                "timerSeconds": 60,
+                "cautionNote": null,
+                "origin": "ORIGINAL"
+              }
+            ],
+            "ingredientAdjustments": [],
+            "stepAdjustments": []
+          }
+          ''',
+          200,
+          headers: {'content-type': 'application/json; charset=utf-8'},
+        );
+      }),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: CookSetupScreen(
+          recipe: _recipe(
+            hasPersonalVersion: true,
+            latestPersonalVersionId: versionId,
+          ),
+          recipeRepository: repository,
+          sessionAlarm: const SilentTimerAlarm(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('v1'));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('이 설정으로 조리 시작'));
+    await tester.tap(find.text('이 설정으로 조리 시작'));
+    await tester.pumpAndSettle();
+
+    final session = tester.widget<CookSessionScreen>(
+      find.byType(CookSessionScreen),
+    );
+    final request = PersonalVersionApprovalRequest.fromSnapshot(
+      snapshot: session.setupSnapshot!,
+    ).toJson();
+    final setup = request['setup'] as Map<String, Object?>;
+    expect(setup['ingredientAdjustments'], <Map<String, Object?>>[
+      <String, Object?>{
+        'originalIngredientId': '20000000-0000-0000-0000-000000000501',
+        'type': 'MODIFY',
+        'name': '현미밥',
+        'amount': 0.8,
+        'unit': '그릇',
+        'required': false,
+        'sortOrder': 0,
+      },
+      <String, Object?>{
+        'type': 'ADD',
+        'name': '치즈',
+        'amount': 1.0,
+        'unit': '장',
+        'required': false,
+        'sortOrder': 1,
+      },
+      <String, Object?>{
+        'originalIngredientId': '20000000-0000-0000-0000-000000000502',
+        'type': 'REMOVE',
+        'sortOrder': 2,
+      },
+    ]);
+  });
+
   testWidgets('다른 개인 버전 로딩에 실패하면 기본 레시피로 되돌린다', (tester) async {
     const secondVersionId = '20000000-0000-0000-0000-000000000002';
     final repository = RecipeRepository(
@@ -168,7 +292,8 @@ void main() {
             },
             "ingredients": [
               {
-                "originalIngredientId": null,
+                "originalIngredientId":
+                  "20000000-0000-0000-0000-000000000501",
                 "name": "밥",
                 "amount": 0.8,
                 "unit": "공기",

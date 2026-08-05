@@ -109,7 +109,11 @@ class PersonalRecipeVersionDetail {
       summary: _optionalString(version, 'summary'),
       createdAt: _requiredDateTime(version, 'createdAt'),
       ingredients: ingredientsJson
-          .map((item) => _ingredientFromJson(item as Map<String, dynamic>))
+          .map(
+            (item) => _personalVersionIngredientFromJson(
+              item as Map<String, dynamic>,
+            ),
+          )
           .toList(growable: false),
       steps: stepsJson
           .map((item) => _stepFromJson(item as Map<String, dynamic>))
@@ -237,7 +241,12 @@ class RecipeRepository {
     }
 
     final ingredients = ingredientsJson
-        .map((item) => _ingredientFromJson(item as Map<String, dynamic>))
+        .map(
+          (item) => _ingredientFromJson(
+            item as Map<String, dynamic>,
+            requireOriginalIngredientId: true,
+          ),
+        )
         .toList(growable: false);
     final steps = stepsJson
         .map((item) => _stepFromJson(item as Map<String, dynamic>))
@@ -306,17 +315,84 @@ class RecipeRepository {
   }
 }
 
-Ingredient _ingredientFromJson(Map<String, dynamic> json) {
+Ingredient _ingredientFromJson(
+  Map<String, dynamic> json, {
+  bool requireOriginalIngredientId = false,
+}) {
+  return _ingredientFromJsonWithId(
+    json,
+    _ingredientIdFromJson(json, required: requireOriginalIngredientId),
+  );
+}
+
+Ingredient _personalVersionIngredientFromJson(Map<String, dynamic> json) {
+  final origin = _personalVersionIngredientOriginFromJson(json);
+  if (!json.containsKey('originalIngredientId')) {
+    throw const RecipeApiException('개인 버전 재료 ID가 없습니다.');
+  }
+  final value = json['originalIngredientId'];
+  final String? originalIngredientId;
+  if (origin == _PersonalVersionIngredientOrigin.added) {
+    if (value != null) {
+      throw const RecipeApiException('ADDED 개인 버전 재료 ID는 null이어야 합니다.');
+    }
+    originalIngredientId = null;
+  } else {
+    if (value is! String ||
+        !_canonicalUuidPattern.hasMatch(value) ||
+        value == _nilUuid) {
+      throw const RecipeApiException('개인 버전 원본 재료 ID 형식이 올바르지 않습니다.');
+    }
+    originalIngredientId = value;
+  }
+  return _ingredientFromJsonWithId(json, originalIngredientId);
+}
+
+Ingredient _ingredientFromJsonWithId(
+  Map<String, dynamic> json,
+  String? originalIngredientId,
+) {
   final amount = json['amount'];
   final unit = json['unit'] as String? ?? '';
   return Ingredient(
-    originalIngredientId:
-        json['id'] as String? ?? json['originalIngredientId'] as String?,
+    originalIngredientId: originalIngredientId,
     name: _requiredString(json, 'name'),
     amount: (amount as num?)?.toDouble(),
     unit: unit,
     isRequired: json['required'] as bool? ?? false,
   );
+}
+
+String? _ingredientIdFromJson(
+  Map<String, dynamic> json, {
+  required bool required,
+}) {
+  final value = json['id'] ?? json['originalIngredientId'];
+  if (value == null) {
+    if (required) {
+      throw const RecipeApiException('기본 레시피 재료 ID가 없습니다.');
+    }
+    return null;
+  }
+  if (value is! String ||
+      !_canonicalUuidPattern.hasMatch(value) ||
+      value == _nilUuid) {
+    throw const RecipeApiException('레시피 재료 ID 형식이 올바르지 않습니다.');
+  }
+  return value;
+}
+
+enum _PersonalVersionIngredientOrigin { original, modified, added }
+
+_PersonalVersionIngredientOrigin _personalVersionIngredientOriginFromJson(
+  Map<String, dynamic> json,
+) {
+  return switch (json['origin']) {
+    'ORIGINAL' => _PersonalVersionIngredientOrigin.original,
+    'MODIFIED' => _PersonalVersionIngredientOrigin.modified,
+    'ADDED' => _PersonalVersionIngredientOrigin.added,
+    _ => throw const RecipeApiException('개인 버전 재료 origin 형식이 올바르지 않습니다.'),
+  };
 }
 
 CookStep _stepFromJson(Map<String, dynamic> json) {
@@ -371,3 +447,10 @@ DateTime _requiredDateTime(Map<String, dynamic> json, String key) {
   }
   return value;
 }
+
+final _canonicalUuidPattern = RegExp(
+  r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-'
+  r'[0-9a-f]{4}-[0-9a-f]{12}$',
+);
+
+const _nilUuid = '00000000-0000-0000-0000-000000000000';
