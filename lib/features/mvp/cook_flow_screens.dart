@@ -1984,13 +1984,15 @@ class _CookSessionScreenState extends State<CookSessionScreen>
     _helpRequestVersion++;
     _cancelPendingSpeechStarts();
     _voiceSession.complete();
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute<void>(
-        builder: (_) => ReviewScreen(
-          setupSnapshot: _reviewSnapshot(),
-          clientSessionId: _sessionId,
-          cookedAt: DateTime.now(),
-          timerSecondsByStep: Map.unmodifiable(_timerSecondsByStep),
+    unawaited(
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute<void>(
+          builder: (_) => ReviewScreen(
+            setupSnapshot: _reviewSnapshot(),
+            clientSessionId: _sessionId,
+            cookedAt: DateTime.now(),
+            timerSecondsByStep: Map.unmodifiable(_timerSecondsByStep),
+          ),
         ),
       ),
     );
