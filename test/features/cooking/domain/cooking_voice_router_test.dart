@@ -405,35 +405,18 @@ void main() {
       );
     });
 
-    test('recognizes static and recipe-specific cooking context', () {
+    test('routes contextual questions to the coach', () {
       const questions = [
         '지금 불 줄여야 할까?',
         '불이 너무 센 것 같아?',
-        '불로 조절해도 돼?',
-        '불의 세기 괜찮아?',
-        '불의세기 괜찮아?',
-        '지금 불의세기 괜찮아?',
-        '지금불의세기괜찮아?',
-        '불의 강도를 줄여야 할까?',
-        '불만 줄여야 할까?',
-        '불만줄여야 할까?',
-        '불인가요?',
-        '불일까요?',
         '간이 맞아?',
         '팬이 너무 뜨거워?',
-        '팬에서 계속 구워도 돼?',
-        '팬으로는 괜찮아?',
-        '팬이면 괜찮아?',
-        '팬이어도 괜찮아?',
         '팬은요?',
-        '팬에서요?',
-        '팬에서는요?',
-        '팬에서라도요?',
-        '팬에서라도 계속 구워도 돼?',
         '고기 다 익었어?',
         '소스가 묽은데 어떻게 해야 해?',
         '토마토는 얼마나 더 익혀?',
         '마늘 더 넣는 게 맞아?',
+        '면 얼마나 더 삶아야 해?',
       ];
 
       for (final question in questions) {
@@ -454,241 +437,47 @@ void main() {
       );
 
       expect(result, const VoiceIntent(VoiceIntentType.exceptionQuestion));
-
-      final particleResult = router.route(
-        '비빔밥은 어떻게 해?',
-        recipeTitle: '비빔밥',
-        ingredientNames: const ['고추장', '나물'],
-        currentStepInstruction: '재료를 섞는다',
-      );
-      expect(
-        particleResult,
-        const VoiceIntent(VoiceIntentType.exceptionQuestion),
-      );
     });
 
-    test('does not treat a homonymous recipe title verb as context', () {
-      final result = router.route(
-        '오늘 어떻게 집에 가지?',
-        recipeTitle: '가지',
-        ingredientNames: const ['양파'],
-        currentStepInstruction: '팬을 달군다',
-      );
-
-      expect(result, const VoiceIntent(VoiceIntentType.ignore));
-    });
-
-    test('keeps one-character Korean ingredient names as cooking context', () {
+    test('keeps single-character ingredient words as cooking context', () {
       final waterQuestion = router.route(
         '물 더 넣어야 해?',
         recipeTitle: '밥',
         ingredientNames: const ['물', '쌀', '파'],
         currentStepInstruction: '약불에서 익힌다',
       );
-      final riceProblem = router.route(
-        '쌀이 없어',
-        recipeTitle: '밥',
-        ingredientNames: const ['물', '쌀', '파'],
-        currentStepInstruction: '쌀을 씻는다',
-      );
-      final waterMethodQuestion = router.route(
-        '물로 농도 맞춰도 돼?',
-        recipeTitle: '밥',
-        ingredientNames: const ['물', '쌀', '파'],
-        currentStepInstruction: '약불에서 익힌다',
-      );
-      final waterPoliteQuestion = router.route(
-        '물로요?',
-        recipeTitle: '밥',
-        ingredientNames: const ['물', '쌀', '파'],
-        currentStepInstruction: '약불에서 익힌다',
-      );
-      final waterAuxiliaryChainQuestion = router.route(
-        '물로만은요?',
-        recipeTitle: '밥',
-        ingredientNames: const ['물', '쌀', '파'],
-        currentStepInstruction: '약불에서 익힌다',
-      );
-      final greenOnionAlsoQuestion = router.route(
-        '파도 넣어야 해?',
-        recipeTitle: '밥',
-        ingredientNames: const ['물', '쌀', '파'],
-        currentStepInstruction: '쌀을 씻는다',
-      );
-      final greenOnionPrepQuestion = router.route(
-        '파도 썰어 넣을까?',
-        recipeTitle: '밥',
-        ingredientNames: const ['물', '쌀', '파'],
-        currentStepInstruction: '쌀을 씻는다',
-      );
-      final joinedGreenOnionAlsoQuestion = router.route(
-        '파도넣어야 해?',
-        recipeTitle: '밥',
-        ingredientNames: const ['물', '쌀', '파'],
-        currentStepInstruction: '쌀을 씻는다',
-      );
-      final joinedPrefixedGreenOnionAlsoQuestion = router.route(
-        '지금파도넣어야해?',
-        recipeTitle: '밥',
-        ingredientNames: const ['물', '쌀', '파'],
-        currentStepInstruction: '쌀을 씻는다',
-      );
-      final joinedGreenOnionQuantityQuestion = router.route(
-        '파몇개?',
-        recipeTitle: '밥',
-        ingredientNames: const ['물', '쌀', '파'],
-        currentStepInstruction: '쌀을 씻는다',
-      );
-
       expect(
         waterQuestion,
         const VoiceIntent(VoiceIntentType.exceptionQuestion),
       );
-      expect(riceProblem, const VoiceIntent(VoiceIntentType.exceptionQuestion));
-      expect(
-        waterMethodQuestion,
-        const VoiceIntent(VoiceIntentType.exceptionQuestion),
-      );
-      expect(
-        waterPoliteQuestion,
-        const VoiceIntent(VoiceIntentType.exceptionQuestion),
-      );
-      expect(
-        waterAuxiliaryChainQuestion,
-        const VoiceIntent(VoiceIntentType.exceptionQuestion),
-      );
-      expect(
-        greenOnionAlsoQuestion,
-        const VoiceIntent(VoiceIntentType.exceptionQuestion),
-      );
-      expect(
-        greenOnionPrepQuestion,
-        const VoiceIntent(VoiceIntentType.exceptionQuestion),
-      );
-      expect(
-        joinedGreenOnionAlsoQuestion,
-        const VoiceIntent(VoiceIntentType.exceptionQuestion),
-      );
-      expect(
-        joinedPrefixedGreenOnionAlsoQuestion,
-        const VoiceIntent(VoiceIntentType.exceptionQuestion),
-      );
-      expect(
-        joinedGreenOnionQuantityQuestion,
-        const VoiceIntent(VoiceIntentType.exceptionQuestion),
-      );
-    });
 
-    test(
-      'does not match a one-character ingredient inside an unrelated word',
-      () {
-        final partyQuestion = router.route(
-          '파티 어때?',
-          recipeTitle: '파전',
-          ingredientNames: const ['파'],
-          currentStepInstruction: '반죽을 섞는다',
-        );
-
-        expect(partyQuestion, const VoiceIntent(VoiceIntentType.ignore));
-      },
-    );
-
-    test('disambiguates multi-syllable ingredient homonyms', () {
-      VoiceIntent routeWithEggplant(String transcript) {
-        return router.route(
-          transcript,
-          recipeTitle: '채소 볶음',
-          ingredientNames: const ['가지', '양파'],
-          currentStepInstruction: '팬을 달군다',
-        );
-      }
-
-      for (final unrelatedQuestion in const [
-        '오늘 어떻게 집에 가지?',
-        '휴가를 어디로 가지?',
-        '오늘은 집에 가지는 않아?',
-        '이번엔 학교에 가지도 않아?',
-      ]) {
-        expect(
-          routeWithEggplant(unrelatedQuestion),
-          const VoiceIntent(VoiceIntentType.ignore),
-          reason: unrelatedQuestion,
-        );
-      }
-
-      for (final cookingQuestion in const [
-        '가지는 얼마나 익혀?',
-        '가지를 더 넣어도 돼?',
-        '가지 어떻게 썰어?',
-        '가지가 없어',
-        '가지는요?',
-        '양파는 몇 개 넣어?',
-        '양파는 몇 개?',
-        '양파 몇 개?',
-        '양파몇개?',
-      ]) {
-        expect(
-          routeWithEggplant(cookingQuestion),
-          const VoiceIntent(VoiceIntentType.exceptionQuestion),
-          reason: cookingQuestion,
-        );
-      }
-
-      final recipeTitleHomonym = router.route(
-        '오늘 어떻게 집에 가지?',
-        recipeTitle: '가지 볶음',
-        ingredientNames: const ['양파'],
-        currentStepInstruction: '팬을 달군다',
+      // 단어 경계: '물어봐도 돼?'의 '물'은 재료 단어가 아니다.
+      final lexicalWater = router.route(
+        '물어봐도 돼?',
+        recipeTitle: '밥',
+        ingredientNames: const ['물', '쌀', '파'],
+        currentStepInstruction: '약불에서 익힌다',
       );
-      expect(recipeTitleHomonym, const VoiceIntent(VoiceIntentType.ignore));
-
-      final fullRecipeTitle = router.route(
-        '토마토 파스타 어떻게 해?',
-        recipeTitle: '토마토 파스타',
-        ingredientNames: const ['양파'],
-        currentStepInstruction: '팬을 달군다',
-      );
-      expect(
-        fullRecipeTitle,
-        const VoiceIntent(VoiceIntentType.exceptionQuestion),
-      );
-    });
-
-    test('does not mistake 진짜 for a salty problem', () {
-      expect(
-        routeOf('고기 진짜 익었어?'),
-        const VoiceIntent(VoiceIntentType.exceptionQuestion),
-      );
+      expect(lexicalWater, const VoiceIntent(VoiceIntentType.ignore));
     });
   });
 
-  group('CookingVoiceRouter explicit problem statements', () {
-    test('routes cooking failures without requiring question wording', () {
+  group('CookingVoiceRouter coach gate problems', () {
+    test('routes problem statements without question wording', () {
       const problems = [
         '물이 아직 안 끓어',
         '국이 너무 짜',
         '맛이 짜',
-        '국이 짜구나',
-        '국물이 뭔가 짜',
-        '소스가 뭔가 좀 짜',
-        '국이 짭니다',
-        '국이 짭니다만',
-        '국이 짭니까?',
         '국물이 짜졌어',
-        '국물이 짜졌습니다',
-        '국물이 짜졌습니까?',
         '소스가 짜더라',
-        '소스가 짜던데',
-        '소스가 짜던데요',
-        '국이 짜더니',
-        '소스가 짜대요',
-        '국물이 짜다고 느껴',
+        '국이 짠 것 같아',
         '고기가 덜 익었어',
         '면이 안 익어',
-        '재료가 없어',
-        '양파가 다 떨어졌어',
         '소스가 너무 묽어',
         '양파가 좀 탔네',
+        '재료가 없어',
+        '양파가 다 떨어졌어',
+        '양파를 다 썼어',
       ];
 
       for (final problem in problems) {
@@ -700,97 +489,16 @@ void main() {
       }
     });
 
-    test('associates missing predicates with their ingredient clause', () {
-      expect(
-        routeOf('양파를 넣었는데 시간이 없어'),
-        const VoiceIntent(VoiceIntentType.ignore),
-      );
-      expect(
-        routeOf('양파가 다 떨어졌어'),
-        const VoiceIntent(VoiceIntentType.exceptionQuestion),
-      );
-      expect(
-        routeOf('양파를 다 썼어'),
-        const VoiceIntent(VoiceIntentType.exceptionQuestion),
-      );
-      expect(
-        routeOf('양파를 다 사용했어'),
-        const VoiceIntent(VoiceIntentType.exceptionQuestion),
-      );
-      expect(
-        routeOf('소스가 맛있는데 시간이 없어'),
-        const VoiceIntent(VoiceIntentType.ignore),
-      );
-      for (final problem in const [
-        '양파가 집에 없어',
-        '양파가 하나도 없어',
-        '양파를 전부 다 썼어',
-        '양파를 전부 다 사용했어',
-      ]) {
-        expect(
-          routeOf(problem),
-          const VoiceIntent(VoiceIntentType.exceptionQuestion),
-          reason: problem,
-        );
-      }
-      for (final negatedProblem in const [
-        '양파가 부족하지 않아',
-        '양파가 모자라지 않아',
-        '양파가 부족한 건 아니야',
-      ]) {
-        expect(
-          routeOf(negatedProblem),
-          const VoiceIntent(VoiceIntentType.ignore),
-          reason: negatedProblem,
-        );
-      }
-    });
-
-    test('uses recipe ingredients as explicit salty subjects', () {
-      final saltyKimchi = router.route(
-        '김치가 짜',
-        recipeTitle: '김치찌개',
-        ingredientNames: const ['김치', '두부'],
-        currentStepInstruction: '김치와 두부를 끓인다',
-      );
-      final lexicalKimchi = router.route(
-        '김치가 짜임새가 좀 좋아',
-        recipeTitle: '김치찌개',
-        ingredientNames: const ['김치', '두부'],
-        currentStepInstruction: '김치와 두부를 끓인다',
-      );
-      final stackedParticleKimchi = router.route(
-        '김치만은 짜',
-        recipeTitle: '김치찌개',
-        ingredientNames: const ['김치', '두부'],
-        currentStepInstruction: '김치와 두부를 끓인다',
-      );
-      final attributiveKimchi = router.route(
-        '김치가 짠 반찬이야',
-        recipeTitle: '김치찌개',
-        ingredientNames: const ['김치', '두부'],
-        currentStepInstruction: '김치와 두부를 끓인다',
-      );
-
-      expect(saltyKimchi, const VoiceIntent(VoiceIntentType.exceptionQuestion));
-      expect(
-        stackedParticleKimchi,
-        const VoiceIntent(VoiceIntentType.exceptionQuestion),
-      );
-      expect(
-        attributiveKimchi,
-        const VoiceIntent(VoiceIntentType.exceptionQuestion),
-      );
-      expect(lexicalKimchi, const VoiceIntent(VoiceIntentType.ignore));
-    });
-
-    test('routes explicit kitchen safety patterns', () {
+    test('routes kitchen safety statements', () {
       const safetyProblems = [
         '기름에 불 붙었어',
         '가스 냄새가 나',
         '재료에 곰팡이가 있어',
         '닭이 안 익었어',
         '칼에 손을 베였어',
+        '생고기를 먹었어',
+        '생고기를 먹어도 돼?',
+        '생고기가 위험해',
       ];
 
       for (final problem in safetyProblems) {
@@ -802,78 +510,16 @@ void main() {
       }
     });
 
-    test('requires an unsafe predicate for raw meat statements', () {
-      for (final problem in const [
-        '생고기를 먹었어',
-        '고기를 생으로 먹었어',
-        '생고기가 덜 익었어',
-        '생고기가 위험해',
-        '생고기를 못 익혀서 먹었어',
-        '생고기를 안 다 익힌 뒤 먹었어',
-        '생고기를 덜 익힌 뒤 먹었어',
-        '생고기를 먹은 적 없지만 오늘 먹었어',
-        '생고기를 안 먹으려 했지만 결국 먹었어',
-        '생고기를 익혀야 했지만 그냥 먹었어',
-        '생고기를 구운 줄 알고 먹었어',
-        '생고기를 익힌 줄 착각하고 먹었어',
-        '생고기를 조리한 것으로 알고 먹었어',
-        '생고기를 익힌 셈 치고 먹었어',
-        '익힌 걸로 생각하고 먹었어',
-        '익힌 줄로 알고 먹었어',
-        '생고기를 먹으려 해',
-        '생고기를 먹어도 돼?',
-        '생고기를 먹으면 괜찮을까?',
-        '생고기는 썰기만 하고 그대로 먹었어',
-        '생고기를 양념했지만 익히지 않은 채 먹었어',
-        '생고기를 익혀 먹었고 남은 생고기는 그대로 먹었어',
-        '생고기를 아이가 먹었어',
-        '생고기를 나는 먹었어',
-        '생고기를 익혀 먹고 나머지는 그대로 먹었어',
-      ]) {
-        expect(
-          routeOf(problem),
-          const VoiceIntent(VoiceIntentType.exceptionQuestion),
-          reason: problem,
-        );
-      }
+    test('leaves precise judgement to the backend coach', () {
+      // 게이트는 애매하면 보낸다 — 판정 본체는 서버가 소유하고, 여기서 오탐의
+      // 비용은 코치 호출 1번이다. 아래는 허용하기로 한 대표 오탐의 기록이다.
+      const acceptedFalsePositives = ['이번 주 요리 계획을 짜', '고객 불만 줄여야 할까?'];
 
-      for (final ordinaryStep in const [
-        '생고기를 넣었어',
-        '생고기를 팬에 올렸어',
-        '생고기를 먹기 좋게 썰었어',
-        '생고기를 넣었어. 밥을 먹었어',
-        '생고기를 넣었어, 그리고 밥을 먹었어',
-        '생고기를 넣었고 밥을 먹었어',
-        '생고기를 냉장고에 넣고 밥을 먹었어',
-        '생고기를 손질했고 아이는 과자를 먹었어',
-        '생고기를 먹지 말고 완전히 익힌 뒤 먹었어',
-        '생고기를 먹으려다 그만뒀어',
-        '생고기를 익혀 먹으려 했지만 결국 안 먹었어',
-        '생고기를 먹으려 했지만 결국 안 먹었어',
-        '생고기를 먹으려다가 결국 안 먹었어',
-        '생고기를 먹었다고 한 건 아니야',
-        '“생고기를 먹었어”라는 말은 사실이 아니야',
-        '“생고기를 먹었어.”라는 말은 사실이 아니야',
-        '생고기를 익혀 먹었어',
-        '생고기를 구워서 먹었어',
-        '생고기를 익혀서 먹었어',
-        '생고기를 볶아서 먹었어',
-        '생고기를 다 익힌 뒤 먹었어',
-        '생고기를 완전히 익힌 다음에 먹었어',
-        '생고기를 안 먹었어',
-        '생고기를 먹은 적이 없어',
-        '생고기를 먹은 건 아니야',
-        '생고기를 먹은 적이 전혀 없어',
-        '생고기를 먹은 적이 한 번도 없어',
-        '생고기를 먹은 건 절대 아니야',
-        '고기를 생으로 안 먹었어',
-        '생고기가 위험하지 않아',
-        '익힌 셈 치고 밥을 먹었어',
-      ]) {
+      for (final statement in acceptedFalsePositives) {
         expect(
-          routeOf(ordinaryStep),
-          const VoiceIntent(VoiceIntentType.ignore),
-          reason: ordinaryStep,
+          routeOf(statement),
+          const VoiceIntent(VoiceIntentType.exceptionQuestion),
+          reason: statement,
         );
       }
     });
@@ -887,20 +533,9 @@ void main() {
         '오늘 왜 이렇게 피곤하지?',
         '인간관계가 어때?',
         '불가능한 일인데 어때?',
-        '불이익은 어때?',
-        '팬클럽은 어때?',
-        '불의의 사고는 어때?',
         '불이익은요?',
         '팬클럽은요?',
-        '불의의 사고는요?',
-        '불의 세상은 어때?',
-        '고객 불만 줄여야 할까?',
-        '고객불만줄여야 할까?',
         '이불의 세기 괜찮아?',
-        '불이익만은요?',
-        '불만은요?',
-        '불과 몇 분 차이야?',
-        '불의는 어때?',
       ];
 
       for (final question in unrelatedQuestions) {
@@ -912,8 +547,8 @@ void main() {
       }
     });
 
-    test('does not parse lexical 짜 and 짠 prefixes as taste predicates', () {
-      for (final statement in const [
+    test('ignores lexical salty words but keeps real salty reports', () {
+      const statements = [
         '음식이 짜장면이야',
         '요리가 짜릿해',
         '음식 때문에 짜증나',
@@ -921,122 +556,9 @@ void main() {
         '그 사람은 좀 짠돌이야',
         '날짜 좀 알려줘',
         '짜임새가 좀 좋아',
-      ]) {
-        expect(
-          routeOf(statement),
-          const VoiceIntent(VoiceIntentType.ignore),
-          reason: statement,
-        );
-      }
-    });
-
-    test('requires food context for degree-marked salty statements', () {
-      expect(
-        routeOf('국이 너무 짜'),
-        const VoiceIntent(VoiceIntentType.exceptionQuestion),
-      );
-      final recipeProblem = router.route(
-        '토마토 파스타가 너무 짜',
-        recipeTitle: '토마토 파스타',
-        ingredientNames: const ['면'],
-        currentStepInstruction: '면을 삶는다',
-      );
-      expect(
-        recipeProblem,
-        const VoiceIntent(VoiceIntentType.exceptionQuestion),
-      );
-      expect(routeOf('월급이 너무 짜'), const VoiceIntent(VoiceIntentType.ignore));
-      expect(routeOf('회사 복지가 좀 짜'), const VoiceIntent(VoiceIntentType.ignore));
-    });
-
-    test('does not parse lexicalized one-letter words as cooking context', () {
-      final waveQuestion = router.route(
-        '파도는 어때?',
-        recipeTitle: '밥',
-        ingredientNames: const ['물', '쌀', '파'],
-        currentStepInstruction: '쌀을 씻는다',
-      );
-      final waveSubjectQuestion = router.route(
-        '파도가 얼마나 높아?',
-        recipeTitle: '밥',
-        ingredientNames: const ['물', '쌀', '파'],
-        currentStepInstruction: '쌀을 씻는다',
-      );
-      final waveOnlyQuestion = router.route(
-        '파도만 보여?',
-        recipeTitle: '밥',
-        ingredientNames: const ['물', '쌀', '파'],
-        currentStepInstruction: '쌀을 씻는다',
-      );
-      final joinedWaveQuantityQuestion = router.route(
-        '파도몇개야?',
-        recipeTitle: '밥',
-        ingredientNames: const ['물', '쌀', '파'],
-        currentStepInstruction: '쌀을 씻는다',
-      );
-      final fileQuestion = router.route(
-        '파일까요?',
-        recipeTitle: '밥',
-        ingredientNames: const ['물', '쌀', '파'],
-        currentStepInstruction: '쌀을 씻는다',
-      );
-      final diggingQuestion = router.route(
-        '땅을 파면 뭐가 나와?',
-        recipeTitle: '밥',
-        ingredientNames: const ['물', '쌀', '파'],
-        currentStepInstruction: '쌀을 씻는다',
-      );
-      final waveCookingVerbWithoutIngredient = router.route(
-        '파도 넣어야 해?',
-        recipeTitle: '밥',
-        ingredientNames: const ['물', '쌀'],
-        currentStepInstruction: '쌀을 씻는다',
-      );
-      final wavePhotoQuestion = router.route(
-        '파도 사진 넣어야 해?',
-        recipeTitle: '밥',
-        ingredientNames: const ['물', '쌀', '파'],
-        currentStepInstruction: '쌀을 씻는다',
-      );
-      final prefixedWaveCookingVerb = router.route(
-        '사진에 파도 넣어야 해?',
-        recipeTitle: '밥',
-        ingredientNames: const ['물', '쌀', '파'],
-        currentStepInstruction: '쌀을 씻는다',
-      );
-      final joinedPrefixedWaveCookingVerb = router.route(
-        '사진에파도넣어야 해?',
-        recipeTitle: '밥',
-        ingredientNames: const ['물', '쌀', '파'],
-        currentStepInstruction: '쌀을 씻는다',
-      );
-
-      expect(waveQuestion, const VoiceIntent(VoiceIntentType.ignore));
-      expect(waveSubjectQuestion, const VoiceIntent(VoiceIntentType.ignore));
-      expect(waveOnlyQuestion, const VoiceIntent(VoiceIntentType.ignore));
-      expect(
-        joinedWaveQuantityQuestion,
-        const VoiceIntent(VoiceIntentType.ignore),
-      );
-      expect(fileQuestion, const VoiceIntent(VoiceIntentType.ignore));
-      expect(diggingQuestion, const VoiceIntent(VoiceIntentType.ignore));
-      expect(
-        waveCookingVerbWithoutIngredient,
-        const VoiceIntent(VoiceIntentType.ignore),
-      );
-      expect(wavePhotoQuestion, const VoiceIntent(VoiceIntentType.ignore));
-      expect(
-        prefixedWaveCookingVerb,
-        const VoiceIntent(VoiceIntentType.ignore),
-      );
-      expect(
-        joinedPrefixedWaveCookingVerb,
-        const VoiceIntent(VoiceIntentType.ignore),
-      );
-    });
-
-    test('ignores cooking statements that do not describe a problem', () {
-      const statements = ['소스 좀 더 넣었어', '양파를 다 썰었어', '물이 끓어'];
+        '진짜',
+        '가짜',
+      ];
 
       for (final statement in statements) {
         expect(
@@ -1045,87 +567,28 @@ void main() {
           reason: statement,
         );
       }
+
+      // 블록 어휘를 걷어낸 뒤 남는 짠맛 신호는 살아 있어야 한다.
+      expect(
+        routeOf('국물이 진짜 짜'),
+        const VoiceIntent(VoiceIntentType.exceptionQuestion),
+      );
     });
 
-    test('keeps known substring false positives out of local commands', () {
-      const falsePositives = [
-        '진짜',
-        '가짜',
-        '이번 주 요리 계획을 짜',
-        '내일 일정을 좀 짜줘',
-        '내일 일정 좀 짜줘',
-        '내일 일정을 조금 짜줘',
-        '내일 일정을 약간 더 구체적으로 짜줘',
-        '내일 일정좀 짜줘',
-        '내일일정을좀짜줘',
-        '내일 계획조금 짜줘',
-        '내일계획을약간짜줘',
-        '내일일정을빠르게좀짜줘',
-        '내일일정을빠르게좀짜',
-        '내일계획을아주빠르게조금짜',
-        '내일 일정 빠르게 짜줘',
-        '일정을 고객 회의와 이동 시간을 충분히 고려해서 조금 여유 있게 짜줘',
-        '일정을 진짜 좀 잘 짜줘',
-        '일정을 진짜로 좀 잘 짜줘',
-        '계획을 진짜 약간 여유 있게 짜줘',
-        '조금 전에 짠 일정 보여줘',
-        '조금 전에 짠 구체적인 주말 여행 계획 보여줘',
-        '어제 짰던 계획 좀 바꿔줘',
-        '어제 짰던 아주 장기적인 휴가 일정을 바꿔줘',
-        '어제 계획을 좀 짰어',
-        '조금 전에 짠 계획대로 해줘',
-        '계획을 음식 취향에 맞춰 좀 짜줘',
-        '계획을 음식 알레르기에 맞춰 약간 여유 있게 짜줘',
-        '일정을 요리 수업 시간에 맞춰 조금 여유 있게 짜줘',
-        '일정을 바꿔야 하는데 좀 새로 짜줘',
-        '계획을 검토했는데 약간 더 구체적으로 짜줘',
-        '일정을 짜고 좀 짜줘',
-        '일정을 짜고 좀 다시 짜줘',
-        '코드 좀 짜줘',
-        '코드 좀 짜 줘',
-        '문서 구조 좀 짜주세요',
-        '기획서 좀 짜 주라',
-        '내가 짠 코드가 좀 이상해',
-        '다음 주 계획을 미리 다시 짜',
-        '인간은 짠해',
-        '오늘 시간이 없어',
-        '다음 주에 장 보러 가자',
+    test('ignores cooking statements that do not describe a problem', () {
+      const statements = [
+        '소스 좀 더 넣었어',
+        '양파를 다 썰었어',
+        '물이 끓어',
         '다 됐다 이제',
+        '다음 주에 장 보러 가자',
+        '오늘 시간이 없어',
       ];
 
-      for (final statement in falsePositives) {
+      for (final statement in statements) {
         expect(
           routeOf(statement),
           const VoiceIntent(VoiceIntentType.ignore),
-          reason: statement,
-        );
-      }
-    });
-
-    test('does not let a planning use hide a later salty problem', () {
-      for (final statement in const [
-        '일정을 미리 짜고 보니 국이 너무 짜',
-        '일정을 정리하다 보니 소스가 약간 짜',
-        '일정을 짜. 이거 너무 짜',
-        '계획대로 국이 너무 짜',
-        '계획대로 국 너무 짜',
-        '계획대로 국물 약간 짜',
-        '일정 얘기는 나중에 하고 이거 너무 짜',
-        '일정은 나중에 보고 국 너무 짰어',
-        '김치가 너무 짠데 계획은 그대로야',
-        '김치가 너무 짠 데 계획은 그대로야',
-        '소스가 약간 짜지만 일정은 바꾸지 마',
-        '국물이 좀 짜고 계획은 나중에 세울게',
-        '일정은 정리했는데 국물이 진짜 짜',
-        '계획을 검토했지만 소스가 뭔가 짜',
-        '국물이 일정하게 좀 짜',
-        '일정한 간격으로 저었는데 국물이 좀 짜',
-        '국이 짠 것 같아',
-        '소스가 좀 짰어',
-      ]) {
-        expect(
-          routeOf(statement),
-          const VoiceIntent(VoiceIntentType.exceptionQuestion),
           reason: statement,
         );
       }

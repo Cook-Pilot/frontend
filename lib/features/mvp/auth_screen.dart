@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../app/app_theme.dart';
@@ -120,9 +122,11 @@ class AuthScreen extends StatelessWidget {
         ),
         TextButton(
           onPressed: () {
-            Navigator.of(context).push(
-              MaterialPageRoute<void>(
-                builder: (_) => const TasteProfileScreen(),
+            unawaited(
+              Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const TasteProfileScreen(),
+                ),
               ),
             );
           },
@@ -136,8 +140,10 @@ class AuthScreen extends StatelessWidget {
     try {
       await BetaUserRepository().ensureUser();
       if (!context.mounted) return;
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute<void>(builder: (_) => const MainShell()),
+      unawaited(
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute<void>(builder: (_) => const MainShell()),
+        ),
       );
     } on Object catch (error) {
       if (!context.mounted) return;
@@ -239,9 +245,13 @@ class _TasteProfileScreenState extends State<TasteProfileScreen> {
                     );
                     return;
                   }
-                  Navigator.of(context).pushAndRemoveUntil(
-                    MaterialPageRoute<void>(builder: (_) => const MainShell()),
-                    (route) => false,
+                  unawaited(
+                    Navigator.of(context).pushAndRemoveUntil(
+                      MaterialPageRoute<void>(
+                        builder: (_) => const MainShell(),
+                      ),
+                      (route) => false,
+                    ),
                   );
                 }
               : null,
