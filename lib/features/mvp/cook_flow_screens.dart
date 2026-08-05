@@ -848,6 +848,10 @@ class _CookSetupScreenState extends State<CookSetupScreen> {
               ? null
               : () {
                   final snapshot = _buildSnapshot();
+                  // MaterialPageRoute.builder는 재실행될 수 있으므로 화면이
+                  // 소유할 포트는 탭 콜백에서 한 번만 만든다. 빌더 안에서
+                  // 만들면 재실행마다 http.Client가 닫히지 않은 채 쌓인다.
+                  final advicePort = HttpExceptionAdvicePort();
                   unawaited(
                     Navigator.of(context).push(
                       MaterialPageRoute<void>(
@@ -856,7 +860,7 @@ class _CookSetupScreenState extends State<CookSetupScreen> {
                           servings: servings,
                           setupSnapshot: snapshot,
                           alarm: widget.sessionAlarm,
-                          advicePort: HttpExceptionAdvicePort(),
+                          advicePort: advicePort,
                           speechInput: widget.sessionSpeechInput,
                           handsFreeVoiceEnabled: _handsFreeVoiceEnabled,
                         ),
