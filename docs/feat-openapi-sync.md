@@ -16,7 +16,11 @@
 backend 리포의 `docs/openapi.json`을 그대로 복사해 둔다. backend는 `OpenApiDocsTest`가 이 파일을 정본으로 강제하고(스펙 덤프를 키 정렬·들여쓰기로 정규화해 CI에서 diff), 애초에 "프론트 클라이언트 생성과 CI의 스펙 최신성 검사"를 목적으로 만든 파일이라 backend main의 파일은 항상 실제 코드와 일치한다.
 
 - 검토한 대안 1: GHCR 이미지를 CI에서 기동해 `/v3/api-docs`를 긁기 — 수 분 소요, backend가 이미 파일 정본을 제공하므로 불필요해 제외.
-- 검토한 대안 2: openapi-generator로 Dart 클라이언트 생성 — 수동 작성된 기존 클라이언트 전체를 대체하는 큰 전환이라 이번 범위에서 제외.
+- 검토한 대안 2: openapi-generator로 Dart 클라이언트 생성 — 실제로 `dart-dio`·`dart` 생성기를 돌려 검증한 결과(아래) 현시점 도입 부적합으로 제외.
+  - 스펙의 모든 스키마에 `required` 선언이 없어 생성 모델의 전 필드가 nullable로 나온다(`String? id` 등). 이를 쓰면 프론트 전역에 null 체크·`!`가 강제되어 non-null로 정확히 손질한 현재 수동 모델보다 오히려 나쁘다.
+  - 프론트 모델은 wire DTO가 아니다. 수동 `Recipe`는 스펙의 `Recipe` + `RecipeSummaryResponse` 필드를 합치고 파생 getter(타이머 합산, 한국어 라벨)를 얹은 뷰모델이라, 생성 DTO를 도입해도 DTO→도메인 매핑 층이 추가로 필요해 코드가 오히려 늘어난다.
+  - 생성 규모: `dart-dio` 기준 126파일 + dio·built_value·build_runner 의존성. 린트 제외 설정도 필요.
+  - 재검토 조건: backend 스펙에 `required`/nullable이 정확히 선언되고, 엔드포인트 수·변경 빈도가 수동 유지비를 넘어설 때. 그 경우에도 전체 클라이언트가 아니라 모델(DTO)만 생성하는 절충부터 시작한다.
 - 최종 결정: 사본 커밋 + CI 바이트 비교(드리프트 감지)만 도입.
 
 ### CI 드리프트 검사 (`.github/workflows/ci.yml`)
