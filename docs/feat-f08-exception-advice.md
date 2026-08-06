@@ -20,19 +20,16 @@ F-07이 `exceptionQuestion`으로 분류한 음성 문장과 조리 화면의 �
 {
   "recipeId": "10000000-0000-0000-0000-000000000001",
   "stepIndex": 0,
-  "userSpeech": "물이 안 끓어요",
-  "instruction": "물 500ml를 넣고 끓이세요.",
-  "remainingSeconds": 42
+  "userSpeech": "물이 안 끓어요"
 }
 ```
 
 - `X-CookPilot-User-Id`는 `BetaUserSession.requestHeaders`에서 가져온다.
 - `stepIndex`는 0부터 시작한다.
-- `instruction`은 서버의 기본 레시피를 다시 조회한 값이 아니라 현재 실행
-  스냅샷의 단계 문장과 주의사항이다. 개인 버전에서 추가·삭제·수정한 단계도
-  이 값으로 Gemini 문맥에 반영한다.
-- `remainingSeconds`는 음수를 0으로, 백엔드 계약 상한을 넘는 값은 86,400초로
-  제한한다. 화면의 `99:59` 표시 상한과 API 문맥 상한은 분리한다.
+- `AiFeedbackRequest`가 받는 필드는 위 셋뿐이다. 이전에는 현재 단계 문장
+  `instruction`과 남은 시간 `remainingSeconds`도 보냈지만 서버가 읽지 않고
+  버리므로 전송하지 않는다. 개인 버전에서 재인덱싱된 단계 문맥을 Gemini에
+  반영하려면 backend가 요청 스키마에 이 두 필드를 다시 받아야 한다.
 - 조리 진행과 세션은 프론트가 관리하므로 로컬 `sessionId`는 보내지 않고
   서버 세션이나 별도 DB 저장을 요구하지 않는다.
 - 같은 답변을 기다리는 동안 버튼이나 마이크에서 들어온 추가 질문은 보내지
@@ -45,39 +42,33 @@ F-07이 `exceptionQuestion`으로 분류한 음성 문장과 조리 화면의 �
 ```json
 {
   "mock": false,
-  "speechText": "불을 한 단계 높이고 조금 더 기다려보세요.",
-  "screenText": "불을 높이고 30초 뒤 기포를 확인하세요.",
-  "suggestedAction": {
-    "type": "EXTEND_TIMER",
-    "seconds": 30
-  },
-  "eventPayload": {
-    "problem": "WATER_NOT_BOILING"
-  }
+  "speechText": "불을 한 단계 높이고 조금 더 기다려보세요."
 }
 ```
 
-화면은 `screenText`를 표시한다. 한쪽 텍스트만 내려오는 과도기 응답은
-`speechText`와 `screenText` 양쪽에 같은 값으로 보완한다. 텍스트가 모두
-없거나 JSON이 아니면 실패 응답으로 처리한다.
+`AiFeedbackResponse`는 위 두 필드뿐이다. 화면과 음성 모두 `speechText`를
+쓴다. `speechText`가 없거나 공백뿐이거나 JSON이 아니면 실패 응답으로
+처리한다.
 
-`eventPayload`는 계약 호환 및 진단 정보로만 읽고 화면 동작을 결정하는
-근거로 사용하지 않는다. `mock`은 배포 호환 안전장치로만 사용한다. 프론트가
-새 F-08 백엔드보다 먼저 배포되어 기존 `mock: true` 고정 응답을 받으면
-텍스트만 표시하고 행동 제안은 버린다.
+`ExceptionAdvice`는 화면용 `screenText`와 음성용 `speechText`를 계속 나눠
+들고 있고, HTTP 어댑터는 둘 다 같은 값으로 채운다. 분리 자체는 TTS 수명
+주기(`feat-native-tts.md`)가 쓰는 구분이라 유지한다.
+
+`mock`은 백엔드가 아직 Gemini 대신 고정 데모 답변을 주는 상태를 나타낸다.
+현재는 표시 동작을 바꾸지 않는다.
 
 ## 타이머 행동 승인
 
-현재 허용하는 행동은 `EXTEND_TIMER`의 30초 또는 60초뿐이다. 다른 행동,
-문자열이 아닌 초 값, 30/60초 이외의 값은 답변은 표시하되 행동만 버린다.
+없다. AI 답변은 조리 상태를 바꾸지 못하고 텍스트만 표시한다.
 
-허용된 제안도 자동 실행하지 않는다. 답변 아래의 `제안 적용` 버튼을 사용자가
-직접 누른 뒤에만 기존 `_extendCurrentTimer()` 흐름을 호출한다. 확인 전에
-단계를 이동하거나 조리를 완료하면 `_timerSecondsByStep`은 바뀌지 않으므로
-F-09 후기 및 개인 버전 계산에도 AI 제안이 섞이지 않는다.
+backend가 `suggestedAction`(`EXTEND_TIMER` 30/60초)과 `eventPayload`를 응답
+스키마에서 제거했으므로, 답변 아래 `제안 적용` 버튼과 30/60초 화이트리스트
+검증도 함께 걷어냈다. 타이머 연장은 사용자의 음성 명령(F-07)과 화면 버튼
+경로에만 남는다. 따라서 F-09 후기 및 개인 버전 계산에 AI 제안이 섞일 경로가
+구조적으로 없다.
 
 답변을 기다리는 동안 단계가 바뀌면 기존 request version과 단계 번호를
-비교해 늦게 도착한 텍스트와 행동 제안을 모두 폐기한다.
+비교해 늦게 도착한 텍스트를 폐기한다.
 
 ## 오류 동작
 
@@ -100,5 +91,6 @@ DB 또는 서버 로그에 저장하지 않는다.
 
 후속 `NativeSpeechOutput`이 현재 단계와 request version 검증을 통과한
 `speechText`만 재생한다. 새 질문·단계 이동·완료·화면 이탈은 이전 재생을
-중지하며, 화면에 표시하는 `screenText`와 음성용 `speechText`는 계속 분리한다.
+중지하며, 화면에 표시하는 `screenText`와 음성용 `speechText`의 자리는 계속
+분리한다(현재 서버 응답에서는 두 값이 같다).
 세부 수명 주기와 실패 동작은 `feat-native-tts.md`에 정리한다.

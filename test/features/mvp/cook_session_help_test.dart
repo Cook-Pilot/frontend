@@ -52,24 +52,6 @@ void main() {
     ],
     hasPersonalVersion: false,
   );
-  const timerlessRecipe = Recipe(
-    id: '10000000-0000-0000-0000-000000000003',
-    title: '타이머 없는 레시피',
-    description: '타이머 행동 경계를 검증한다.',
-    baseServings: 2,
-    imageUrl: '',
-    ingredients: <Ingredient>[],
-    steps: <CookStep>[
-      CookStep(
-        stepIndex: 0,
-        instruction: '재료를 섞으세요.',
-        timerSeconds: null,
-        cautionNote: null,
-        imageUrl: '',
-      ),
-    ],
-    hasPersonalVersion: false,
-  );
 
   setUp(() {
     SharedPreferences.setMockInitialValues(<String, Object>{});
@@ -121,8 +103,6 @@ void main() {
     expect(find.byKey(const Key('ai-data-disclosure')), findsOneWidget);
     expect(context.utterance, '물이 안 끓어요');
     expect(context.stepIndex, 0);
-    expect(context.instruction, recipe.steps.first.description);
-    expect(context.instruction, contains('주의: 뜨거운 증기를 조심하세요.'));
     expect(find.textContaining('30초'), findsOneWidget);
   });
 
@@ -203,16 +183,11 @@ void main() {
       const ExceptionAdvice(
         screenText: '첫 단계에만 해당하는 답변',
         speechText: '첫 단계에만 해당하는 답변',
-        suggestedAction: ExceptionAdviceSuggestedAction(
-          type: ExceptionAdviceActionType.extendTimer,
-          seconds: 60,
-        ),
       ),
     );
     await tester.pumpAndSettle();
 
     expect(find.text('첫 단계에만 해당하는 답변'), findsNothing);
-    expect(find.byKey(const Key('help-suggested-action')), findsNothing);
   });
 
   testWidgets('이전 단계 요청 중에도 새 단계 질문을 허용하고 최신 요청만 화면을 소유한다', (tester) async {
@@ -323,116 +298,25 @@ void main() {
     await tester.pumpAndSettle();
   });
 
-  testWidgets('타이머 제안은 확인 전에는 조리 기록을 바꾸지 않는다', (tester) async {
+  testWidgets('AI 답변은 타이머와 조리 기록을 바꾸지 않는다', (tester) async {
     final advice = FakeExceptionAdvicePort(
       response: const ExceptionAdvice(
         speechText: '30초 더 기다려보세요.',
         screenText: '30초 더 기다린 뒤 확인하세요.',
-        suggestedAction: ExceptionAdviceSuggestedAction(
-          type: ExceptionAdviceActionType.extendTimer,
-          seconds: 30,
-        ),
       ),
     );
     await pumpSession(tester, advicePort: advice);
 
     await submitQuestion(tester, '물이 안 끓어요');
-    expect(find.byKey(const Key('help-suggested-action')), findsOneWidget);
+
+    expect(find.text('30초 더 기다린 뒤 확인하세요.'), findsOneWidget);
     expect(find.text('03:00'), findsOneWidget);
 
-    // 적용 버튼을 누르지 않고 완료하면 F9가 받는 실제 타이머 기록도 비어 있다.
+    // 답변만으로는 F9가 받는 실제 타이머 기록이 비어 있어야 한다.
     await tester.tap(find.widgetWithText(FilledButton, '조리 완료'));
     await tester.pumpAndSettle();
     final review = tester.widget<ReviewScreen>(find.byType(ReviewScreen));
     expect(review.timerSecondsByStep, isEmpty);
-  });
-
-  testWidgets('허용된 타이머 제안은 사용자가 누른 뒤에만 적용한다', (tester) async {
-    final advice = FakeExceptionAdvicePort(
-      response: const ExceptionAdvice(
-        speechText: '1분 더 기다려보세요.',
-        screenText: '1분 더 기다린 뒤 확인하세요.',
-        suggestedAction: ExceptionAdviceSuggestedAction(
-          type: ExceptionAdviceActionType.extendTimer,
-          seconds: 60,
-        ),
-      ),
-    );
-    await pumpSession(tester, advicePort: advice);
-
-    await submitQuestion(tester, '물이 안 끓어요');
-    expect(find.text('03:00'), findsOneWidget);
-
-    await tester.tap(find.byKey(const Key('help-suggested-action')));
-    await tester.pump();
-    expect(find.byKey(const Key('help-suggested-action')), findsNothing);
-    expect(find.text('04:00'), findsOneWidget);
-
-    await tester.tap(find.widgetWithText(FilledButton, '조리 완료'));
-    await tester.pumpAndSettle();
-    final review = tester.widget<ReviewScreen>(find.byType(ReviewScreen));
-    expect(review.timerSecondsByStep, <int, int>{0: 240});
-  });
-
-  testWidgets('허용 범위를 벗어난 행동은 확인 버튼을 만들지 않는다', (tester) async {
-    final advice = FakeExceptionAdvicePort(
-      response: const ExceptionAdvice(
-        speechText: '확인하세요.',
-        screenText: '현재 상태를 확인하세요.',
-        suggestedAction: ExceptionAdviceSuggestedAction(
-          type: ExceptionAdviceActionType.extendTimer,
-          seconds: 90,
-        ),
-      ),
-    );
-    await pumpSession(tester, advicePort: advice);
-
-    await submitQuestion(tester, '물이 안 끓어요');
-
-    expect(find.text('현재 상태를 확인하세요.'), findsOneWidget);
-    expect(find.byKey(const Key('help-suggested-action')), findsNothing);
-    expect(find.text('03:00'), findsOneWidget);
-  });
-
-  testWidgets('mock 답변은 허용된 형태의 타이머 행동도 확인 버튼을 만들지 않는다', (tester) async {
-    final advice = FakeExceptionAdvicePort(
-      response: const ExceptionAdvice(
-        speechText: '고정 데모 답변',
-        screenText: '고정 데모 답변',
-        isMock: true,
-        suggestedAction: ExceptionAdviceSuggestedAction(
-          type: ExceptionAdviceActionType.extendTimer,
-          seconds: 60,
-        ),
-      ),
-    );
-    await pumpSession(tester, advicePort: advice);
-
-    await submitQuestion(tester, '물이 안 끓어요');
-
-    expect(find.text('고정 데모 답변'), findsOneWidget);
-    expect(find.byKey(const Key('help-suggested-action')), findsNothing);
-    expect(find.text('03:00'), findsOneWidget);
-  });
-
-  testWidgets('타이머가 없는 단계에서는 연장 제안도 확인 버튼을 만들지 않는다', (tester) async {
-    final advice = FakeExceptionAdvicePort(
-      response: const ExceptionAdvice(
-        speechText: '30초 뒤 확인하세요.',
-        screenText: '30초 뒤 상태를 확인하세요.',
-        suggestedAction: ExceptionAdviceSuggestedAction(
-          type: ExceptionAdviceActionType.extendTimer,
-          seconds: 30,
-        ),
-      ),
-    );
-    await pumpSession(tester, advicePort: advice, testRecipe: timerlessRecipe);
-
-    await submitQuestion(tester, '반죽이 너무 묽어요');
-
-    expect(find.text('30초 뒤 상태를 확인하세요.'), findsOneWidget);
-    expect(find.byKey(const Key('help-suggested-action')), findsNothing);
-    expect(find.text('타이머 없음'), findsOneWidget);
   });
 }
 
