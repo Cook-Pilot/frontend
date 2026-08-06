@@ -29,3 +29,17 @@ jobs:
       - run: dart format --set-exit-if-changed .
       - run: flutter analyze
       - run: flutter test
+  openapi-drift:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      # backend는 OpenApiDocsTest가 docs/openapi.json을 정본으로 강제하므로
+      # main의 raw 파일과 바이트 비교만으로 드리프트를 판정할 수 있다.
+      - name: backend main 스펙과 비교
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/Cook-Pilot/backend/main/docs/openapi.json -o /tmp/openapi.json
+          if ! diff -u docs/openapi.json /tmp/openapi.json; then
+            echo "::error::backend main의 openapi.json과 다릅니다. 스펙 변경이 클라이언트(lib/features/*/data/)에 미치는 영향을 확인한 뒤 docs/openapi.json을 갱신하세요."
+            exit 1
+          fi
