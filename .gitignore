@@ -43,3 +43,6 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# 로컬 개발용 dart-define 값 (개인 서버 주소 등)
+env.dev.json
