@@ -1,0 +1,36 @@
+name: OpenAPI Sync
+on:
+  schedule:
+    - cron: '0 0 * * *' # 매일 UTC 00:00 (KST 09:00)
+  workflow_dispatch: # Actions 탭에서 수동 실행용
+
+# 사본 갱신 커밋과 PR 생성에 쓰기 권한이 필요하다.
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      # 액션은 태그 탈취에 대비해 커밋 digest로 고정한다.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: backend main 스펙 받기
+        run: curl -fsSL https://raw.githubusercontent.com/Cook-Pilot/backend/main/docs/openapi.json -o docs/openapi.json
+      # 사본이 이미 최신이면 diff가 없어 PR을 만들지 않고 조용히 끝난다.
+      # 자동화는 갱신 PR 생성까지만이다. 스펙 변경이 클라이언트(lib/features/*/data/)에
+      # 미치는 영향은 사람이 PR에서 확인하고, 필요한 수정을 같은 PR에 얹어 머지한다.
+      - uses: peter-evans/create-pull-request@22a9089034f40e5a961c8808d113e2c98fb63676 # v7
+        with:
+          branch: chore/openapi-sync-bot
+          commit-message: 'chore : backend openapi.json 사본 갱신'
+          title: 'chore : backend openapi.json 사본 갱신'
+          body: |
+            backend main의 `docs/openapi.json`이 커밋된 사본과 달라 자동 생성된 PR입니다.
+
+            머지 전에 확인할 것:
+            - 스펙 diff가 클라이언트(`lib/features/*/data/`)에 영향을 주는지 확인한다.
+            - 영향이 있으면 필요한 클라이언트 수정을 이 PR에 얹어서 함께 머지한다.
+
+            자세한 흐름은 `docs/feat-openapi-sync.md` 참고.

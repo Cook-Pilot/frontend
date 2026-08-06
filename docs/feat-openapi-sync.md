@@ -27,6 +27,14 @@ backend 리포의 `docs/openapi.json`을 그대로 복사해 둔다. backend는 
 
 `openapi-drift` 잡을 추가했다. backend main의 raw `docs/openapi.json`을 curl로 받아 커밋된 사본과 `diff`로 비교하고, 다르면 실패시킨다. backend가 스펙을 정규화해 두므로 바이트 비교로 충분하다. 소요 시간은 수 초라 기존 `check` 잡과 병렬로 돌며 전체 CI 시간에 영향이 없다.
 
+### 사본 자동 갱신 (`.github/workflows/openapi-sync.yml`)
+
+매일 1회(KST 09:00) backend main의 스펙을 받아 사본과 다르면 갱신 PR을 자동 생성한다(`peter-evans/create-pull-request`, 브랜치 `chore/openapi-sync-bot`). 스케줄 잡은 main의 워크플로우 파일 기준으로 돌므로 이 브랜치가 머지된 뒤부터 동작하고, `workflow_dispatch`로 수동 실행도 가능하다.
+
+- 자동화 범위는 PR 생성까지다. 자동 머지는 하지 않는다 — 스펙 변경의 클라이언트 영향 판단은 사람 몫이며, 봇 PR은 diff가 첨부된 알림 역할이다.
+- 검토한 대안: backend 푸시 시 `repository_dispatch`로 즉시 트리거 — cross-repo 토큰과 backend 리포 수정이 필요해, 하루 1회면 충분한 현시점에는 제외.
+- 기존 `openapi-drift` 잡과의 관계: cron은 능동적 알림, drift 잡은 어긋난 채 머지되는 것을 막는 방어선으로 역할이 다르므로 둘 다 유지한다.
+
 ### 줄바꿈 보존 (`.gitattributes`)
 
 `docs/openapi.json -text`를 추가했다. Windows 로컬(`core.autocrlf=true`)에서 체크아웃·재커밋 시 줄바꿈이 변환되면 backend 원본과 바이트가 어긋나 CI diff가 헛실패하므로, 이 파일은 git의 텍스트 변환에서 제외한다.
@@ -35,6 +43,7 @@ backend 리포의 `docs/openapi.json`을 그대로 복사해 둔다. backend는 
 
 - 커밋된 blob의 SHA-256과 backend main raw 파일의 SHA-256 일치 확인 (`bd20239b…2645`).
 - `openapi-drift` 잡은 PR을 올려 GitHub Actions에서 통과를 확인한다.
+- `openapi-sync` 워크플로우는 스케줄 특성상 머지 전에는 돌지 않으므로, 머지 후 Actions 탭에서 `workflow_dispatch`로 1회 수동 실행해 "diff 없음 → PR 미생성"으로 끝나는지 확인한다.
 - Dart 코드 변경이 없으므로 포맷·분석·테스트는 이 브랜치에서 재검증 대상 아님.
 
 ## 5. 이후 작업에서 지킬 것
