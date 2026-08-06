@@ -27,8 +27,6 @@ final class ExceptionAdviceContext {
     required this.recipeVersionId,
     required this.stepIndex,
     required this.requestContextVersion,
-    required this.instruction,
-    required this.remaining,
     required this.utterance,
     required this.recentEvents,
   });
@@ -38,8 +36,6 @@ final class ExceptionAdviceContext {
   final String recipeVersionId;
   final int stepIndex;
   final int requestContextVersion;
-  final String instruction;
-  final Duration remaining;
   final String utterance;
   final List<ExceptionAdviceEvent> recentEvents;
 }
@@ -50,9 +46,7 @@ final class ExceptionAdvice {
     String? message,
     String? speechText,
     String? screenText,
-    this.suggestedAction,
     this.isMock = false,
-    this.eventPayload = const <String, Object?>{},
   }) : assert(
          message != null || speechText != null || screenText != null,
          'At least one advice text is required.',
@@ -62,25 +56,10 @@ final class ExceptionAdvice {
 
   final String speechText;
   final String screenText;
-  final ExceptionAdviceSuggestedAction? suggestedAction;
   final bool isMock;
-  final Map<String, Object?> eventPayload;
 
   /// 기존 도움 UI와 fake가 사용하던 이름을 유지한다.
   String get message => screenText;
-}
-
-enum ExceptionAdviceActionType { extendTimer }
-
-@immutable
-final class ExceptionAdviceSuggestedAction {
-  const ExceptionAdviceSuggestedAction({
-    required this.type,
-    required this.seconds,
-  });
-
-  final ExceptionAdviceActionType type;
-  final int seconds;
 }
 
 abstract interface class SpeechOutputPort {

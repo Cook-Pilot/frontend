@@ -12,28 +12,20 @@
             "type" : "integer"
           },
           "userSpeech" : {
+            "minLength" : 1,
             "type" : "string"
           }
         },
+        "required" : [ "recipeId", "stepIndex", "userSpeech" ],
         "type" : "object"
       },
       "AiFeedbackResponse" : {
         "properties" : {
-          "eventPayload" : {
-            "additionalProperties" : { },
-            "type" : "object"
-          },
           "mock" : {
             "type" : "boolean"
           },
-          "screenText" : {
-            "type" : "string"
-          },
           "speechText" : {
             "type" : "string"
-          },
-          "suggestedAction" : {
-            "$ref" : "#/components/schemas/SuggestedAction"
           }
         },
         "type" : "object"
@@ -730,6 +722,7 @@
             "type" : "string"
           },
           "promptVersion" : {
+            "minLength" : 1,
             "type" : "string"
           },
           "reason" : {
@@ -742,6 +735,7 @@
             "type" : "string"
           }
         },
+        "required" : [ "decision", "explanationSource", "originalAmount", "originalIngredientId", "promptVersion", "suggestedAmount" ],
         "type" : "object"
       },
       "SubmitReviewRequest" : {
@@ -776,18 +770,7 @@
             "type" : "number"
           }
         },
-        "type" : "object"
-      },
-      "SuggestedAction" : {
-        "properties" : {
-          "seconds" : {
-            "format" : "int32",
-            "type" : "integer"
-          },
-          "type" : {
-            "type" : "string"
-          }
-        },
+        "required" : [ "clientSessionId", "rating", "recipeId" ],
         "type" : "object"
       },
       "User" : {

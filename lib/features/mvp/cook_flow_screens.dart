@@ -1689,7 +1689,6 @@ class _CookSessionScreenState extends State<CookSessionScreen>
   late final CookingVoiceSessionController _voiceSession;
   static const CookingVoiceRouter _voiceRouter = CookingVoiceRouter();
   String? _helpAnswer;
-  ExceptionAdviceSuggestedAction? _helpSuggestedAction;
   bool _helpLoading = false;
   int _helpRequestVersion = 0;
   int? _helpRequestOwnerVersion;
@@ -2249,7 +2248,6 @@ class _CookSessionScreenState extends State<CookSessionScreen>
     setState(() {
       step = target;
       _helpAnswer = null;
-      _helpSuggestedAction = null;
       _helpLoading = false;
       _voiceMessage = fromVoice ? '$target단계로 이동했어요.' : null;
     });
@@ -2650,7 +2648,6 @@ class _CookSessionScreenState extends State<CookSessionScreen>
       setState(() {
         _helpLoading = false;
         _helpAnswer = '질문은 $maxExceptionAdviceQuestionLength자 이하로 줄여주세요.';
-        _helpSuggestedAction = null;
       });
       return;
     }
@@ -2663,7 +2660,6 @@ class _CookSessionScreenState extends State<CookSessionScreen>
     setState(() {
       _helpLoading = true;
       _helpAnswer = null;
-      _helpSuggestedAction = null;
     });
     ExceptionAdvice advice;
     try {
@@ -2674,11 +2670,6 @@ class _CookSessionScreenState extends State<CookSessionScreen>
           recipeVersionId: 'mvp',
           stepIndex: requestedStep - 1,
           requestContextVersion: requestVersion,
-          // 개인 버전의 현재 실행 단계 문장뿐 아니라 주의사항까지 함께 보낸다.
-          // 서버의 원본 stepIndex는 ADD/REMOVE로 재인덱싱된 실행 스냅샷과
-          // 다를 수 있으므로 이 description이 F8 현재 단계 문맥의 정본이다.
-          instruction: widget.recipe.steps[requestedStep - 1].description,
-          remaining: _timer.remaining,
           utterance: normalizedQuestion,
           recentEvents: const [],
         ),
@@ -2692,7 +2683,6 @@ class _CookSessionScreenState extends State<CookSessionScreen>
         _helpRequestOwnerVersion = null;
         _helpLoading = false;
         _helpAnswer = '답변을 불러오지 못했어요. 버튼과 타이머는 계속 사용할 수 있어요.';
-        _helpSuggestedAction = null;
       });
       return;
     }
@@ -2706,9 +2696,6 @@ class _CookSessionScreenState extends State<CookSessionScreen>
       _helpRequestOwnerVersion = null;
       _helpLoading = false;
       _helpAnswer = advice.message;
-      _helpSuggestedAction = advice.isMock
-          ? null
-          : _safeSuggestedAction(advice.suggestedAction);
     });
     // Use the server's separately safety-filtered speech channel, and only
     // after requestVersion + requestedStep ownership has passed above.
@@ -2726,41 +2713,6 @@ class _CookSessionScreenState extends State<CookSessionScreen>
   void _releaseHelpRequest(int requestVersion) {
     if (_helpRequestOwnerVersion == requestVersion) {
       _helpRequestOwnerVersion = null;
-    }
-  }
-
-  ExceptionAdviceSuggestedAction? _safeSuggestedAction(
-    ExceptionAdviceSuggestedAction? action,
-  ) {
-    if (action == null ||
-        !_currentStepHasTimer ||
-        action.type != ExceptionAdviceActionType.extendTimer ||
-        (action.seconds != 30 && action.seconds != 60)) {
-      return null;
-    }
-    return action;
-  }
-
-  void _applySuggestedAction() {
-    final action = _helpSuggestedAction;
-    if (action == null ||
-        _disposed ||
-        _completed ||
-        _completionLocked ||
-        !mounted) {
-      return;
-    }
-    setState(() => _helpSuggestedAction = null);
-    switch (action.type) {
-      case ExceptionAdviceActionType.extendTimer:
-        // API 파서가 30/60초만 통과시키지만 화면 경계에서도 한 번 더 막는다.
-        if (action.seconds != 30 && action.seconds != 60) {
-          return;
-        }
-        _extendCurrentTimer(Duration(seconds: action.seconds));
-        _setVoiceMessage(
-          action.seconds == 60 ? '타이머에 1분을 추가했어요.' : '타이머에 30초를 추가했어요.',
-        );
     }
   }
 
@@ -3054,19 +3006,6 @@ class _CookSessionScreenState extends State<CookSessionScreen>
                 title: '도움 답변',
                 body: answer,
               ),
-              if (_helpSuggestedAction
-                  case final ExceptionAdviceSuggestedAction action) ...[
-                const SizedBox(height: 8),
-                OutlinedButton.icon(
-                  key: const Key('help-suggested-action'),
-                  onPressed: _completionLocked ? null : _applySuggestedAction,
-                  icon: const Icon(Icons.timer_outlined, size: 18),
-                  label: Text(
-                    '제안 적용 · '
-                    '${action.seconds == 60 ? '1분' : '${action.seconds}초'} 추가',
-                  ),
-                ),
-              ],
             ],
             if (_finishError case final String error) ...[
               const SizedBox(height: 12),

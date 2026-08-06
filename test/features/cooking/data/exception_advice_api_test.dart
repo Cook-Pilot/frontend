@@ -19,8 +19,6 @@ void main() {
     recipeVersionId: 'mvp',
     stepIndex: 1,
     requestContextVersion: 3,
-    instruction: '물을 끓이고 면을 넣으세요.',
-    remaining: Duration(seconds: 42),
     utterance: '물이 안 끓어요',
     recentEvents: <ExceptionAdviceEvent>[],
   );
@@ -33,7 +31,7 @@ void main() {
 
   tearDown(BetaUserSession.clear);
 
-  test('베타 사용자 헤더와 현재 단계 문맥을 F8 엔드포인트에 보낸다', () async {
+  test('베타 사용자 헤더와 질문·단계 번호만 F8 엔드포인트에 보낸다', () async {
     late Map<String, dynamic> requestBody;
     final port = HttpExceptionAdvicePort(
       baseUrl: baseUrl,
@@ -46,16 +44,7 @@ void main() {
         return _jsonResponse('''
           {
             "mock": false,
-            "speechText": "불을 한 단계 높여보세요.",
-            "screenText": "불을 높이고 30초 뒤 기포를 확인하세요.",
-            "suggestedAction": {
-              "type": "EXTEND_TIMER",
-              "seconds": 30
-            },
-            "eventPayload": {
-              "problem": "WATER_NOT_BOILING",
-              "currentStepIndex": 1
-            }
+            "speechText": "불을 한 단계 높여보세요."
           }
         ''');
       }),
@@ -67,104 +56,36 @@ void main() {
       'recipeId': recipeId,
       'stepIndex': 1,
       'userSpeech': '물이 안 끓어요',
-      'instruction': '물을 끓이고 면을 넣으세요.',
-      'remainingSeconds': 42,
     });
     expect(advice.speechText, '불을 한 단계 높여보세요.');
-    expect(advice.screenText, '불을 높이고 30초 뒤 기포를 확인하세요.');
-    expect(advice.suggestedAction?.type, ExceptionAdviceActionType.extendTimer);
-    expect(advice.suggestedAction?.seconds, 30);
     expect(advice.isMock, isFalse);
-    expect(advice.eventPayload['problem'], 'WATER_NOT_BOILING');
   });
 
-  test('긴 타이머도 화면 표시 상한이 아니라 백엔드 계약 상한까지 보낸다', () async {
-    late Map<String, dynamic> requestBody;
-    final port = HttpExceptionAdvicePort(
-      baseUrl: baseUrl,
-      client: MockClient((request) async {
-        requestBody = jsonDecode(request.body) as Map<String, dynamic>;
-        return _jsonResponse('{"screenText":"상태를 확인하세요."}');
-      }),
-    );
-    const longTimerContext = ExceptionAdviceContext(
-      sessionId: '40000000-0000-0000-0000-000000000001',
-      recipeId: recipeId,
-      recipeVersionId: 'mvp',
-      stepIndex: 1,
-      requestContextVersion: 3,
-      instruction: '오래 끓이세요.',
-      remaining: Duration(hours: 25),
-      utterance: '얼마나 남았어요?',
-      recentEvents: <ExceptionAdviceEvent>[],
-    );
-
-    await port.requestAdvice(longTimerContext);
-
-    expect(requestBody['remainingSeconds'], 86400);
-  });
-
-  test('한쪽 답변 텍스트만 있어도 다른 표시 용도로 안전하게 보완한다', () async {
+  test('화면 표시 텍스트는 speechText로 채운다', () async {
     final port = HttpExceptionAdvicePort(
       baseUrl: baseUrl,
       client: MockClient(
-        (_) async => _jsonResponse('{"screenText":"불을 낮추세요."}'),
+        (_) async => _jsonResponse('{"speechText":"불을 낮추세요."}'),
       ),
     );
 
     final advice = await port.requestAdvice(context);
 
-    expect(advice.screenText, '불을 낮추세요.');
     expect(advice.speechText, '불을 낮추세요.');
-    expect(advice.eventPayload, isEmpty);
+    expect(advice.screenText, '불을 낮추세요.');
   });
 
-  test('허용하지 않은 행동은 답변 전체를 버리지 않고 무시한다', () async {
-    final responses = <String>[
-      '''
-        {
-          "speechText": "확인하세요.",
-          "screenText": "확인하세요.",
-          "suggestedAction": {"type": "NEXT_STEP", "seconds": 30}
-        }
-      ''',
-      '''
-        {
-          "speechText": "확인하세요.",
-          "screenText": "확인하세요.",
-          "suggestedAction": {"type": "EXTEND_TIMER", "seconds": 90}
-        }
-      ''',
-    ];
-    var requestIndex = 0;
-    final port = HttpExceptionAdvicePort(
-      baseUrl: baseUrl,
-      client: MockClient((_) async => _jsonResponse(responses[requestIndex++])),
-    );
-
-    expect((await port.requestAdvice(context)).suggestedAction, isNull);
-    expect((await port.requestAdvice(context)).suggestedAction, isNull);
-  });
-
-  test('기존 백엔드 mock 답변의 행동 제안은 실제 타이머 후보로 노출하지 않는다', () async {
+  test('백엔드가 아직 고정 mock 답변을 주면 mock으로 표시한다', () async {
     final port = HttpExceptionAdvicePort(
       baseUrl: baseUrl,
       client: MockClient(
-        (_) async => _jsonResponse('''
-          {
-            "mock": true,
-            "speechText": "고정 데모 답변",
-            "screenText": "고정 데모 답변",
-            "suggestedAction": {"type": "EXTEND_TIMER", "seconds": 60}
-          }
-        '''),
+        (_) async => _jsonResponse('{"mock": true, "speechText": "고정 데모 답변"}'),
       ),
     );
 
     final advice = await port.requestAdvice(context);
 
     expect(advice.isMock, isTrue);
-    expect(advice.suggestedAction, isNull);
     expect(advice.screenText, '고정 데모 답변');
   });
 
