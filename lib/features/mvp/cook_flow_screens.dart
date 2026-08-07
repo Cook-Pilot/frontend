@@ -2785,12 +2785,6 @@ class _CookSessionScreenState extends State<CookSessionScreen>
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
         ),
-        actions: [
-          IconButton(
-            onPressed: _completionLocked ? null : () {},
-            icon: const Icon(Icons.pause_rounded),
-          ),
-        ],
       ),
       body: SafeArea(
         child: ListView(
