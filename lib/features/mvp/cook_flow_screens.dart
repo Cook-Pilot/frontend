@@ -3100,6 +3100,7 @@ class ReviewScreen extends StatefulWidget {
     this.reviewRepository,
     this.personalVersionApprovalGateway,
     this.cookingSessionStore,
+    this.homeBuilder,
   });
 
   final PendingReviewDraft initialDraft;
@@ -3107,6 +3108,9 @@ class ReviewScreen extends StatefulWidget {
   final ReviewRepository? reviewRepository;
   final PersonalVersionApprovalGateway? personalVersionApprovalGateway;
   final CookingSessionGateway? cookingSessionStore;
+
+  /// 저장 뒤 돌아갈 홈 화면. 테스트에서 실제 홈의 네트워크 로딩을 대체한다.
+  final WidgetBuilder? homeBuilder;
 
   CookingSetupSnapshot get setupSnapshot => initialDraft.setupSnapshot;
   String get clientSessionId => initialDraft.clientSessionId;
@@ -3141,7 +3145,6 @@ class _ReviewScreenState extends State<ReviewScreen>
   PersonalVersionApprovalResult? _personalVersionResult;
   String? _draftSaveError;
   String? _saveError;
-  String? _cleanupWarning;
 
   @override
   void initState() {
@@ -3445,16 +3448,31 @@ class _ReviewScreenState extends State<ReviewScreen>
         cleanupErrors.add('조리 세션');
       }
       if (!mounted) return;
+      final cleanupWarning = cleanupErrors.isEmpty
+          ? null
+          : '${cleanupErrors.join('·')} 정리를 완료하지 못해 홈에 다시 표시될 수 있어요.';
       setState(() {
         _saved = result;
         _personalVersionResult = personalVersionResult;
         _completedReviewWithoutPersonalVersion = canCompleteBlockedAsReviewOnly;
         _saving = false;
-        _cleanupWarning = cleanupErrors.isEmpty
-            ? null
-            : '${cleanupErrors.join('·')} 정리를 완료하지 못해 '
-                  '홈에 다시 표시될 수 있어요.';
       });
+      // 저장 성공은 홈으로 돌아가면 끝이라 이 화면에 결과를 남기지 않는다.
+      // 스낵바는 루트 ScaffoldMessenger가 띄우므로 화면 교체 뒤에도 살아남는다.
+      final messenger = ScaffoldMessenger.of(context);
+      _goHome();
+      messenger
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            key: const Key('review-saved-snack-bar'),
+            content: Text(
+              cleanupWarning == null
+                  ? _successMessage
+                  : '$_successMessage $cleanupWarning',
+            ),
+          ),
+        );
     } on ReviewApiException catch (error) {
       if (!mounted) return;
       setState(() {
@@ -3482,9 +3500,10 @@ class _ReviewScreenState extends State<ReviewScreen>
   }
 
   void _goHome() {
+    final home = widget.homeBuilder ?? (_) => const MainShell();
     unawaited(
       Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute<void>(builder: (_) => const MainShell()),
+        MaterialPageRoute<void>(builder: home),
         (route) => false,
       ),
     );
@@ -3689,45 +3708,24 @@ class _ReviewScreenState extends State<ReviewScreen>
             body: '개인 버전 저장만 같은 후기 기록으로 다시 시도할 수 있어요.',
           ),
         ],
-        if (_saved != null) ...[
-          const SizedBox(height: 16),
-          InfoStrip(
-            icon: Icons.check_circle_rounded,
-            title: '조리 기록을 저장했어요',
-            body: _successMessage,
-          ),
-        ],
-        if (_cleanupWarning case final String warning) ...[
-          const SizedBox(height: 8),
-          InfoStrip(
-            icon: Icons.info_outline_rounded,
-            title: '기록 저장은 완료됐어요',
-            body: warning,
-          ),
-        ],
       ],
       bottom: PressableScale(
         child: FilledButton(
-          onPressed: _saving || _leaving
+          onPressed: _saving || _leaving || _saved != null
               ? null
-              : _saved != null
-              ? _goHome
               : requiresReviewOnlyRecovery
               ? () => _save(completeBlockedAsReviewOnly: true)
               : _save,
           child: Text(
             _saving
                 ? '저장 중'
-                : _saved == null
-                ? requiresReviewOnlyRecovery
-                      ? '개인 버전 없이 완료'
-                      // 비승인 재진입은 남은 작업이 정리뿐이라 "개인 버전 다시
-                      // 저장"이 어울리지 않는다.
-                      : _submittedReview == null ||
-                            !_approvedPersonalVersionCreation
-                      ? '조리 기록 저장'
-                      : '개인 버전 다시 저장'
-                : '홈으로',
+                : requiresReviewOnlyRecovery
+                ? '개인 버전 없이 완료'
+                // 비승인 재진입은 남은 작업이 정리뿐이라 "개인 버전 다시
+                // 저장"이 어울리지 않는다.
+                : _submittedReview == null || !_approvedPersonalVersionCreation
+                ? '조리 기록 저장'
+                : '개인 버전 다시 저장',
           ),
         ),
       ),
