@@ -262,6 +262,7 @@ void main() {
             initialDraft: buildDraft(),
             pendingReviewDraftStore: pendingReviewDraftStore,
             reviewRepository: _FakeReviewRepository(),
+            homeBuilder: (_) => const Scaffold(body: Text('테스트 홈 화면')),
           ),
         ),
       );
@@ -278,6 +279,7 @@ void main() {
           home: ReviewScreen(
             initialDraft: buildDraft(timerSecondsByStep: const {0: 240}),
             reviewRepository: _FakeReviewRepository(),
+            homeBuilder: (_) => const Scaffold(body: Text('테스트 홈 화면')),
           ),
         ),
       );
@@ -286,9 +288,8 @@ void main() {
 
       await tester.tap(find.text('조리 기록 저장'));
       await tester.pumpAndSettle();
-      await tester.drag(find.byType(ListView), const Offset(0, -600));
-      await tester.pumpAndSettle();
 
+      expect(find.text('테스트 홈 화면'), findsOneWidget);
       expect(find.text('후기만 저장했어요. 개인 버전은 만들지 않았어요.'), findsOneWidget);
       expect(find.textContaining('실행 변경이 없어'), findsNothing);
     });

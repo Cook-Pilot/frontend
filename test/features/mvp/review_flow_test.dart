@@ -692,6 +692,24 @@ void main() {
       expect(await store.load(), isNull);
     });
 
+    testWidgets('저장에 성공하면 버튼을 더 누르지 않아도 홈으로 이동하고 결과를 스낵바로 알린다', (tester) async {
+      final store = _FakePendingReviewDraftStore();
+      await _pumpReview(tester, store: store);
+
+      await tester.tap(find.text('조리 기록 저장'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(ReviewScreen), findsNothing);
+      expect(find.text('테스트 홈 화면'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('review-saved-snack-bar')),
+          matching: find.text('후기만 저장했어요. 개인 버전은 만들지 않았어요.'),
+        ),
+        findsOneWidget,
+      );
+    });
+
     for (final approvalResult in <PersonalVersionApprovalResult>[
       const PersonalVersionCreated(),
       const PersonalVersionNoChange(),
@@ -724,7 +742,8 @@ void main() {
         ]);
         expect(approvalGateway.transcripts, const [null]);
         expect(await store.load(), isNull);
-        expect(find.text('조리 기록을 저장했어요'), findsOneWidget);
+        expect(find.text('테스트 홈 화면'), findsOneWidget);
+        expect(find.byKey(const Key('review-saved-snack-bar')), findsOneWidget);
         expect(
           find.text(
             approvalResult is PersonalVersionCreated
@@ -795,7 +814,8 @@ void main() {
         '50000000-0000-0000-0000-000000000001',
       ]);
       expect(await store.load(), isNull);
-      expect(find.text('조리 기록을 저장했어요'), findsOneWidget);
+      expect(find.text('테스트 홈 화면'), findsOneWidget);
+      expect(find.byKey(const Key('review-saved-snack-bar')), findsOneWidget);
     });
 
     testWidgets('후기 ID checkpoint 실패 시 승인 호출을 멈추고 같은 화면에서 안전하게 재시도한다', (
@@ -965,9 +985,15 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(reviewRepository.calls, 1);
-      expect(find.text('조리 기록을 저장했어요'), findsOneWidget);
-      expect(find.text('기록 저장은 완료됐어요'), findsOneWidget);
-      expect(find.textContaining('조리 세션 정리를 완료하지 못해'), findsOneWidget);
+      expect(find.text('테스트 홈 화면'), findsOneWidget);
+      // 정리 실패는 저장 실패가 아니므로 홈 이동을 막지 않고 같은 스낵바에 덧붙인다.
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('review-saved-snack-bar')),
+          matching: find.textContaining('조리 세션 정리를 완료하지 못해'),
+        ),
+        findsOneWidget,
+      );
       expect(find.text('저장하지 못했어요'), findsNothing);
       expect(await store.load(), isNull);
     });
@@ -985,7 +1011,13 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(reviewRepository.calls, 1);
-      expect(find.textContaining('정리를 완료하지 못해'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('review-saved-snack-bar')),
+          matching: find.textContaining('정리를 완료하지 못해'),
+        ),
+        findsOneWidget,
+      );
       // clear 실패로 살아남은 초안에는 수락된 리뷰 id가 남아 있어야 한다.
       final survivor = await store.load();
       expect(
@@ -1177,10 +1209,19 @@ Future<void> _pumpReview(
         personalVersionApprovalGateway:
             approvalGateway ?? _FakeApprovalGateway(),
         cookingSessionStore: cookingSessionStore,
+        homeBuilder: (_) => const _TestHome(),
       ),
     ),
   );
   await tester.pump();
+}
+
+/// 저장 뒤 이동할 홈. 실제 홈은 네트워크 로딩 애니메이션 때문에 settle되지 않는다.
+class _TestHome extends StatelessWidget {
+  const _TestHome();
+
+  @override
+  Widget build(BuildContext context) => const Scaffold(body: Text('테스트 홈 화면'));
 }
 
 Future<void> _pushReviewRoute(
@@ -1211,6 +1252,7 @@ Future<void> _pushReviewRoute(
           reviewRepository: reviewRepository ?? _FakeReviewRepository(),
           personalVersionApprovalGateway:
               approvalGateway ?? _FakeApprovalGateway(),
+          homeBuilder: (_) => const _TestHome(),
         ),
       ),
     ),
