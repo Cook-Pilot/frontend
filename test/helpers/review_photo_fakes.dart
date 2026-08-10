@@ -2,6 +2,23 @@ import 'dart:async';
 
 import 'package:cookpilot/features/review/application/review_photo_file_store.dart';
 import 'package:cookpilot/features/review/application/review_photo_upload_port.dart';
+import 'package:cookpilot/features/review/presentation/review_photo_picker.dart';
+
+/// 지정된 경로를 순서대로 돌려주는 픽커 fake. 큐가 비면 취소(null)로 본다.
+final class FakeReviewPhotoPicker implements ReviewPhotoPickerPort {
+  final List<String?> queuedResults = [];
+  final List<ReviewPhotoSource> requestedSources = [];
+  Object? error;
+
+  @override
+  Future<String?> pick(ReviewPhotoSource source) async {
+    requestedSources.add(source);
+    if (error != null) {
+      throw error!;
+    }
+    return queuedResults.isEmpty ? null : queuedResults.removeAt(0);
+  }
+}
 
 /// 업로드 호출을 기록하고, 지정된 경로는 실패시키는 fake.
 final class FakeReviewPhotoUploadPort implements ReviewPhotoUploadPort {

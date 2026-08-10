@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -21,8 +22,12 @@ import '../recipe/data/recipe_api.dart';
 import '../recipe/domain/recipe.dart';
 import '../recommendation/data/recommendation_api.dart';
 import '../review/application/pending_review_draft_store.dart';
+import '../review/application/review_photo_file_store.dart';
+import '../review/application/review_photo_upload_port.dart';
 import '../review/data/personal_version_approval_api.dart';
 import '../review/data/review_api.dart';
+import '../review/data/review_photo_upload_api.dart';
+import '../review/presentation/review_photo_picker.dart';
 import 'main_shell.dart';
 import 'mvp_widgets.dart';
 
@@ -3100,6 +3105,9 @@ class ReviewScreen extends StatefulWidget {
     this.reviewRepository,
     this.personalVersionApprovalGateway,
     this.cookingSessionStore,
+    this.reviewPhotoPicker,
+    this.reviewPhotoFileStore,
+    this.reviewPhotoUploader,
     this.homeBuilder,
   });
 
@@ -3108,6 +3116,9 @@ class ReviewScreen extends StatefulWidget {
   final ReviewRepository? reviewRepository;
   final PersonalVersionApprovalGateway? personalVersionApprovalGateway;
   final CookingSessionGateway? cookingSessionStore;
+  final ReviewPhotoPickerPort? reviewPhotoPicker;
+  final ReviewPhotoFileGateway? reviewPhotoFileStore;
+  final ReviewPhotoUploadPort? reviewPhotoUploader;
 
   /// 저장 뒤 돌아갈 홈 화면. 테스트에서 실제 홈의 네트워크 로딩을 대체한다.
   final WidgetBuilder? homeBuilder;
@@ -3132,9 +3143,26 @@ class _ReviewScreenState extends State<ReviewScreen>
   late final ReviewRepository _reviewRepository;
   late final PersonalVersionApprovalGateway _personalVersionApprovalGateway;
   late final CookingSessionGateway _cookingSessionStore;
+  late final ReviewPhotoPickerPort _photoPicker;
+  late final ReviewPhotoFileGateway _photoFileStore;
+  late final ReviewPhotoUploadPort _photoUploader;
   late final TextEditingController _commentController;
   late final TextEditingController _nextTimeController;
   Timer? _autosaveTimer;
+
+  // 사진은 첨부 즉시 백그라운드 업로드를 시작한다(선업로드). 저장 버튼에서
+  // 몰아서 올리면 여러 장이 수십 초를 막고, 서버 멱등 때문에 첫 리뷰 POST
+  // 전에 업로드가 전부 끝나 있어야 하기 때문이다. 아래 상태는 전부
+  // draft에 저장하지 않는 화면 세션 한정 값이다.
+  static const _maxConcurrentUploads = 3;
+  late List<String> _photoPaths;
+  final Map<String, String> _absolutePathByRelative = {};
+  final Map<String, String> _uploadedUrlByPath = {};
+  final Map<String, Future<void>> _uploadFutures = {};
+  final Set<String> _uploadingPaths = {};
+  final Set<String> _failedUploadPaths = {};
+  final List<String> _uploadQueue = [];
+  String? _missingPhotoNotice;
   bool _saving = false;
   bool _finalized = false;
   bool _leaving = false;
@@ -3168,6 +3196,230 @@ class _ReviewScreenState extends State<ReviewScreen>
         widget.personalVersionApprovalGateway ?? PersonalVersionApprovalApi();
     _cookingSessionStore =
         widget.cookingSessionStore ?? const CookingSessionStore();
+    _photoPicker = widget.reviewPhotoPicker ?? NativeReviewPhotoPicker();
+    _photoFileStore = widget.reviewPhotoFileStore ?? ReviewPhotoFileStore();
+    _photoUploader = widget.reviewPhotoUploader ?? ReviewPhotoUploadApi();
+    _photoPaths = List<String>.of(_draft.photoPaths);
+    unawaited(_restorePhotos());
+  }
+
+  bool get _reviewLocked =>
+      _saving || _leaving || _submittedReview != null || _saved != null;
+
+  /// 복원된 draft의 사진 중 기기에서 사라진 파일을 걸러내고, 썸네일용
+  /// 절대경로를 캐시한 뒤 선업로드를 시작한다.
+  Future<void> _restorePhotos() async {
+    // 사진 없는 후기가 절대 다수다 — 이 경우 파일 시스템을 아예 건드리지
+    // 않아 기존(사진 이전) 플로우의 동작·실패 표면을 그대로 유지한다.
+    if (_photoPaths.isEmpty) {
+      return;
+    }
+    final List<String> pruned;
+    try {
+      pruned = await _photoFileStore.pruneMissing(_photoPaths);
+      for (final relativePath in pruned) {
+        _absolutePathByRelative[relativePath] = await _photoFileStore
+            .resolveAbsolutePath(relativePath);
+      }
+    } on Object {
+      // 문서 디렉토리를 열지 못하면 목록을 보존한다. 썸네일은 placeholder로
+      // 남고, 업로드가 실패하면 장별 재시도 배지가 안내한다.
+      return;
+    }
+    final missingCount = _photoPaths.length - pruned.length;
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _photoPaths = pruned;
+      if (missingCount > 0) {
+        _missingPhotoNotice = '사진 $missingCount장을 기기에서 찾지 못해 제외했어요.';
+      }
+    });
+    if (missingCount > 0 && !_finalized) {
+      // 조용히 지우지 않고 안내한 뒤, 남은 목록을 draft에 반영한다.
+      unawaited(_flushDraft(surfaceError: false));
+    }
+    // 서버가 이미 후기를 수락했으면(멱등 재전송은 photoUrls를 무시) 업로드가
+    // 무의미하다.
+    if (_submittedReview == null && _saved == null) {
+      for (final relativePath in pruned) {
+        _enqueueUpload(relativePath);
+      }
+    }
+  }
+
+  void _enqueueUpload(String relativePath) {
+    if (_uploadedUrlByPath.containsKey(relativePath) ||
+        _uploadingPaths.contains(relativePath) ||
+        _uploadQueue.contains(relativePath)) {
+      return;
+    }
+    _failedUploadPaths.remove(relativePath);
+    _uploadQueue.add(relativePath);
+    _pumpUploadQueue();
+  }
+
+  void _pumpUploadQueue() {
+    while (_uploadingPaths.length < _maxConcurrentUploads &&
+        _uploadQueue.isNotEmpty) {
+      final relativePath = _uploadQueue.removeAt(0);
+      _uploadingPaths.add(relativePath);
+      _uploadFutures[relativePath] = _runUpload(relativePath);
+    }
+  }
+
+  Future<void> _runUpload(String relativePath) async {
+    try {
+      final absolutePath =
+          _absolutePathByRelative[relativePath] ??
+          await _photoFileStore.resolveAbsolutePath(relativePath);
+      final url = await _photoUploader.upload(absolutePath);
+      // 업로드 중 삭제된 사진의 늦은 성공은 버린다.
+      if (_photoPaths.contains(relativePath)) {
+        _uploadedUrlByPath[relativePath] = url;
+      }
+    } on Object {
+      if (_photoPaths.contains(relativePath)) {
+        _failedUploadPaths.add(relativePath);
+      }
+    } finally {
+      _uploadingPaths.remove(relativePath);
+      // Map.remove의 반환값(이미 끝난 이 Future 자신)은 대기 대상이 아니다.
+      unawaited(_uploadFutures.remove(relativePath));
+      if (mounted) {
+        setState(() {});
+      }
+      _pumpUploadQueue();
+    }
+  }
+
+  /// [relativePaths] 전부의 업로드 완료를 보장한다.
+  /// 한 장이라도 실패하면 사용자 안내 문구를 반환하고, 성공하면 null.
+  Future<String?> _ensurePhotosUploaded(List<String> relativePaths) async {
+    for (final relativePath in relativePaths) {
+      _enqueueUpload(relativePath);
+    }
+    // 동시 업로드 상한 때문에 큐에서 대기 중인 장이 있으므로, 진행 중인
+    // 업로드가 끝날 때마다 남은 장을 다시 확인한다.
+    while (true) {
+      final inFlight = [
+        for (final relativePath in relativePaths)
+          if (_uploadFutures[relativePath] case final Future<void> future)
+            future,
+      ];
+      if (inFlight.isEmpty) {
+        break;
+      }
+      await Future.wait(inFlight);
+    }
+    final allUploaded = relativePaths.every(_uploadedUrlByPath.containsKey);
+    if (!allUploaded) {
+      return '사진을 업로드하지 못했습니다. 실패한 사진을 확인한 뒤 다시 시도해주세요.';
+    }
+    return null;
+  }
+
+  Future<void> _addPhoto() async {
+    if (_reviewLocked ||
+        _photoPaths.length >= PendingReviewDraft.maximumPhotoCount) {
+      return;
+    }
+    final source = await _pickPhotoSource();
+    if (source == null || !mounted) {
+      return;
+    }
+    final String? pickedPath;
+    try {
+      pickedPath = await _photoPicker.pick(source);
+    } on ReviewPhotoPickException catch (error) {
+      _showPhotoMessage(switch (error.failure) {
+        ReviewPhotoPickFailure.permissionDenied =>
+          '설정 > CookPilot에서 카메라 권한을 허용해주세요.',
+        ReviewPhotoPickFailure.unavailable => '사진을 가져오지 못했어요. 잠시 후 다시 시도해주세요.',
+      });
+      return;
+    }
+    if (pickedPath == null || !mounted) {
+      return;
+    }
+    final String relativePath;
+    try {
+      // 픽커 결과는 OS가 지울 수 있는 캐시 경로라 즉시 문서 디렉토리로 복사한다.
+      relativePath = await _photoFileStore.importPhoto(
+        clientSessionId: _draft.clientSessionId,
+        sourcePath: pickedPath,
+      );
+      _absolutePathByRelative[relativePath] = await _photoFileStore
+          .resolveAbsolutePath(relativePath);
+    } on Object {
+      _showPhotoMessage('사진을 기기에 저장하지 못했어요. 저장 공간을 확인해주세요.');
+      return;
+    }
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _photoPaths = [..._photoPaths, relativePath];
+      _draftSaveError = null;
+      _saveError = null;
+    });
+    _enqueueUpload(relativePath);
+    // 텍스트와 달리 파일 첨부는 debounce 이득이 없고 유실 방지가 우선이다.
+    unawaited(_flushDraft(surfaceError: false));
+  }
+
+  void _removePhoto(String relativePath) {
+    if (_reviewLocked) {
+      return;
+    }
+    setState(() {
+      _photoPaths = _photoPaths
+          .where((path) => path != relativePath)
+          .toList(growable: false);
+      _uploadedUrlByPath.remove(relativePath);
+      _failedUploadPaths.remove(relativePath);
+      _uploadQueue.remove(relativePath);
+    });
+    unawaited(_photoFileStore.deletePhoto(relativePath));
+    unawaited(_flushDraft(surfaceError: false));
+  }
+
+  Future<ReviewPhotoSource?> _pickPhotoSource() {
+    return showModalBottomSheet<ReviewPhotoSource>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        key: const Key('review-photo-source-sheet'),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              key: const Key('review-photo-source-camera'),
+              leading: const Icon(Icons.photo_camera_rounded),
+              title: const Text('카메라로 촬영'),
+              onTap: () => Navigator.of(context).pop(ReviewPhotoSource.camera),
+            ),
+            ListTile(
+              key: const Key('review-photo-source-gallery'),
+              leading: const Icon(Icons.photo_library_rounded),
+              title: const Text('갤러리에서 선택'),
+              onTap: () => Navigator.of(context).pop(ReviewPhotoSource.gallery),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showPhotoMessage(String message) {
+    if (!mounted) {
+      return;
+    }
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   @override
@@ -3205,6 +3457,7 @@ class _ReviewScreenState extends State<ReviewScreen>
       comment: _commentController.text,
       nextTimeNote: _nextTimeController.text,
       approvedPersonalVersionCreation: _approvedPersonalVersionCreation,
+      photoPaths: _photoPaths,
     );
   }
 
@@ -3395,6 +3648,28 @@ class _ReviewScreenState extends State<ReviewScreen>
       }
       return;
     }
+    // 서버는 같은 clientSessionId 재전송의 photoUrls를 무시하므로, 사진은
+    // 첫 리뷰 POST 전에 전부 업로드돼 있어야 한다. 한 장이라도 실패하면
+    // 제출을 멈춘다 — 사진 없이 저장되면 그 후기에는 영구히 첨부할 수 없다.
+    var photoUrls = const <String>[];
+    if (_submittedReview == null && submittedDraft.photoPaths.isNotEmpty) {
+      final uploadFailureMessage = await _ensurePhotosUploaded(
+        submittedDraft.photoPaths,
+      );
+      if (uploadFailureMessage != null) {
+        if (mounted) {
+          setState(() {
+            _saving = false;
+            _saveError = uploadFailureMessage;
+          });
+        }
+        return;
+      }
+      photoUrls = [
+        for (final relativePath in submittedDraft.photoPaths)
+          _uploadedUrlByPath[relativePath]!,
+      ];
+    }
     var reviewAccepted = _submittedReview != null;
     try {
       final result =
@@ -3406,6 +3681,7 @@ class _ReviewScreenState extends State<ReviewScreen>
             rating: submittedDraft.rating,
             comment: submittedDraft.comment,
             nextTimeNote: submittedDraft.nextTimeNote,
+            photoUrls: photoUrls,
           );
       _submittedReview = result;
       reviewAccepted = true;
@@ -3446,6 +3722,13 @@ class _ReviewScreenState extends State<ReviewScreen>
         await _cookingSessionStore.clear();
       } on Object {
         cleanupErrors.add('조리 세션');
+      }
+      if (submittedDraft.photoPaths.isNotEmpty) {
+        try {
+          await _photoFileStore.clearSession(submittedDraft.clientSessionId);
+        } on Object {
+          cleanupErrors.add('후기 사진 파일');
+        }
       }
       if (!mounted) return;
       final cleanupWarning = cleanupErrors.isEmpty
@@ -3641,6 +3924,48 @@ class _ReviewScreenState extends State<ReviewScreen>
                 '${PendingReviewDraft.maximumNextTimeNoteCodePoints}',
           ),
         ),
+        const SectionTitle('요리 사진'),
+        if (_missingPhotoNotice case final String notice) ...[
+          InfoStrip(
+            key: const Key('review-photo-missing-notice'),
+            icon: Icons.image_not_supported_outlined,
+            title: '일부 사진을 제외했어요',
+            body: notice,
+          ),
+          const SizedBox(height: 8),
+        ],
+        SizedBox(
+          height: 88,
+          child: ListView(
+            key: const Key('review-photo-strip'),
+            scrollDirection: Axis.horizontal,
+            children: [
+              for (final (index, relativePath) in _photoPaths.indexed) ...[
+                _ReviewPhotoThumbnail(
+                  key: Key('review-photo-$index'),
+                  absolutePath: _absolutePathByRelative[relativePath],
+                  uploading:
+                      _uploadingPaths.contains(relativePath) ||
+                      _uploadQueue.contains(relativePath),
+                  failed: _failedUploadPaths.contains(relativePath),
+                  locked: _reviewLocked,
+                  removeKey: Key('review-photo-remove-$index'),
+                  retryKey: Key('review-photo-retry-$index'),
+                  onRemove: () => _removePhoto(relativePath),
+                  onRetry: () => setState(() => _enqueueUpload(relativePath)),
+                ),
+                const SizedBox(width: 8),
+              ],
+              if (_photoPaths.length < PendingReviewDraft.maximumPhotoCount)
+                _AddPhotoTile(
+                  key: const Key('review-photo-add-button'),
+                  count: _photoPaths.length,
+                  enabled: !_reviewLocked,
+                  onTap: () => unawaited(_addPhoto()),
+                ),
+            ],
+          ),
+        ),
         const SizedBox(height: 16),
         SwitchListTile.adaptive(
           key: const Key('personal-version-opt-in'),
@@ -3739,6 +4064,173 @@ class _ReviewScreenState extends State<ReviewScreen>
         }
       },
       child: screen,
+    );
+  }
+}
+
+final class _ReviewPhotoThumbnail extends StatelessWidget {
+  const _ReviewPhotoThumbnail({
+    super.key,
+    required this.absolutePath,
+    required this.uploading,
+    required this.failed,
+    required this.locked,
+    required this.removeKey,
+    required this.retryKey,
+    required this.onRemove,
+    required this.onRetry,
+  });
+
+  final String? absolutePath;
+  final bool uploading;
+  final bool failed;
+  final bool locked;
+  final Key removeKey;
+  final Key retryKey;
+  final VoidCallback onRemove;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 88,
+      height: 88,
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(14),
+              child: absolutePath == null
+                  ? _placeholder()
+                  : Image.file(
+                      File(absolutePath!),
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, _, _) => _placeholder(),
+                    ),
+            ),
+          ),
+          if (uploading)
+            Positioned.fill(
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(14),
+                child: const ColoredBox(
+                  color: Colors.black26,
+                  child: Center(
+                    child: SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            )
+          else if (failed)
+            Positioned.fill(
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(14),
+                child: Material(
+                  color: Colors.black38,
+                  child: InkWell(
+                    key: retryKey,
+                    onTap: locked ? null : onRetry,
+                    child: const Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.refresh_rounded,
+                          color: Colors.white,
+                          size: 22,
+                        ),
+                        Text(
+                          '재시도',
+                          style: TextStyle(color: Colors.white, fontSize: 11),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          if (!locked)
+            Positioned(
+              top: 4,
+              right: 4,
+              child: InkWell(
+                key: removeKey,
+                onTap: onRemove,
+                customBorder: const CircleBorder(),
+                child: Container(
+                  padding: const EdgeInsets.all(3),
+                  decoration: const BoxDecoration(
+                    color: Colors.black54,
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.close_rounded,
+                    size: 14,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _placeholder() => const ColoredBox(
+    color: AppColors.line,
+    child: Icon(Icons.image_outlined, color: AppColors.muted),
+  );
+}
+
+final class _AddPhotoTile extends StatelessWidget {
+  const _AddPhotoTile({
+    super.key,
+    required this.count,
+    required this.enabled,
+    required this.onTap,
+  });
+
+  final int count;
+  final bool enabled;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 88,
+      height: 88,
+      child: Material(
+        color: AppColors.wash,
+        borderRadius: BorderRadius.circular(14),
+        child: InkWell(
+          onTap: enabled ? onTap : null,
+          borderRadius: BorderRadius.circular(14),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.add_a_photo_rounded,
+                color: enabled ? AppColors.accent : AppColors.muted,
+              ),
+              const SizedBox(height: 4),
+              Text(
+                '$count/${PendingReviewDraft.maximumPhotoCount}',
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.slate,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
