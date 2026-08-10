@@ -50,6 +50,14 @@ dependencies:
   # 조리 단계와 AI 예외 안내를 기기의 네이티브 음성 합성기로 읽는다.
   flutter_tts: ^4.2.5
 
+  # 후기 사진 촬영·갤러리 선택(#47). 카메라 인텐트/Photo Picker를 쓰므로
+  # Android 매니페스트에 CAMERA 권한을 선언하지 않는다(선언하면 오히려
+  # 런타임 승인 없이는 촬영이 거부됨).
+  image_picker: ^1.2.1
+
+  # 후기 사진을 앱 문서 디렉토리에 보관해 앱 재시작 후에도 복원한다.
+  path_provider: ^2.1.5
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
