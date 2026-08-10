@@ -1429,6 +1429,7 @@ final class _FakeReviewRepository extends ReviewRepository {
   bool shouldFail;
   int calls = 0;
   final List<String> clientSessionIds = <String>[];
+  final List<List<String>> submittedPhotoUrls = <List<String>>[];
 
   @override
   Future<ReviewSaveResult> submit({
@@ -1438,9 +1439,11 @@ final class _FakeReviewRepository extends ReviewRepository {
     required int rating,
     required String comment,
     required String nextTimeNote,
+    List<String> photoUrls = const [],
   }) async {
     calls += 1;
     clientSessionIds.add(clientSessionId);
+    submittedPhotoUrls.add(photoUrls);
     if (shouldFail) {
       throw const ReviewApiException('저장 실패');
     }

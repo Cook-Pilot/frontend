@@ -347,6 +347,7 @@ final class _FakeReviewRepository extends ReviewRepository {
     required int rating,
     required String comment,
     required String nextTimeNote,
+    List<String> photoUrls = const [],
   }) async {
     if (shouldFail) {
       throw const ReviewApiException('저장 실패');
