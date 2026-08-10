@@ -24,8 +24,10 @@ final class PendingReviewDraft {
     required String nextTimeNote,
     required bool approvedPersonalVersionCreation,
     String? acceptedReviewId,
+    List<String> photoPaths = const [],
   }) {
     _requireCanonicalUuid(clientSessionId, 'clientSessionId');
+    _validatePhotoPaths(photoPaths);
     if (acceptedReviewId != null) {
       // 서버가 리뷰를 수락했다는 사실은 개인 버전 승인 여부와 무관하다 —
       // 비승인 경로도 clear 실패 후 재진입의 중복 POST를 막는 checkpoint로 쓴다.
@@ -63,6 +65,7 @@ final class PendingReviewDraft {
       nextTimeNote: nextTimeNote,
       approvedPersonalVersionCreation: approvedPersonalVersionCreation,
       acceptedReviewId: acceptedReviewId,
+      photoPaths: List<String>.unmodifiable(photoPaths),
     );
   }
 
@@ -76,9 +79,11 @@ final class PendingReviewDraft {
     required this.nextTimeNote,
     required this.approvedPersonalVersionCreation,
     required this.acceptedReviewId,
+    required this.photoPaths,
   });
 
-  static const currentSchemaVersion = 2;
+  static const currentSchemaVersion = 3;
+  static const maximumPhotoCount = 10;
   static const minimumRating = 1;
   static const maximumRating = 5;
   static const maximumCommentCodePoints = 1000;
@@ -97,6 +102,7 @@ final class PendingReviewDraft {
     'approvedPersonalVersionCreation',
   };
   static const _v2JsonFields = <String>{..._v1JsonFields, 'acceptedReviewId'};
+  static const _v3JsonFields = <String>{..._v2JsonFields, 'photoPaths'};
 
   static const _setupSnapshotJsonFields = <String>{
     'schemaVersion',
@@ -148,12 +154,17 @@ final class PendingReviewDraft {
   final bool approvedPersonalVersionCreation;
   final String? acceptedReviewId;
 
+  /// 앱 문서 디렉토리 기준 상대경로 목록. 절대경로는 iOS 앱 컨테이너 UUID가
+  /// 업데이트·복원 때 바뀌면 무효화되므로 저장하지 않는다.
+  final List<String> photoPaths;
+
   PendingReviewDraft copyWith({
     int? rating,
     String? comment,
     String? nextTimeNote,
     bool? approvedPersonalVersionCreation,
     String? acceptedReviewId,
+    List<String>? photoPaths,
   }) {
     return PendingReviewDraft(
       clientSessionId: clientSessionId,
@@ -167,6 +178,7 @@ final class PendingReviewDraft {
           approvedPersonalVersionCreation ??
           this.approvedPersonalVersionCreation,
       acceptedReviewId: acceptedReviewId ?? this.acceptedReviewId,
+      photoPaths: photoPaths ?? this.photoPaths,
     );
   }
 
@@ -183,15 +195,17 @@ final class PendingReviewDraft {
     'nextTimeNote': nextTimeNote,
     'approvedPersonalVersionCreation': approvedPersonalVersionCreation,
     'acceptedReviewId': acceptedReviewId,
+    'photoPaths': photoPaths,
   };
 
-  /// 저장소 입력을 엄격히 읽는다. v1은 서버가 수락한 후기 ID가 없는 v2
-  /// draft로 마이그레이션한다. 각 버전의 필드가 빠지거나 추가돼도, 또는
-  /// 중첩 실행 스냅샷이 유효하지 않아도 복구값으로 사용하지 않는다.
+  /// 저장소 입력을 엄격히 읽는다. v1은 후기 접수 ID가, v2는 사진 경로가
+  /// 없는 현재 draft로 마이그레이션한다. 각 버전의 필드가 빠지거나 추가돼도,
+  /// 또는 중첩 실행 스냅샷이 유효하지 않아도 복구값으로 사용하지 않는다.
   static PendingReviewDraft? fromJson(Map<String, Object?> json) {
     final expectedFields = switch (json['schemaVersion']) {
       1 => _v1JsonFields,
-      currentSchemaVersion => _v2JsonFields,
+      2 => _v2JsonFields,
+      currentSchemaVersion => _v3JsonFields,
       _ => null,
     };
     if (expectedFields == null ||
@@ -203,6 +217,14 @@ final class PendingReviewDraft {
     if (acceptedReviewIdValue != null && acceptedReviewIdValue is! String) {
       return null;
     }
+    final photoPathValues = json.containsKey('photoPaths')
+        ? json['photoPaths']
+        : const <Object?>[];
+    if (photoPathValues is! List ||
+        photoPathValues.any((value) => value is! String)) {
+      return null;
+    }
+    final photoPaths = photoPathValues.cast<String>();
     if (json case {
       'clientSessionId': final String clientSessionId,
       'cookedAt': final String cookedAtValue,
@@ -251,6 +273,7 @@ final class PendingReviewDraft {
           nextTimeNote: nextTimeNote,
           approvedPersonalVersionCreation: approved,
           acceptedReviewId: acceptedReviewIdValue as String?,
+          photoPaths: photoPaths,
         );
       } on Object {
         return null;
@@ -511,6 +534,36 @@ const _nilUuid = '00000000-0000-0000-0000-000000000000';
 void _requireCanonicalUuid(String value, String field) {
   if (!_canonicalUuidPattern.hasMatch(value) || value == _nilUuid) {
     throw ArgumentError.value(value, field, 'must be a canonical UUID');
+  }
+}
+
+final _windowsDrivePattern = RegExp(r'^[a-zA-Z]:');
+
+void _validatePhotoPaths(List<String> photoPaths) {
+  if (photoPaths.length > PendingReviewDraft.maximumPhotoCount) {
+    throw ArgumentError.value(
+      photoPaths,
+      'photoPaths',
+      'must contain at most ${PendingReviewDraft.maximumPhotoCount} photos',
+    );
+  }
+  for (final path in photoPaths) {
+    if (path.isEmpty) {
+      throw ArgumentError.value(path, 'photoPaths', 'cannot contain empty');
+    }
+    _validateDatabaseText(path, field: 'photoPaths');
+    // 문서 디렉토리 기준 상대경로 불변식. 절대경로·상위 탈출은 복원 시점의
+    // 컨테이너 이동과 경로 조작 양쪽에서 깨지므로 생성 시점에 거부한다.
+    if (path.startsWith('/') ||
+        path.contains(r'\') ||
+        _windowsDrivePattern.hasMatch(path) ||
+        path.split('/').contains('..')) {
+      throw ArgumentError.value(
+        path,
+        'photoPaths',
+        'must be a relative path inside the app documents directory',
+      );
+    }
   }
 }
 

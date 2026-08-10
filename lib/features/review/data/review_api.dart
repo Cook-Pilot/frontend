@@ -136,6 +136,7 @@ class ReviewRepository {
     required int rating,
     required String comment,
     required String nextTimeNote,
+    List<String> photoUrls = const [],
   }) async {
     final body = <String, Object?>{
       'clientSessionId': clientSessionId,
@@ -146,6 +147,9 @@ class ReviewRepository {
       'rating': rating,
       'comment': _nullIfBlank(comment),
       'nextTimeNote': _nullIfBlank(nextTimeNote),
+      // photoUrls는 서버 선택 필드다(openapi SubmitReviewRequest, 최대 10장,
+      // 순서 보존). 사진이 없으면 기존 8필드 요청 그대로 보낸다.
+      if (photoUrls.isNotEmpty) 'photoUrls': photoUrls,
     };
 
     final response = await _translateTransportErrors(

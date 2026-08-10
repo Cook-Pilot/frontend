@@ -88,7 +88,42 @@ void main() {
     expect(requestBody['nextTimeNote'], isNull);
     expect(requestBody, isNot(contains('ingredients')));
     expect(requestBody, isNot(contains('steps')));
+    // 사진이 없으면 photoUrls 필드 자체를 보내지 않는다(선택 필드 계약).
+    expect(requestBody, isNot(contains('photoUrls')));
     expect(result.createdPersonalVersionId, isNull);
+  });
+
+  test('업로드된 사진 URL을 순서 그대로 photoUrls로 보낸다', () async {
+    late Map<String, dynamic> requestBody;
+    final repository = ReviewRepository(
+      baseUrl: baseUrl,
+      client: MockClient((request) async {
+        requestBody = jsonDecode(request.body) as Map<String, dynamic>;
+        return _jsonResponse(
+          '{"id":"50000000-0000-0000-0000-000000000001",'
+          '"createdPersonalVersionId":null}',
+          statusCode: 201,
+        );
+      }),
+    );
+
+    await repository.submit(
+      clientSessionId: sessionId,
+      cookedAt: DateTime.utc(2026, 7, 26, 1),
+      snapshot: snapshot,
+      rating: 5,
+      comment: '맛있었어요',
+      nextTimeNote: '',
+      photoUrls: const [
+        'https://cdn.example.test/b.jpg',
+        'https://cdn.example.test/a.jpg',
+      ],
+    );
+
+    expect(requestBody['photoUrls'], [
+      'https://cdn.example.test/b.jpg',
+      'https://cdn.example.test/a.jpg',
+    ]);
   });
 
   test('월 범위를 UTC 쿼리로 보내고 조리 이력을 읽는다', () async {

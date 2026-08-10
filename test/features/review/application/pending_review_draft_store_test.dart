@@ -86,17 +86,90 @@ void main() {
       final legacyJson =
           buildDraft(approvedPersonalVersionCreation: true).toJson()
             ..['schemaVersion'] = 1
-            ..remove('acceptedReviewId');
+            ..remove('acceptedReviewId')
+            ..remove('photoPaths');
 
       final restored = PendingReviewDraft.fromJson(legacyJson);
 
       expect(restored, isNotNull);
       expect(restored!.acceptedReviewId, isNull);
+      expect(restored.photoPaths, isEmpty);
       expect(
         restored.toJson(),
         containsPair('schemaVersion', PendingReviewDraft.currentSchemaVersion),
       );
       expect(restored.toJson(), containsPair('acceptedReviewId', isNull));
+    });
+
+    test('v2 draft를 사진 경로가 없는 현재 스키마로 마이그레이션한다', () {
+      final v2Json = buildDraft(acceptedReviewId: acceptedReviewId).toJson()
+        ..['schemaVersion'] = 2
+        ..remove('photoPaths');
+
+      final restored = PendingReviewDraft.fromJson(v2Json);
+
+      expect(restored, isNotNull);
+      expect(restored!.photoPaths, isEmpty);
+      expect(restored.acceptedReviewId, acceptedReviewId);
+      expect(
+        restored.toJson(),
+        containsPair('schemaVersion', PendingReviewDraft.currentSchemaVersion),
+      );
+      expect(restored.toJson(), containsPair('photoPaths', isEmpty));
+      // v2 필드 집합에 photoPaths가 끼어 있으면 필드수 초과로 거부한다.
+      expect(
+        PendingReviewDraft.fromJson(
+          buildDraft().toJson()..['schemaVersion'] = 2,
+        ),
+        isNull,
+      );
+    });
+
+    test('사진 상대경로를 JSON으로 왕복하고 손상된 경로는 생성 시점에 거부한다', () {
+      const paths = [
+        'review_photos/40000000-0000-0000-0000-000000000001/a.jpg',
+        'review_photos/40000000-0000-0000-0000-000000000001/b.jpg',
+      ];
+      final restored = PendingReviewDraft.fromJson(
+        buildDraft(photoPaths: paths).toJson(),
+      );
+      expect(restored, isNotNull);
+      expect(restored!.photoPaths, paths);
+      expect(() => restored.photoPaths.add('c.jpg'), throwsUnsupportedError);
+
+      // 상한 초과, 빈 항목, 절대경로·드라이브 문자·역슬래시·상위 탈출 거부.
+      expect(
+        () => buildDraft(
+          photoPaths: List.filled(
+            PendingReviewDraft.maximumPhotoCount + 1,
+            'review_photos/s/a.jpg',
+          ),
+        ),
+        throwsArgumentError,
+      );
+      for (final invalid in [
+        '',
+        '/etc/passwd',
+        r'C:\photos\a.jpg',
+        r'review_photos\a.jpg',
+        'review_photos/../secrets.txt',
+        '앞\u0000뒤.jpg',
+      ]) {
+        expect(
+          () => buildDraft(photoPaths: [invalid]),
+          throwsArgumentError,
+          reason: '"$invalid" 경로는 생성 시점에 거부해야 한다.',
+        );
+      }
+
+      // 복원 시 비String 항목이 섞인 목록은 통째로 거부한다.
+      expect(
+        PendingReviewDraft.fromJson(
+          buildDraft().toJson()
+            ..['photoPaths'] = <Object?>['review_photos/s/a.jpg', 1],
+        ),
+        isNull,
+      );
     });
 
     test('후기 길이는 UTF-16 길이가 아닌 Unicode code point로 검사한다', () {
@@ -648,11 +721,12 @@ void main() {
       expect(restored.acceptedReviewId, acceptedReviewId);
     });
 
-    test('저장된 v1 draft를 잃지 않고 불러와 다음 저장에서 v2로 올린다', () async {
+    test('저장된 v1 draft를 잃지 않고 불러와 다음 저장에서 현재 스키마로 올린다', () async {
       final legacyJson =
           buildDraft(approvedPersonalVersionCreation: true).toJson()
             ..['schemaVersion'] = 1
-            ..remove('acceptedReviewId');
+            ..remove('acceptedReviewId')
+            ..remove('photoPaths');
       SharedPreferences.setMockInitialValues(<String, Object>{
         PendingReviewDraftStore.storageKey: jsonEncode(legacyJson),
       });
@@ -1022,7 +1096,7 @@ void main() {
       final store = PendingReviewDraftStore();
       final validJson = buildDraft().toJson();
       final corruptedValues = <Map<String, Object?>>[
-        <String, Object?>{...validJson, 'schemaVersion': 3},
+        <String, Object?>{...validJson, 'schemaVersion': 4},
         <String, Object?>{...validJson, 'clientSessionId': 'invalid'},
         <String, Object?>{...validJson, 'rating': 6},
         <String, Object?>{
@@ -1596,6 +1670,7 @@ PendingReviewDraft buildDraft({
   String nextTimeNote = '다음에는 덜 짜게',
   bool approvedPersonalVersionCreation = false,
   String? acceptedReviewId,
+  List<String> photoPaths = const [],
 }) {
   return PendingReviewDraft(
     clientSessionId: clientSessionIdValue,
@@ -1607,6 +1682,7 @@ PendingReviewDraft buildDraft({
     nextTimeNote: nextTimeNote,
     approvedPersonalVersionCreation: approvedPersonalVersionCreation,
     acceptedReviewId: acceptedReviewId,
+    photoPaths: photoPaths,
   );
 }
 
@@ -1671,6 +1747,7 @@ Map<String, Object?> _pr35LegacyDraftJson() {
   });
   json['schemaVersion'] = 1;
   json.remove('acceptedReviewId');
+  json.remove('photoPaths');
   return json;
 }
 
