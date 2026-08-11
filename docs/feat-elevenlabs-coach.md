@@ -51,6 +51,34 @@ Gemini Live 직결 코치(only-api)는 실기기(A52)에서 self barge-in을 hal
 5. `env.dev.json`의 `ELEVENLABS_AGENT_ID`에 붙여넣고
    `flutter run --dart-define-from-file=env.dev.json`
 
+## client tools와 세션 컨텍스트
+
+음성은 ElevenLabs가 전부 소유(STT→LLM→TTS)하므로 타이머·단계 조작은
+client tool로 프론트에 위임한다 — 예전 STT 라우터가 로컬에서 처리하던
+것의 펑션 콜 버전이다(문자열 파싱 없음, LLM이 구조화된 호출을 보냄).
+에이전트가 도구를 호출하면 앱이 기존 `*FromVoice` 실행부를 재사용하고,
+결과 문장을 도구 응답(`message`)으로 돌려줘 코치가 읽어준다.
+
+| 도구 이름 | 파라미터 | 동작 |
+| --- | --- | --- |
+| `start_timer` | 없음 | 현재 단계 프리셋 타이머 시작(일시정지면 재개) |
+| `extend_timer` | `seconds`(number, LLM 프롬프트) | 타이머 시간 추가(미지정 시 60초) |
+| `pause_timer` | 없음 | 실행 중 타이머 일시정지 + OS 알람 취소 |
+| `resume_timer` | 없음 | 일시정지 타이머 재개 + OS 알람 재예약 |
+| `reset_timer` | 없음 | 프리셋 시간으로 리셋(정지 상태, 연장분 폐기) |
+| `next_step` | 없음 | 다음 단계로 이동, 새 단계 안내를 응답으로 반환 |
+
+대시보드에서 위 6개를 **Client tool**로 등록해야 하며(이름 정확히 일치,
+"Wait for response" 켬), 등록 전에는 에이전트가 말로만 응답한다.
+
+세션 컨텍스트 동기화:
+- 연결 시점 프롬프트에 현재 단계 번호·안내를 포함한다.
+- 조리 중 단계가 바뀌면(버튼·STT·next_step 모두) `contextual_update`로
+  코치에게 실시간 통지한다 — 대화 턴을 만들지 않고 배경 지식만 갱신.
+- 코치가 켜져 있어도 조리 UI(단계·타이머)를 그대로 보여준다(전체 화면
+  점유 제거). 코치 활성 중 단계 이동 시 로컬 TTS 단계 읽기는 생략한다 —
+  코치 음성과 겹치고 TTS 소리가 코치 마이크로 들어가기 때문.
+
 ## 검증
 
 - `dart format`·`flutter analyze` 0건, 기존 테스트 회귀 없음(engine 인터페이스

@@ -8,6 +8,10 @@ import '../application/cooking_coach_controller.dart';
 /// barge-in을 SDK(WebRTC/LiveKit)가 전부 처리하므로 오디오 포트가 없고,
 /// [interrupt]도 no-op이다 — 말하는 도중 목소리로 끊는 게 기본 동작이다.
 ///
+/// 에이전트가 호출하는 client tool 하나의 실행부. 수행 결과를 사용자에게
+/// 읽어줄 한국어 문장으로 반환하면 도구 응답으로 에이전트에 전달된다.
+typedef CoachToolHandler = String Function(Map<String, dynamic> args);
+
 /// 레시피 컨텍스트는 dynamic variable(`recipe_context`)로 넣는다. 대시보드
 /// 에이전트의 시스템 프롬프트가 `{{recipe_context}}`여야 한다(docs 참고).
 final class ElevenLabsCoachController implements CookingCoachEngine {
@@ -15,10 +19,18 @@ final class ElevenLabsCoachController implements CookingCoachEngine {
     required this.agentId,
     required this.buildRecipePrompt,
     required this.onStateChanged,
-    ConversationClient Function(ConversationCallbacks callbacks)? clientFactory,
+    this.toolHandlers = const {},
+    ConversationClient Function(
+      ConversationCallbacks callbacks,
+      Map<String, ClientTool> clientTools,
+    )?
+    clientFactory,
   }) : _clientFactory =
            clientFactory ??
-           ((callbacks) => ConversationClient(callbacks: callbacks));
+           ((callbacks, clientTools) => ConversationClient(
+             callbacks: callbacks,
+             clientTools: clientTools,
+           ));
 
   final String agentId;
 
@@ -26,7 +38,14 @@ final class ElevenLabsCoachController implements CookingCoachEngine {
   final String Function() buildRecipePrompt;
   final CookingCoachStateHandler onStateChanged;
 
-  final ConversationClient Function(ConversationCallbacks callbacks)
+  /// 대시보드에 정의한 client tool 이름 → 실행부. 이름이 정확히 일치해야
+  /// 호출이 도착한다(docs의 대시보드 설정 참고).
+  final Map<String, CoachToolHandler> toolHandlers;
+
+  final ConversationClient Function(
+    ConversationCallbacks callbacks,
+    Map<String, ClientTool> clientTools,
+  )
   _clientFactory;
 
   CookingCoachPhase _phase = CookingCoachPhase.idle;
@@ -65,6 +84,10 @@ final class ElevenLabsCoachController implements CookingCoachEngine {
           }
         },
       ),
+      {
+        for (final entry in toolHandlers.entries)
+          entry.key: _HandlerClientTool(entry.value),
+      },
     );
     _client = client;
 
@@ -91,6 +114,15 @@ final class ElevenLabsCoachController implements CookingCoachEngine {
   /// 음성 barge-in이 SDK에 내장돼 있어 탭 가로채기가 필요 없다.
   @override
   void interrupt() {}
+
+  /// 단계 이동 같은 진행 상황을 대화 흐름을 끊지 않고 에이전트에 주입한다.
+  @override
+  void updateContext(String text) {
+    if (_phase != CookingCoachPhase.live) {
+      return;
+    }
+    _client?.sendContextualUpdate(text);
+  }
 
   @override
   Future<void> stop() async {
@@ -148,5 +180,22 @@ final class ElevenLabsCoachController implements CookingCoachEngine {
     }
     _phase = phase;
     onStateChanged(phase, message);
+  }
+}
+
+/// [CoachToolHandler]를 SDK의 [ClientTool]로 감싼다. 결과 문장을 도구
+/// 응답으로 돌려줘 에이전트가 수행 결과를 음성으로 안내하게 한다.
+final class _HandlerClientTool implements ClientTool {
+  _HandlerClientTool(this._handler);
+
+  final CoachToolHandler _handler;
+
+  @override
+  Future<ClientToolResult?> execute(Map<String, dynamic> parameters) async {
+    try {
+      return ClientToolResult.success({'message': _handler(parameters)});
+    } catch (error) {
+      return ClientToolResult.failure('$error');
+    }
   }
 }

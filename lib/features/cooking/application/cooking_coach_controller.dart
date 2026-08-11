@@ -12,6 +12,10 @@ abstract interface class CookingCoachEngine {
 
   /// 탭 가로채기. 음성 barge-in이 내장된 엔진에서는 no-op일 수 있다.
   void interrupt();
+
+  /// 진행 상황 변화(단계 이동 등)를 대화 중인 코치에게 알린다.
+  /// 세션이 없으면 무시된다.
+  void updateContext(String text);
   Future<void> stop();
   void dispose();
 }

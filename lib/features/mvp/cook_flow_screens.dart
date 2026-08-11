@@ -1700,12 +1700,22 @@ class _CookSessionScreenState extends State<CookSessionScreen>
   late final SpeechOutputPort _speechOutput =
       widget.speechOutput ?? DemoSpeechOutput();
   // ElevenLabs WebRTC SDK — 에코 캔슬·음성 barge-in 내장.
+  // toolHandlers의 이름은 대시보드 client tool 정의와 정확히 일치해야 한다.
   late final CookingCoachEngine _coach =
       widget.coachControllerFactory?.call(_onCoachStateChanged) ??
       ElevenLabsCoachController(
         agentId: const String.fromEnvironment('ELEVENLABS_AGENT_ID'),
         buildRecipePrompt: _coachRecipePrompt,
         onStateChanged: _onCoachStateChanged,
+        toolHandlers: {
+          'start_timer': (_) => _startTimerFromVoice(),
+          'extend_timer': (args) =>
+              _extendTimerFromVoice((args['seconds'] as num?)?.toInt() ?? 0),
+          'pause_timer': (_) => _pauseTimerFromVoice(),
+          'resume_timer': (_) => _resumeTimerFromVoice(),
+          'reset_timer': (_) => _resetTimerFromVoice(),
+          'next_step': (_) => _moveCookingStep(1, fromVoice: true),
+        },
       );
   CookingCoachPhase _coachPhase = CookingCoachPhase.idle;
   String? _coachMessage;
@@ -2184,7 +2194,20 @@ class _CookSessionScreenState extends State<CookSessionScreen>
       }
       text.writeln();
     }
-    text.writeln('사용자가 지금 몇 번째 단계인지 말하면 그 단계 기준으로 안내하세요.');
+    final currentStep = recipe.steps[step - 1];
+    text
+      ..writeln('사용자는 지금 $step단계를 진행 중입니다: ${currentStep.instruction}')
+      ..writeln(
+        '단계가 바뀌면 시스템이 컨텍스트 업데이트로 알려줍니다. '
+        '항상 가장 최근에 알려진 단계를 기준으로 안내하세요.',
+      )
+      ..writeln(
+        '타이머를 시작·연장·일시정지·재개·리셋해 달라는 요청은 직접 대답하지 '
+        '말고 반드시 해당 도구(start_timer, extend_timer, pause_timer, '
+        'resume_timer, reset_timer)를 호출한 뒤, 도구가 돌려준 message를 '
+        '읽어주세요. 사용자가 이 단계를 끝냈다고 하거나 다음 단계로 가자고 '
+        '하면 next_step 도구를 호출하세요.',
+      );
     return text.toString();
   }
 
@@ -2314,21 +2337,21 @@ class _CookSessionScreenState extends State<CookSessionScreen>
     setState(() => _voiceMessage = message);
   }
 
-  void _moveCookingStep(int delta, {required bool fromVoice}) {
+  // 반환값은 코치(client tool) 경로가 도구 응답으로 읽어주는 결과 문장이다.
+  // STT·버튼 경로는 무시한다.
+  String _moveCookingStep(int delta, {required bool fromVoice}) {
     if (_completed || _completionLocked) {
-      return;
+      return '지금은 단계를 이동할 수 없어요.';
     }
     // 화면 버튼 이동도 완료 확인의 번복이다(음성 경로는 _applyVoiceIntent가
     // 이미 취소함).
     _voiceFinishPending = false;
     final target = step + delta;
     if (target < 1) {
-      _setVoiceMessage('첫 단계예요. 이전 단계가 없어요.');
-      return;
+      return _voiceResult('첫 단계예요. 이전 단계가 없어요.');
     }
     if (target > widget.recipe.steps.length) {
-      _setVoiceMessage('마지막 단계예요. 완료했다면 “조리 완료”라고 말해주세요.');
-      return;
+      return _voiceResult('마지막 단계예요. 완료했다면 “조리 완료”라고 말해주세요.');
     }
     // 화면 버튼으로 이동할 때도 진행 중인 음성 세션을 끊어, 이전 단계에서
     // 시작된 인식 결과가 새 단계에 적용되지 않도록 한다.
@@ -2347,40 +2370,59 @@ class _CookSessionScreenState extends State<CookSessionScreen>
     });
     _resetTimerForStep(keepRecordedDuration: true);
     _persist();
-    // 새 단계 발화가 마이크 정지와 이전 TTS 취소를 직렬화한다. 발화가
-    // 끝난 뒤에만 opt-in 된 핸즈프리를 다시 연다.
-    unawaited(_speakCurrentStep());
+    _notifyCoachOfCurrentStep();
+    // 코치가 살아 있으면 로컬 TTS를 내지 않는다 — 코치 음성과 겹치고,
+    // TTS 소리가 코치 마이크로 들어가 대화를 오염시킨다. 새 단계 안내는
+    // 도구 응답을 코치가 읽는 것으로 대신한다.
+    if (!_coach.isActive) {
+      // 새 단계 발화가 마이크 정지와 이전 TTS 취소를 직렬화한다. 발화가
+      // 끝난 뒤에만 opt-in 된 핸즈프리를 다시 연다.
+      unawaited(_speakCurrentStep());
+    }
+    return '$target단계로 이동했어요. 새 단계 안내: '
+        '${widget.recipe.steps[target - 1].instruction}';
   }
 
   bool get _currentStepHasTimer =>
       widget.recipe.steps[step - 1].timerDuration > Duration.zero;
 
-  void _startTimerFromVoice() {
-    if (!_currentStepHasTimer) {
-      _setVoiceMessage('현재 단계에는 설정된 타이머가 없어요.');
+  /// 코치가 살아 있으면 단계 이동을 실시간으로 알려 세션 컨텍스트를 맞춘다.
+  void _notifyCoachOfCurrentStep() {
+    if (!_coach.isActive) {
       return;
+    }
+    final current = widget.recipe.steps[step - 1];
+    _coach.updateContext(
+      '사용자가 $step단계로 이동했습니다. 현재 단계 안내: ${current.instruction}',
+    );
+  }
+
+  // 타이머 음성 조작 4종은 결과 문장을 반환한다 — STT 경로는 화면 표시로,
+  // 코치(client tool) 경로는 도구 응답으로 같은 문장을 재사용한다.
+  String _startTimerFromVoice() {
+    if (!_currentStepHasTimer) {
+      return _voiceResult('현재 단계에는 설정된 타이머가 없어요.');
     }
     _timer.sync();
     switch (_timer.status) {
       case TimerStatus.idle:
         _timer.start();
         _scheduleAlarm();
-        _setVoiceMessage('타이머를 시작했어요.');
+        return _voiceResult('타이머를 시작했어요.');
       case TimerStatus.paused:
         _timer.resume();
         _scheduleAlarm();
-        _setVoiceMessage('일시정지한 타이머를 다시 시작했어요.');
+        return _voiceResult('일시정지한 타이머를 다시 시작했어요.');
       case TimerStatus.running:
-        _setVoiceMessage('타이머가 이미 실행 중이에요.');
+        return _voiceResult('타이머가 이미 실행 중이에요.');
       case TimerStatus.elapsed:
-        _setVoiceMessage('타이머가 이미 끝났어요. 시간을 추가하거나 리셋해주세요.');
+        return _voiceResult('타이머가 이미 끝났어요. 시간을 추가하거나 리셋해주세요.');
     }
   }
 
-  void _extendTimerFromVoice(int requestedSeconds) {
+  String _extendTimerFromVoice(int requestedSeconds) {
     if (!_currentStepHasTimer) {
-      _setVoiceMessage('현재 단계에는 연장할 타이머가 없어요.');
-      return;
+      return _voiceResult('현재 단계에는 연장할 타이머가 없어요.');
     }
     final seconds = requestedSeconds > 0 ? requestedSeconds : 60;
     final extension = Duration(seconds: seconds);
@@ -2393,40 +2435,51 @@ class _CookSessionScreenState extends State<CookSessionScreen>
       _ => '$minutes분 $remainder초',
     };
     final objectParticle = remainder == 0 ? '을' : '를';
-    _setVoiceMessage('타이머에 $amount$objectParticle 추가했어요.');
+    return _voiceResult('타이머에 $amount$objectParticle 추가했어요.');
   }
 
-  void _pauseTimerFromVoice() {
+  String _pauseTimerFromVoice() {
     if (!_currentStepHasTimer) {
-      _setVoiceMessage('현재 단계에는 일시정지할 타이머가 없어요.');
-      return;
+      return _voiceResult('현재 단계에는 일시정지할 타이머가 없어요.');
     }
     _timer.sync();
     if (_timer.status != TimerStatus.running) {
-      _setVoiceMessage(
+      return _voiceResult(
         _timer.status == TimerStatus.elapsed
             ? '타이머가 이미 끝났어요.'
             : '현재 실행 중인 타이머가 없어요.',
       );
-      return;
     }
     _timer.pause();
     unawaited(_cancelScheduledAlarm());
-    _setVoiceMessage('타이머를 일시정지했어요.');
+    return _voiceResult('타이머를 일시정지했어요.');
   }
 
-  void _resumeTimerFromVoice() {
+  String _resumeTimerFromVoice() {
     if (!_currentStepHasTimer) {
-      _setVoiceMessage('현재 단계에는 다시 시작할 타이머가 없어요.');
-      return;
+      return _voiceResult('현재 단계에는 다시 시작할 타이머가 없어요.');
     }
     if (_timer.status != TimerStatus.paused) {
-      _setVoiceMessage('일시정지된 타이머가 없어요.');
-      return;
+      return _voiceResult('일시정지된 타이머가 없어요.');
     }
     _timer.resume();
     _scheduleAlarm();
-    _setVoiceMessage('타이머를 다시 시작했어요.');
+    return _voiceResult('타이머를 다시 시작했어요.');
+  }
+
+  String _resetTimerFromVoice() {
+    if (!_currentStepHasTimer) {
+      return _voiceResult('현재 단계에는 리셋할 타이머가 없어요.');
+    }
+    // 연장했던 시간까지 버리고 레시피 프리셋 시간으로 되돌린다(정지 상태).
+    _resetTimerForStep();
+    setState(() {});
+    return _voiceResult('타이머를 처음 시간으로 되돌렸어요. 시작하려면 말씀해주세요.');
+  }
+
+  String _voiceResult(String message) {
+    _setVoiceMessage(message);
+    return message;
   }
 
   Future<void> _finishCooking() async {
@@ -2865,77 +2918,9 @@ class _CookSessionScreenState extends State<CookSessionScreen>
 
   @override
   Widget build(BuildContext context) {
-    // 코치가 켜져 있는 동안은 조리 UI를 전부 가리고 Live 상태만 보여준다 —
-    // 화면 변화가 없으면 코치가 실제로 돌고 있는지 알 수 없어서다.
-    if (_coachPhase != CookingCoachPhase.idle) {
-      return PopScope(
-        key: const Key('cooking-completion-pop-scope'),
-        canPop: _allowSessionPop,
-        onPopInvokedWithResult: (didPop, _) {
-          if (!didPop && !_finishing) {
-            _closeCookingSession();
-          }
-        },
-        child: Scaffold(
-          body: SafeArea(
-            child: Center(
-              child: Padding(
-                padding: const EdgeInsets.all(20),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (_coachPhase == CookingCoachPhase.live)
-                      const Icon(
-                        Icons.headset_mic_rounded,
-                        size: 48,
-                        color: AppColors.ink,
-                      )
-                    else
-                      const SizedBox(
-                        width: 48,
-                        height: 48,
-                        child: CircularProgressIndicator(),
-                      ),
-                    const SizedBox(height: 24),
-                    Text(
-                      switch (_coachPhase) {
-                        CookingCoachPhase.connecting => 'AI 코치 연결 중…',
-                        CookingCoachPhase.live => 'AI 코치 연결됨',
-                        _ => 'AI 코치 종료 중…',
-                      },
-                      style: Theme.of(context).textTheme.headlineSmall
-                          ?.copyWith(
-                            color: AppColors.ink,
-                            fontWeight: FontWeight.w900,
-                          ),
-                    ),
-                    if (_coachMessage case final coachMessage?) ...[
-                      const SizedBox(height: 8),
-                      Text(
-                        coachMessage,
-                        key: const Key('coach-status'),
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(color: AppColors.slate),
-                      ),
-                    ],
-                    const SizedBox(height: 32),
-                    FilledButton.tonalIcon(
-                      key: const Key('coach-toggle'),
-                      onPressed: _coachPhase == CookingCoachPhase.live
-                          ? _toggleCoach
-                          : null,
-                      icon: const Icon(Icons.stop_rounded, size: 20),
-                      label: const Text('코치 끄기'),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
-      );
-    }
-
+    // 코치가 켜져 있어도 조리 UI(단계·타이머)를 그대로 보여준다 — 코치 상태는
+    // 하단 코치 버튼 라벨과 coach-status 문구가 나타낸다. 타이머 tool call이
+    // 실제로 화면 타이머를 움직이는 것을 눈으로 확인할 수 있어야 한다.
     final current = widget.recipe.steps[step - 1];
     final isLast = step == widget.recipe.steps.length;
     final hasTimer = current.timerDuration > Duration.zero;
