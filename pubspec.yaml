@@ -50,14 +50,8 @@ dependencies:
   # 조리 단계와 AI 예외 안내를 기기의 네이티브 음성 합성기로 읽는다.
   flutter_tts: ^4.2.5
 
-  # 조리 중 음성 코치가 Gemini Live API(WebSocket)에 직접 붙는다. record는
-  # 마이크 PCM(16kHz) 스트림 캡처, flutter_pcm_sound는 응답 PCM(24kHz) 재생.
-  web_socket_channel: ^3.0.0
-  record: ^7.1.1
-  flutter_pcm_sound: ^3.3.3
-
-  # ElevenLabs 음성 코치 PoC. WebRTC(LiveKit) 스택이라 에코 캔슬·음성
-  # 가로채기가 SDK에 내장돼 있다 — COACH_ENGINE=elevenlabs로 선택.
+  # 조리 중 음성 코치. WebRTC(LiveKit) 스택이라 에코 캔슬·음성 가로채기가
+  # SDK에 내장돼 있다. 마이크·재생도 SDK가 소유한다.
   elevenlabs_agents: ^0.6.1
 
   # 후기 사진 촬영·갤러리 선택(#47). 카메라 인텐트/Photo Picker를 쓰므로

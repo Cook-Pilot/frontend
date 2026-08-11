@@ -10,18 +10,14 @@ import '../cooking/application/cooking_coach_controller.dart';
 import '../cooking/application/cooking_ports.dart';
 import '../cooking/application/cooking_session_store.dart';
 import '../cooking/application/timer_controller.dart';
-import '../cooking/data/ai_live_session_api.dart';
 import '../cooking/data/exception_advice_api.dart';
 import '../cooking/data/elevenlabs_coach_controller.dart';
-import '../cooking/data/gemini_live_coach_session.dart';
 import '../cooking/domain/cooking_setup_snapshot.dart';
 import '../cooking/domain/cooking_session_state.dart';
 import '../cooking/domain/cooking_voice_router.dart';
 import '../cooking/presentation/cooking_voice_session_controller.dart';
 import '../cooking/presentation/native_speech_input.dart';
 import '../cooking/presentation/native_speech_output.dart';
-import '../cooking/presentation/pcm_coach_audio_output.dart';
-import '../cooking/presentation/record_coach_audio_input.dart';
 import '../cooking/presentation/timer_alarm_provider.dart';
 import '../cooking/presentation/widgets/help_question_sheet.dart';
 import '../recipe/data/recipe_api.dart';
@@ -1673,7 +1669,7 @@ class CookSessionScreen extends StatefulWidget {
   final bool handsFreeVoiceEnabled;
 
   /// 테스트에서 fake 포트로 구성한 AI 코치 컨트롤러를 주입한다. null이면
-  /// COACH_ENGINE에 따라 실제 엔진(Gemini 직결 또는 ElevenLabs)을 구성한다.
+  /// ElevenLabs 엔진을 구성한다.
   final CookingCoachEngine Function(CookingCoachStateHandler onStateChanged)?
   coachControllerFactory;
 
@@ -1703,29 +1699,14 @@ class _CookSessionScreenState extends State<CookSessionScreen>
       widget.advicePort ?? HttpExceptionAdvicePort();
   late final SpeechOutputPort _speechOutput =
       widget.speechOutput ?? DemoSpeechOutput();
-  // 코치 엔진 선택. elevenlabs면 WebRTC SDK(에코 캔슬·음성 barge-in 내장),
-  // 그 외에는 Gemini Live 직결(half-duplex 게이트 + 탭 가로채기).
-  static const String _coachEngineName = String.fromEnvironment('COACH_ENGINE');
-  static const bool _coachHasVoiceBargeIn = _coachEngineName == 'elevenlabs';
-  static const String _coachDisplayName = _coachHasVoiceBargeIn
-      ? 'ElevenLabs'
-      : 'Gemini Live';
-
+  // ElevenLabs WebRTC SDK — 에코 캔슬·음성 barge-in 내장.
   late final CookingCoachEngine _coach =
       widget.coachControllerFactory?.call(_onCoachStateChanged) ??
-      (_coachHasVoiceBargeIn
-          ? ElevenLabsCoachController(
-              agentId: const String.fromEnvironment('ELEVENLABS_AGENT_ID'),
-              buildRecipePrompt: _coachRecipePrompt,
-              onStateChanged: _onCoachStateChanged,
-            )
-          : CookingCoachController(
-              sessionPort: HttpAiLiveSessionPort(),
-              audioInput: RecordCoachAudioInput(),
-              audioOutput: PcmSoundCoachAudioOutput(),
-              sessionFactory: GeminiLiveCoachSession.new,
-              onStateChanged: _onCoachStateChanged,
-            ));
+      ElevenLabsCoachController(
+        agentId: const String.fromEnvironment('ELEVENLABS_AGENT_ID'),
+        buildRecipePrompt: _coachRecipePrompt,
+        onStateChanged: _onCoachStateChanged,
+      );
   CookingCoachPhase _coachPhase = CookingCoachPhase.idle;
   String? _coachMessage;
   late final CookingVoiceSessionController _voiceSession;
@@ -2918,10 +2899,9 @@ class _CookSessionScreenState extends State<CookSessionScreen>
                     const SizedBox(height: 24),
                     Text(
                       switch (_coachPhase) {
-                        CookingCoachPhase.connecting =>
-                          '$_coachDisplayName 연결 중…',
-                        CookingCoachPhase.live => '$_coachDisplayName 연결됨',
-                        _ => '$_coachDisplayName 종료 중…',
+                        CookingCoachPhase.connecting => 'AI 코치 연결 중…',
+                        CookingCoachPhase.live => 'AI 코치 연결됨',
+                        _ => 'AI 코치 종료 중…',
                       },
                       style: Theme.of(context).textTheme.headlineSmall
                           ?.copyWith(
@@ -2939,19 +2919,6 @@ class _CookSessionScreenState extends State<CookSessionScreen>
                       ),
                     ],
                     const SizedBox(height: 32),
-                    // Gemini 경로는 목소리로 코치 말을 못 끊는다(에코 게이트) —
-                    // 탭이 가로채기다. ElevenLabs는 음성 barge-in이 내장이라 숨긴다.
-                    if (!_coachHasVoiceBargeIn) ...[
-                      FilledButton.icon(
-                        key: const Key('coach-interrupt'),
-                        onPressed: _coachPhase == CookingCoachPhase.live
-                            ? _coach.interrupt
-                            : null,
-                        icon: const Icon(Icons.front_hand_rounded, size: 20),
-                        label: const Text('말 멈추고 끼어들기'),
-                      ),
-                      const SizedBox(height: 12),
-                    ],
                     FilledButton.tonalIcon(
                       key: const Key('coach-toggle'),
                       onPressed: _coachPhase == CookingCoachPhase.live

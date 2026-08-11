@@ -21,8 +21,10 @@ Gemini Live 직결 코치(only-api)는 실기기(A52)에서 self barge-in을 hal
 ## 최종 결정
 
 - 브랜치는 only-api에서 파생. `CookingCoachEngine` 인터페이스를 추출해 화면이
-  엔진을 갈아 끼운다 — Gemini 경로는 그대로 두고 컴파일 타임 선택:
-  `--dart-define COACH_ENGINE=elevenlabs` (기본값은 Gemini 직결).
+  엔진을 갈아 끼운다. PoC 통과 후 이 브랜치는 **ElevenLabs 단일 엔진**으로
+  정리 — Gemini 직결 경로(세션·오디오 포트·record/flutter_pcm_sound/
+  web_socket_channel 의존성)는 삭제했고 only-api 브랜치에 보존돼 있다.
+  `COACH_ENGINE` dart-define도 제거.
 - `cooking/data/elevenlabs_coach_controller.dart` — `elevenlabs_agents` SDK 래퍼.
   오디오 포트 없음(SDK가 마이크·재생·AEC 소유), `interrupt()`는 no-op(음성
   barge-in 내장), 화면의 탭 가로채기 버튼은 이 엔진에서 숨긴다.
