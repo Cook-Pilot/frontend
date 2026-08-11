@@ -56,6 +56,10 @@ dependencies:
   record: ^7.1.1
   flutter_pcm_sound: ^3.3.3
 
+  # ElevenLabs 음성 코치 PoC. WebRTC(LiveKit) 스택이라 에코 캔슬·음성
+  # 가로채기가 SDK에 내장돼 있다 — COACH_ENGINE=elevenlabs로 선택.
+  elevenlabs_agents: ^0.6.1
+
   # 후기 사진 촬영·갤러리 선택(#47). 카메라 인텐트/Photo Picker를 쓰므로
   # Android 매니페스트에 CAMERA 권한을 선언하지 않는다(선언하면 오히려
   # 런타임 승인 없이는 촬영이 거부됨).

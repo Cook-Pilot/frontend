@@ -8,13 +8,25 @@ enum CookingCoachPhase { idle, connecting, live, stopping }
 typedef CookingCoachStateHandler =
     void Function(CookingCoachPhase phase, String? message);
 
+/// 조리 화면이 코치 구현(Gemini 직결·ElevenLabs 등)을 갈아 끼우는 경계.
+abstract interface class CookingCoachEngine {
+  CookingCoachPhase get phase;
+  bool get isActive;
+  Future<void> start(String recipeId);
+
+  /// 탭 가로채기. 음성 barge-in이 내장된 엔진에서는 no-op일 수 있다.
+  void interrupt();
+  Future<void> stop();
+  void dispose();
+}
+
 /// AI 코치 세션 하나의 수명을 소유한다: 토큰 발급 → Live 연결 → 마이크
 /// 스트림 업로드 → 응답 재생. barge-in(interrupted)이 오면 재생 큐를 비운다.
 ///
 /// 토큰이 1회용이라 세션도 1회용이다 — start마다 [sessionFactory]로 새
 /// 세션을 만든다. 마이크는 하나뿐이므로 호출자(조리 화면)가 코치 활성 중
 /// 명령 STT를 끄는 책임을 진다.
-final class CookingCoachController {
+final class CookingCoachController implements CookingCoachEngine {
   CookingCoachController({
     required this.sessionPort,
     required this.audioInput,
@@ -61,10 +73,13 @@ final class CookingCoachController {
   /// — 버리지 않으면 서버가 이어 보내는 나머지가 다시 재생돼 말이 되살아난다.
   bool _dropAudioUntilTurnBoundary = false;
 
+  @override
   CookingCoachPhase get phase => _phase;
 
+  @override
   bool get isActive => _phase != CookingCoachPhase.idle;
 
+  @override
   Future<void> start(String recipeId) async {
     if (_disposed || _phase != CookingCoachPhase.idle) {
       return;
@@ -156,6 +171,7 @@ final class CookingCoachController {
 
   /// 탭 가로채기: 코치 발화를 즉시 멈추고 마이크를 연다. 서버가 아직 이번
   /// 턴을 스트리밍 중이면 턴 경계까지 수신 오디오를 버린다.
+  @override
   void interrupt() {
     if (_disposed || _phase != CookingCoachPhase.live) {
       return;
@@ -167,6 +183,7 @@ final class CookingCoachController {
     unawaited(audioOutput.flush());
   }
 
+  @override
   Future<void> stop() async {
     if (_phase == CookingCoachPhase.idle ||
         _phase == CookingCoachPhase.stopping) {
@@ -177,6 +194,7 @@ final class CookingCoachController {
     await _teardown(generation, message: 'AI 코치를 껐어요.');
   }
 
+  @override
   void dispose() {
     if (_disposed) {
       return;
