@@ -1707,6 +1707,9 @@ class _CookSessionScreenState extends State<CookSessionScreen>
   // 그 외에는 Gemini Live 직결(half-duplex 게이트 + 탭 가로채기).
   static const String _coachEngineName = String.fromEnvironment('COACH_ENGINE');
   static const bool _coachHasVoiceBargeIn = _coachEngineName == 'elevenlabs';
+  static const String _coachDisplayName = _coachHasVoiceBargeIn
+      ? 'ElevenLabs'
+      : 'Gemini Live';
 
   late final CookingCoachEngine _coach =
       widget.coachControllerFactory?.call(_onCoachStateChanged) ??
@@ -2915,9 +2918,10 @@ class _CookSessionScreenState extends State<CookSessionScreen>
                     const SizedBox(height: 24),
                     Text(
                       switch (_coachPhase) {
-                        CookingCoachPhase.connecting => 'Gemini Live 연결 중…',
-                        CookingCoachPhase.live => 'Gemini Live 연결됨',
-                        _ => 'Gemini Live 종료 중…',
+                        CookingCoachPhase.connecting =>
+                          '$_coachDisplayName 연결 중…',
+                        CookingCoachPhase.live => '$_coachDisplayName 연결됨',
+                        _ => '$_coachDisplayName 종료 중…',
                       },
                       style: Theme.of(context).textTheme.headlineSmall
                           ?.copyWith(

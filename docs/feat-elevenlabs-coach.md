@@ -26,18 +26,25 @@ Gemini Live 직결 코치(only-api)는 실기기(A52)에서 self barge-in을 hal
 - `cooking/data/elevenlabs_coach_controller.dart` — `elevenlabs_agents` SDK 래퍼.
   오디오 포트 없음(SDK가 마이크·재생·AEC 소유), `interrupt()`는 no-op(음성
   barge-in 내장), 화면의 탭 가로채기 버튼은 이 엔진에서 숨긴다.
-- 레시피 컨텍스트는 세션 `overrides.agent.prompt`로 주입(화면이 Recipe로 생성).
-  Gemini 경로의 "백엔드가 토큰에 잠금"과 달리 클라이언트 주입이다 — PoC 한정
-  타협이고, 정식 도입 시 백엔드 conversation token 발급으로 옮긴다.
+- 레시피 컨텍스트는 dynamic variable(`recipe_context`)로 주입(화면이 Recipe로
+  생성). 원래 `overrides.agent.prompt`로 설계했으나 **SDK 0.6.1 버그**로 전환:
+  API 규격은 `agent.prompt`가 객체(`{"prompt": "..."}`)인데 SDK가 문자열로
+  보내서 서버가 세션을 1008 validation error로 즉시 끊는다(WebSocket 직접
+  접속 프로브로 실측 확정). dynamic variable 경로는 SDK가 규격대로 보낸다.
+- 따라서 대시보드 에이전트의 시스템 프롬프트는 `{{recipe_context}}` 한 줄이어야
+  한다. Gemini 경로의 "백엔드가 토큰에 잠금"과 달리 클라이언트 주입이다 —
+  PoC 한정 타협이고, 정식 도입 시 백엔드 conversation token 발급으로 옮긴다.
 - 에이전트 ID는 `--dart-define ELEVENLABS_AGENT_ID=...`(env.dev.json, 미커밋).
+- 코치 화면 상태 문구는 엔진 이름을 따라간다(ElevenLabs/Gemini Live).
 
 ## ElevenLabs 대시보드 설정 (수동, 1회)
 
 1. https://elevenlabs.io 가입 → Agents → Create agent
 2. 설정: LLM(Gemini Flash 계열 권장), 언어 `Korean`, 목소리 선택,
    first message는 짧은 한국어 인사
-3. **Security(또는 Advanced) → Overrides에서 system prompt override 허용** —
-   안 켜면 레시피 컨텍스트 주입이 조용히 무시된다
+3. **시스템 프롬프트를 `{{recipe_context}}` 한 줄로 교체** — 앱이 세션마다
+   이 dynamic variable에 레시피 전문을 넣는다. Security 탭의 override 허용
+   토글은 필요 없다(SDK 버그로 override 경로를 쓰지 않음, 위 참고).
 4. PoC는 public agent로 시작(인증 없음) → agent_id 복사
 5. `env.dev.json`의 `ELEVENLABS_AGENT_ID`에 붙여넣고
    `flutter run --dart-define-from-file=env.dev.json`
@@ -48,13 +55,20 @@ Gemini Live 직결 코치(only-api)는 실기기(A52)에서 self barge-in을 hal
   추출은 기존 팩토리 주입과 호환).
 - ElevenLabs 어댑터는 SDK 콘크리트 클래스 래핑이라 단위 테스트 없이 실기기
   검증으로 대신한다(PoC). 정식 도입 시 세션 경계를 포트로 추출해 테스트 추가.
-- 실기기 E2E(에이전트 생성 후): 연결 → 한국어 대화 → **말하는 도중 음성으로
-  끊기(핵심 검증 항목)** → 화면 이탈 시 자동 종료.
+- 실기기 E2E(A52, 2026-08-11) **통과**: 연결 → 인사말 → 레시피 인지 →
+  **말하는 도중 음성으로 끊기(barge-in)** → 코치 끄기 정상 종료.
+- SDK 버그 진단 과정: override 미전송 시 세션 유지·전송 시 즉시 종료로 격리
+  → `wss://api.elevenlabs.io/v1/convai/conversation`에 직접 붙는 Dart 프로브로
+  객체형 prompt는 통과, SDK와 같은 문자열형은 1008 거절임을 재현.
 
 ## 이후 작업에서 지킬 것
 
 - 분당 과금 — 무료 티어 15분/월. 테스트 세션은 짧게 끊을 것.
 - PoC 판정 기준: 음성 barge-in 체감 + 한국어 턴테이킹 품질이 Gemini 경로 대비
   확실히 나은가. 아니면 LiveKit+Gemini(대안 2)로 회귀.
-- 정식 도입 시: private agent + 백엔드 conversation token 발급, 프롬프트 주입을
-  서버로 이동, 세션 결과(대화 로그)를 리뷰 흐름에 연결할지 결정.
+- 정식 도입 시: private agent + 백엔드 conversation token 발급(ElevenLabs
+  API key는 서버에만), 사용자별 사용량 제한. dynamic variable은 토큰에 잠기지
+  않고 클라이언트가 보내는 구조라, 컨텍스트 변조가 문제되면 커스텀 LLM 서버
+  경유를 검토. 세션 결과(대화 로그)를 리뷰 흐름에 연결할지 결정.
+- SDK가 prompt override를 객체로 보내도록 고쳐지면(>0.6.1) override 경로 복귀
+  검토 — 그때는 대시보드 Security의 프롬프트 override 허용 토글이 다시 필요.

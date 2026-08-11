@@ -8,8 +8,8 @@ import '../application/cooking_coach_controller.dart';
 /// barge-in을 SDK(WebRTC/LiveKit)가 전부 처리하므로 오디오 포트가 없고,
 /// [interrupt]도 no-op이다 — 말하는 도중 목소리로 끊는 게 기본 동작이다.
 ///
-/// 레시피 컨텍스트는 세션 overrides의 시스템 프롬프트로 넣는다. 대시보드
-/// 에이전트 설정에서 prompt override가 허용돼 있어야 한다(docs 참고).
+/// 레시피 컨텍스트는 dynamic variable(`recipe_context`)로 넣는다. 대시보드
+/// 에이전트의 시스템 프롬프트가 `{{recipe_context}}`여야 한다(docs 참고).
 final class ElevenLabsCoachController implements CookingCoachEngine {
   ElevenLabsCoachController({
     required this.agentId,
@@ -69,11 +69,13 @@ final class ElevenLabsCoachController implements CookingCoachEngine {
     _client = client;
 
     try {
+      // prompt override 대신 dynamic variable로 주입한다. SDK 0.6.1이
+      // prompt override를 API 규격(객체)이 아닌 문자열로 보내 서버가
+      // 세션을 거절하는 버그가 있다(1008 validation error 실측).
+      // 대시보드 에이전트의 시스템 프롬프트가 {{recipe_context}}여야 한다.
       await client.startSession(
         agentId: agentId,
-        overrides: ConversationOverrides(
-          agent: AgentOverrides(prompt: buildRecipePrompt(), language: 'ko'),
-        ),
+        dynamicVariables: {'recipe_context': buildRecipePrompt()},
       );
       if (!_isCurrent(generation)) {
         return;
