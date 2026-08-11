@@ -6,16 +6,21 @@ import 'package:flutter/services.dart';
 
 import '../../app/app_theme.dart';
 import '../../core/identity/uuid_v4.dart';
+import '../cooking/application/cooking_coach_controller.dart';
 import '../cooking/application/cooking_ports.dart';
 import '../cooking/application/cooking_session_store.dart';
 import '../cooking/application/timer_controller.dart';
+import '../cooking/data/ai_live_session_api.dart';
 import '../cooking/data/exception_advice_api.dart';
+import '../cooking/data/gemini_live_coach_session.dart';
 import '../cooking/domain/cooking_setup_snapshot.dart';
 import '../cooking/domain/cooking_session_state.dart';
 import '../cooking/domain/cooking_voice_router.dart';
 import '../cooking/presentation/cooking_voice_session_controller.dart';
 import '../cooking/presentation/native_speech_input.dart';
 import '../cooking/presentation/native_speech_output.dart';
+import '../cooking/presentation/pcm_coach_audio_output.dart';
+import '../cooking/presentation/record_coach_audio_input.dart';
 import '../cooking/presentation/timer_alarm_provider.dart';
 import '../cooking/presentation/widgets/help_question_sheet.dart';
 import '../recipe/data/recipe_api.dart';
@@ -1632,6 +1637,7 @@ class CookSessionScreen extends StatefulWidget {
     this.speechInput,
     this.speechOutput,
     this.handsFreeVoiceEnabled = false,
+    this.coachControllerFactory,
     this.pendingReviewDraftStore,
     this.cookingSessionStore,
   });
@@ -1665,6 +1671,13 @@ class CookSessionScreen extends StatefulWidget {
   /// false이면 마이크를 자동으로 열지 않고 기존 말하기 버튼으로만 시작한다.
   final bool handsFreeVoiceEnabled;
 
+  /// 테스트에서 fake 포트로 구성한 AI 코치 컨트롤러를 주입한다. null이면
+  /// 실제 백엔드 토큰 발급 + 네이티브 오디오 어댑터로 구성한다.
+  final CookingCoachController Function(
+    CookingCoachStateHandler onStateChanged,
+  )?
+  coachControllerFactory;
+
   /// 테스트에서 완료 draft 저장의 성공·실패·지연을 제어하기 위한 주입 지점.
   final PendingReviewDraftGateway? pendingReviewDraftStore;
 
@@ -1691,6 +1704,17 @@ class _CookSessionScreenState extends State<CookSessionScreen>
       widget.advicePort ?? HttpExceptionAdvicePort();
   late final SpeechOutputPort _speechOutput =
       widget.speechOutput ?? DemoSpeechOutput();
+  late final CookingCoachController _coach =
+      widget.coachControllerFactory?.call(_onCoachStateChanged) ??
+      CookingCoachController(
+        sessionPort: HttpAiLiveSessionPort(),
+        audioInput: RecordCoachAudioInput(),
+        audioOutput: PcmSoundCoachAudioOutput(),
+        sessionFactory: GeminiLiveCoachSession.new,
+        onStateChanged: _onCoachStateChanged,
+      );
+  CookingCoachPhase _coachPhase = CookingCoachPhase.idle;
+  String? _coachMessage;
   late final CookingVoiceSessionController _voiceSession;
   static const CookingVoiceRouter _voiceRouter = CookingVoiceRouter();
   String? _helpAnswer;
@@ -1934,6 +1958,12 @@ class _CookSessionScreenState extends State<CookSessionScreen>
     if (state != AppLifecycleState.resumed && _speechOutputActive) {
       unawaited(_stopSpeechOutput());
     }
+    // 화면을 벗어나면 마이크 스트리밍을 계속 열어 두지 않는다.
+    if (state != AppLifecycleState.resumed &&
+        state != AppLifecycleState.inactive &&
+        _coach.isActive) {
+      unawaited(_coach.stop());
+    }
     if (state == AppLifecycleState.resumed) {
       if (_alarmPermissionFlowEndedWhileBackgrounded) {
         _alarmPermissionFlowActive = false;
@@ -1952,6 +1982,7 @@ class _CookSessionScreenState extends State<CookSessionScreen>
     WidgetsBinding.instance.removeObserver(this);
     _timer.removeListener(_onTimerChanged);
     _voiceSession.dispose();
+    _coach.dispose();
     _speechOutput.dispose();
     unawaited(_cancelScheduledAlarm());
     _timer.dispose();
@@ -2093,6 +2124,10 @@ class _CookSessionScreenState extends State<CookSessionScreen>
   }
 
   void _toggleSpeechInput() {
+    if (_coach.isActive) {
+      setState(() => _voiceMessage = 'AI 코치를 끄면 말하기 버튼을 쓸 수 있어요.');
+      return;
+    }
     if (_speechOutputActive) {
       if (_manualSpeechStartPending) {
         _manualSpeechStartPending = false;
@@ -2113,6 +2148,34 @@ class _CookSessionScreenState extends State<CookSessionScreen>
     }
     _manualSpeechStartPending = true;
     _startPendingSpeechIfReady();
+  }
+
+  void _onCoachStateChanged(CookingCoachPhase phase, String? message) {
+    if (_disposed || !mounted) {
+      return;
+    }
+    setState(() {
+      _coachPhase = phase;
+      if (message != null) {
+        _coachMessage = message;
+      }
+    });
+  }
+
+  /// 마이크는 하나뿐이다 — 코치를 켜기 전에 명령 STT와 TTS를 먼저 내리고,
+  /// 코치가 꺼질 때까지 핸즈프리 재가동도 막는다.
+  void _toggleCoach() {
+    if (_coach.isActive) {
+      unawaited(_coach.stop());
+      return;
+    }
+    _cancelPendingSpeechStarts();
+    _voiceSession.disableAutomaticRearm();
+    if (_speechIsActive) {
+      unawaited(_deactivateSpeechInput(forceStop: true));
+    }
+    unawaited(_stopSpeechOutput(completesStartup: true));
+    unawaited(_coach.start(widget.recipe.id));
   }
 
   void _onSpeechStateChanged(_CookSpeechPhase phase, String? message) {
@@ -2380,6 +2443,7 @@ class _CookSessionScreenState extends State<CookSessionScreen>
     _helpRequestVersion++;
     _cancelPendingSpeechStarts();
     _voiceSession.complete();
+    unawaited(_coach.stop());
     try {
       // 후기 화면으로 넘어가기 전에 완료 사실과 실행 snapshot을 먼저
       // 보존한다. 실패하면 진행 중 세션을 그대로 둔 채 같은 draft로 재시도한다.
@@ -2775,6 +2839,87 @@ class _CookSessionScreenState extends State<CookSessionScreen>
 
   @override
   Widget build(BuildContext context) {
+    // 코치가 켜져 있는 동안은 조리 UI를 전부 가리고 Live 상태만 보여준다 —
+    // 화면 변화가 없으면 코치가 실제로 돌고 있는지 알 수 없어서다.
+    if (_coachPhase != CookingCoachPhase.idle) {
+      return PopScope(
+        key: const Key('cooking-completion-pop-scope'),
+        canPop: _allowSessionPop,
+        onPopInvokedWithResult: (didPop, _) {
+          if (!didPop && !_finishing) {
+            _closeCookingSession();
+          }
+        },
+        child: Scaffold(
+          body: SafeArea(
+            child: Center(
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (_coachPhase == CookingCoachPhase.live)
+                      const Icon(
+                        Icons.headset_mic_rounded,
+                        size: 48,
+                        color: AppColors.ink,
+                      )
+                    else
+                      const SizedBox(
+                        width: 48,
+                        height: 48,
+                        child: CircularProgressIndicator(),
+                      ),
+                    const SizedBox(height: 24),
+                    Text(
+                      switch (_coachPhase) {
+                        CookingCoachPhase.connecting => 'Gemini Live 연결 중…',
+                        CookingCoachPhase.live => 'Gemini Live 연결됨',
+                        _ => 'Gemini Live 종료 중…',
+                      },
+                      style: Theme.of(context).textTheme.headlineSmall
+                          ?.copyWith(
+                            color: AppColors.ink,
+                            fontWeight: FontWeight.w900,
+                          ),
+                    ),
+                    if (_coachMessage case final coachMessage?) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        coachMessage,
+                        key: const Key('coach-status'),
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(color: AppColors.slate),
+                      ),
+                    ],
+                    const SizedBox(height: 32),
+                    // 목소리로는 코치 말을 끊을 수 없다(에코 게이트) — 탭이 가로채기다.
+                    FilledButton.icon(
+                      key: const Key('coach-interrupt'),
+                      onPressed: _coachPhase == CookingCoachPhase.live
+                          ? _coach.interrupt
+                          : null,
+                      icon: const Icon(Icons.front_hand_rounded, size: 20),
+                      label: const Text('말 멈추고 끼어들기'),
+                    ),
+                    const SizedBox(height: 12),
+                    FilledButton.tonalIcon(
+                      key: const Key('coach-toggle'),
+                      onPressed: _coachPhase == CookingCoachPhase.live
+                          ? _toggleCoach
+                          : null,
+                      icon: const Icon(Icons.stop_rounded, size: 20),
+                      label: const Text('코치 끄기'),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
     final current = widget.recipe.steps[step - 1];
     final isLast = step == widget.recipe.steps.length;
     final hasTimer = current.timerDuration > Duration.zero;
@@ -2980,8 +3125,42 @@ class _CookSessionScreenState extends State<CookSessionScreen>
                     label: const Text('직접 입력'),
                   ),
                 ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: FilledButton.tonalIcon(
+                    key: const Key('coach-toggle'),
+                    onPressed:
+                        _completionLocked ||
+                            _coachPhase == CookingCoachPhase.connecting ||
+                            _coachPhase == CookingCoachPhase.stopping
+                        ? null
+                        : _toggleCoach,
+                    icon: Icon(
+                      _coach.isActive
+                          ? Icons.stop_rounded
+                          : Icons.headset_mic_rounded,
+                      size: 20,
+                    ),
+                    label: Text(switch (_coachPhase) {
+                      CookingCoachPhase.idle => 'AI 코치',
+                      CookingCoachPhase.connecting => '연결 중…',
+                      CookingCoachPhase.live => '코치 끄기',
+                      CookingCoachPhase.stopping => '끄는 중…',
+                    }),
+                  ),
+                ),
               ],
             ),
+            if (_coachMessage case final coachMessage?) ...[
+              const SizedBox(height: 8),
+              Text(
+                coachMessage,
+                key: const Key('coach-status'),
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
             const SizedBox(height: 8),
             Text(
               'AI 질문은 답변 생성을 위해 Google Gemini로 전송될 수 있어요. '

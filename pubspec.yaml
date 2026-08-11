@@ -50,6 +50,12 @@ dependencies:
   # 조리 단계와 AI 예외 안내를 기기의 네이티브 음성 합성기로 읽는다.
   flutter_tts: ^4.2.5
 
+  # 조리 중 음성 코치가 Gemini Live API(WebSocket)에 직접 붙는다. record는
+  # 마이크 PCM(16kHz) 스트림 캡처, flutter_pcm_sound는 응답 PCM(24kHz) 재생.
+  web_socket_channel: ^3.0.0
+  record: ^7.1.1
+  flutter_pcm_sound: ^3.3.3
+
   # 후기 사진 촬영·갤러리 선택(#47). 카메라 인텐트/Photo Picker를 쓰므로
   # Android 매니페스트에 CAMERA 권한을 선언하지 않는다(선언하면 오히려
   # 런타임 승인 없이는 촬영이 거부됨).
