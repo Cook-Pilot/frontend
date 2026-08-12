@@ -58,6 +58,10 @@ dependencies:
   # 후기 사진을 앱 문서 디렉토리에 보관해 앱 재시작 후에도 복원한다.
   path_provider: ^2.1.5
 
+  # 로그인 세션 토큰 보관. SharedPreferences 는 평문이라 토큰에는 쓰지 않는다
+  # (Android KeyStore / iOS Keychain 사용).
+  flutter_secure_storage: ^9.2.4
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

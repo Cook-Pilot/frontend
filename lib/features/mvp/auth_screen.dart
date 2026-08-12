@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../app/app_theme.dart';
+import '../auth/presentation/developer_login.dart';
 import '../user/data/beta_user_repository.dart';
 import 'main_shell.dart';
 import 'mvp_widgets.dart';
@@ -31,24 +32,28 @@ class AuthScreen extends StatelessWidget {
       children: [
         const SizedBox(height: 40),
         Center(
-          child: Container(
-            width: 64,
-            height: 64,
-            decoration: BoxDecoration(
-              color: AppColors.accent,
-              borderRadius: BorderRadius.circular(20),
-              boxShadow: const [
-                BoxShadow(
-                  color: AppColors.shadow,
-                  blurRadius: 18,
-                  offset: Offset(0, 6),
-                ),
-              ],
-            ),
-            child: const Icon(
-              Icons.local_fire_department_rounded,
-              color: Colors.white,
-              size: 36,
+          // 로고 7번 연타 = 개발자 로그인 입구. 방어는 서버 시크릿이 한다.
+          child: DeveloperLoginGate(
+            onLoggedIn: () => _openHomeDirectly(context),
+            child: Container(
+              width: 64,
+              height: 64,
+              decoration: BoxDecoration(
+                color: AppColors.accent,
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: const [
+                  BoxShadow(
+                    color: AppColors.shadow,
+                    blurRadius: 18,
+                    offset: Offset(0, 6),
+                  ),
+                ],
+              ),
+              child: const Icon(
+                Icons.local_fire_department_rounded,
+                color: Colors.white,
+                size: 36,
+              ),
             ),
           ),
         ),
@@ -133,6 +138,15 @@ class AuthScreen extends StatelessWidget {
           child: const Text('계정이 없나요? 회원가입'),
         ),
       ],
+    );
+  }
+
+  /// 이미 로그인된 상태에서 홈으로. 익명 발급을 타지 않는다.
+  void _openHomeDirectly(BuildContext context) {
+    unawaited(
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute<void>(builder: (_) => const MainShell()),
+      ),
     );
   }
 
