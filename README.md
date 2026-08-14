@@ -11,7 +11,7 @@ Cook-Pilot의 Frontend 레포입니다.
 
 - 로그인 / 게스트 진입
 - 입맛 프로필 콜드스타트 화면
-- 홈 / 검색 / 레시피 메모리 탭
+- 홈 / 서버 검색·페이지네이션 / 레시피 메모리 탭
 - 레시피 상세 / 조리 전 설정
 - 조리 중 단계 안내 / 타이머 / 음성 코치 자리 표시
 - 조리 후 리뷰 / 저장 방식 선택
@@ -23,6 +23,7 @@ Cook-Pilot의 Frontend 레포입니다.
 - [모션 정리 명세서](docs/feat-motion.md)
 - [조리 세션 저장·복원 명세서](docs/feat-session-restore.md)
 - [음성 폴백 도움 입력 명세서](docs/feat-bottom-fallback.md)
+- [레시피 카탈로그 검색·페이지네이션 명세서](docs/feat-catalog-search-pagination.md)
 
 ## 개발 환경
 
