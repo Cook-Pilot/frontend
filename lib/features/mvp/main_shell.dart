@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../app/app_theme.dart';
+import '../../design/cookpilot_spacing.dart';
 import '../auth/presentation/account_sheet.dart';
 import '../cooking/application/cooking_session_store.dart';
 import '../cooking/data/exception_advice_api.dart';
@@ -767,8 +768,11 @@ class _RecipePagination extends StatelessWidget {
     }) {
       return IconButton(
         tooltip: tooltip,
-        visualDensity: VisualDensity.compact,
-        constraints: const BoxConstraints.tightFor(width: 40, height: 40),
+        visualDensity: VisualDensity.standard,
+        constraints: const BoxConstraints.tightFor(
+          width: CookPilotSpacing.minimumTapTarget,
+          height: CookPilotSpacing.minimumTapTarget,
+        ),
         onPressed: enabled ? () => onPageSelected(targetPage) : null,
         icon: Icon(icon),
       );

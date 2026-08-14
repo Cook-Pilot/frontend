@@ -25,6 +25,9 @@ void main() {
     );
     expect(find.text('검색 결과 103'), findsOneWidget);
     expect(find.text('1 / 12'), findsOneWidget);
+    final nextFiveSize = tester.getSize(find.byTooltip('5페이지 다음'));
+    expect(nextFiveSize.width, greaterThanOrEqualTo(48));
+    expect(nextFiveSize.height, greaterThanOrEqualTo(48));
 
     await tester.tap(find.byTooltip('5페이지 다음'));
     await tester.pumpAndSettle();
