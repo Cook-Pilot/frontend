@@ -149,11 +149,13 @@ class AuthScreen extends StatelessWidget {
       return;
     }
 
-    // 프로필 확인 실패가 홈 진입을 막지 않도록 한다.
+    // 프로필 확인 실패나 지연이 홈 진입을 막지 않도록 짧은 타임아웃을 쓴다.
     // 온보딩은 다음 로그인에서 다시 시도하면 된다.
     var needsOnboarding = false;
     try {
-      needsOnboarding = await UserProfileRepository().needsOnboarding();
+      needsOnboarding = await UserProfileRepository(
+        requestTimeout: const Duration(seconds: 3),
+      ).needsOnboarding();
     } on Object {
       // 의도적으로 무시.
     }

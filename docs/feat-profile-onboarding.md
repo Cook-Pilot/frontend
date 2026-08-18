@@ -31,8 +31,10 @@
     (다음 로그인에서 온보딩이 다시 뜰 뿐이다).
   - 확인: PATCH 성공 시 홈, 실패 시 SnackBar 후 화면 유지.
 - `lib/features/mvp/auth_screen.dart`
-  - `_openHome`: `ensureUser()` 후 `needsOnboarding()` 분기. 프로필 조회 실패는
-    홈 진입을 막지 않는다(온보딩은 다음 로그인에서 다시 시도).
+  - `_openHome`: `ensureUser()` 후 `needsOnboarding()` 분기. 프로필 조회 실패나
+    지연은 홈 진입을 막지 않는다(온보딩은 다음 로그인에서 다시 시도).
+    이 호출만 `requestTimeout: 3초`로 줄였다 — 기본 8초면 서버가 죽었을 때
+    로그인 직후 8초를 멈춘 채 기다리게 된다.
 
 ## 검증
 
@@ -44,6 +46,14 @@
   허용값 밖(`gender: "X"`)은 400 확인
 - `flutter analyze` 0 issues, `dart format` clean
 - `flutter test`는 WSL 환경의 파일락 문제로 Windows 로컬에서 실행
+
+## 코파일럿 리뷰 대응 (PR #55)
+
+- `jsonEncode({'gender': ?gender, ...})`가 문법 오류라는 지적은 오탐.
+  Dart 3.9 null-aware element이고 SDK는 `^3.12.2`, `flutter analyze` 0 issues.
+- `_openHome`의 온보딩 분기 위젯 테스트 부재 지적은 유효하나 이번 PR에서는 보류.
+  `AuthScreen`이 리포지토리를 내부에서 생성해 주입 지점부터 만들어야 하는데,
+  분기 로직 3줄 대비 인프라 비용이 크다. auth_screen을 다음에 손댈 때 주입 도입.
 
 ## 이후 작업에서 지킬 것
 
