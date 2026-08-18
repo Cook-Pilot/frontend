@@ -37,6 +37,12 @@
 - 전체 405개 통과, `flutter analyze` 무경고
 - 실제 개발자 로그인은 서버에 `DEV_LOGIN_SECRET` 설정 후 확인 필요
 
+## openapi 사본 갱신
+
+`docs/openapi.json` 을 backend main 과 맞췄다(17 → 20개). 이 브랜치가 쓰는 `POST /auth/dev`·`/auth/{provider}` 가 스펙에 들어오고, 앞서 머지된 `reviews/photos` 도 함께 반영된다. CI 의 `openapi-drift` 는 backend main 과 바이트 비교를 하므로 이 갱신 없이는 통과하지 못한다.
+
+프론트 #50(봇이 만든 사본 갱신 PR)은 `reviews/photos` 만 담고 있어 이미 낡았다 — 이 PR 로 대체되므로 close 하면 된다.
+
 ## 이후 작업에서 지킬 것
 
 - **소셜 SDK 를 붙일 때** `AuthApi.loginWithProvider(provider, token)` 만 호출하면 된다. 세션 저장·헤더 적용은 이미 되어 있다.
