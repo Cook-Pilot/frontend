@@ -183,6 +183,16 @@ class FoodImage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // 디코딩 해상도를 표시 크기로 제한한다. 시드 데이터에 원본급 사진(최대 30MP,
+    // 장당 디코딩 ~112MB)이 섞여 있어, 제한 없이 디코딩하면 목록 스크롤만으로
+    // iOS 메모리 상한(EXC_RESOURCE)에 걸려 앱이 강제 종료된다.
+    // width가 double.infinity로 오는 채움형 배치가 있어(조리 화면 등) 유한한
+    // 값일 때만 쓰고, 아니면 화면 폭을 상한으로 삼는다.
+    final dpr = MediaQuery.devicePixelRatioOf(context);
+    final logicalWidth = (width != null && width!.isFinite)
+        ? width!
+        : MediaQuery.sizeOf(context).width;
+    final cacheWidth = (logicalWidth * dpr).round();
     return ClipRRect(
       borderRadius: BorderRadius.circular(radius),
       child: image.isEmpty
@@ -192,6 +202,7 @@ class FoodImage extends StatelessWidget {
               width: width,
               height: height,
               fit: BoxFit.cover,
+              cacheWidth: cacheWidth,
               errorBuilder: (context, error, stack) => _placeholder(),
             ),
     );
