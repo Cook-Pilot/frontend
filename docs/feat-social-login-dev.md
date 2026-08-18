@@ -31,10 +31,17 @@
 | `features/mvp/auth_screen.dart` | 로고를 `DeveloperLoginGate` 로 감쌈 |
 | `pubspec.yaml` | `flutter_secure_storage` 추가 |
 
+## 앱 시작 시 세션 복원
+
+`main()` 에서 `AuthSession.restore()` 를 호출하고, 결과에 따라 첫 화면을 정한다(복원 성공 → `MainShell`, 실패 → `AuthScreen`). **이게 없으면 토큰을 저장해도 앱을 재시작할 때마다 로그인이 풀린다** — 저장 기능이 무의미해진다.
+
+저장소 읽기는 실패해도 예외를 던지지 않는다(키체인 잠김, 플러그인 미가용 등). 앱 시작 경로라 여기서 던지면 **앱이 아예 뜨지 않는다.** 읽지 못하면 '로그인 안 됨'으로 보고 로그인 화면에서 복구시킨다.
+
 ## 검증
 
 - 신규 테스트 12개 (토큰 파싱, provider 경로, 401·429 문구, 만료 판정, 저장·복원·로그아웃, **전환기 헤더 규칙 2건**)
-- 전체 405개 통과, `flutter analyze` 무경고
+- 앱 시작 분기 위젯 테스트 2개(복원 성공 → 홈, 실패 → 로그인 화면)
+- 전체 407개 통과, `flutter analyze` 무경고
 - 실제 개발자 로그인은 서버에 `DEV_LOGIN_SECRET` 설정 후 확인 필요
 
 ## openapi 사본 갱신

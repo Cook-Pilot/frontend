@@ -24,14 +24,16 @@ class SecureAuthTokenStorage implements AuthTokenStorage {
 
   @override
   Future<AuthSessionToken?> read() async {
-    final raw = await _storage.read(key: _key);
-    if (raw == null || raw.isEmpty) return null;
+    // 저장소 접근 자체가 실패할 수 있다(키체인 잠김, 플러그인 미가용 등).
+    // 앱 시작 경로에서 호출되므로 여기서 던지면 앱이 아예 뜨지 않는다 —
+    // 읽지 못하면 '로그인 안 됨'으로 보고 로그인 화면에서 복구시킨다.
     try {
+      final raw = await _storage.read(key: _key);
+      if (raw == null || raw.isEmpty) return null;
       final decoded = jsonDecode(raw);
       if (decoded is! Map<String, dynamic>) return null;
       return AuthSessionToken.fromJson(decoded);
     } on Object {
-      // 형식이 깨졌으면 없는 것으로 본다 — 로그인 화면으로 보내면 복구된다.
       return null;
     }
   }
