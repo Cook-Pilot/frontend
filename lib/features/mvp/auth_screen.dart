@@ -4,8 +4,10 @@ import 'package:flutter/material.dart';
 
 import '../../app/app_theme.dart';
 import '../user/data/beta_user_repository.dart';
+import '../user/data/user_profile_repository.dart';
 import 'main_shell.dart';
 import 'mvp_widgets.dart';
+import 'profile_onboarding_screen.dart';
 
 const _tasteOptions = [
   '마라탕',
@@ -139,18 +141,33 @@ class AuthScreen extends StatelessWidget {
   Future<void> _openHome(BuildContext context) async {
     try {
       await BetaUserRepository().ensureUser();
-      if (!context.mounted) return;
-      unawaited(
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute<void>(builder: (_) => const MainShell()),
-        ),
-      );
     } on Object catch (error) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('사용자 준비에 실패했습니다: $error')));
+      return;
     }
+
+    // 프로필 확인 실패가 홈 진입을 막지 않도록 한다.
+    // 온보딩은 다음 로그인에서 다시 시도하면 된다.
+    var needsOnboarding = false;
+    try {
+      needsOnboarding = await UserProfileRepository().needsOnboarding();
+    } on Object {
+      // 의도적으로 무시.
+    }
+
+    if (!context.mounted) return;
+    unawaited(
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute<void>(
+          builder: (_) => needsOnboarding
+              ? const ProfileOnboardingScreen()
+              : const MainShell(),
+        ),
+      ),
+    );
   }
 }
 
