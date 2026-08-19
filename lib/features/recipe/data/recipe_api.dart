@@ -48,6 +48,40 @@ class RecipeSummary {
   final DateTime? favoritedAt;
 }
 
+class RecipeSearchPage {
+  const RecipeSearchPage({
+    required this.items,
+    required this.page,
+    required this.pageSize,
+    required this.totalPages,
+    required this.totalItems,
+  });
+
+  factory RecipeSearchPage.fromJson(Map<String, dynamic> json) {
+    final itemsJson = json['items'];
+    if (itemsJson is! List ||
+        itemsJson.any((item) => item is! Map<String, dynamic>)) {
+      throw const RecipeApiException('레시피 검색 응답 형식이 올바르지 않습니다.');
+    }
+
+    return RecipeSearchPage(
+      items: itemsJson
+          .map((item) => RecipeSummary.fromJson(item as Map<String, dynamic>))
+          .toList(growable: false),
+      page: _requiredInt(json, 'page'),
+      pageSize: _requiredInt(json, 'pageSize'),
+      totalPages: _requiredInt(json, 'totalPages'),
+      totalItems: _requiredInt(json, 'totalItems'),
+    );
+  }
+
+  final List<RecipeSummary> items;
+  final int page;
+  final int pageSize;
+  final int totalPages;
+  final int totalItems;
+}
+
 class PersonalRecipeVersionSummary {
   const PersonalRecipeVersionSummary({
     required this.id,
@@ -150,6 +184,28 @@ class RecipeRepository {
 
   Future<List<RecipeSummary>> findAll() async {
     return _findSummaries('/api/v1/recipes');
+  }
+
+  Future<RecipeSearchPage> search({
+    String title = '',
+    String ingredient = '',
+    int page = 1,
+    int size = 9,
+  }) async {
+    final query = Uri(
+      queryParameters: {
+        'title': title.trim(),
+        'ingredient': ingredient.trim(),
+        'page': '$page',
+        'size': '$size',
+      },
+    ).query;
+    final response = await _get('/api/v1/recipes/search?$query');
+    final decoded = jsonDecode(response.body);
+    if (decoded is! Map<String, dynamic>) {
+      throw const RecipeApiException('레시피 검색 응답 형식이 올바르지 않습니다.');
+    }
+    return RecipeSearchPage.fromJson(decoded);
   }
 
   Future<List<RecipeSummary>> findRecent() async {

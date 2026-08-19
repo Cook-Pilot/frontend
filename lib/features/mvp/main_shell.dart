@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../app/app_theme.dart';
+import '../../design/cookpilot_spacing.dart';
 import '../auth/presentation/account_sheet.dart';
 import '../cooking/application/cooking_session_store.dart';
 import '../cooking/data/exception_advice_api.dart';
@@ -583,24 +584,81 @@ class _HomeScreenState extends State<HomeScreen> {
 }
 
 class SearchScreen extends StatefulWidget {
-  const SearchScreen({super.key});
+  const SearchScreen({super.key, this.recipeRepository});
+
+  final RecipeRepository? recipeRepository;
 
   @override
   State<SearchScreen> createState() => _SearchScreenState();
 }
 
 class _SearchScreenState extends State<SearchScreen> {
-  late Future<List<RecipeSummary>> _recipes;
-  String _query = '';
+  static const _pageSize = 9;
+
+  late final RecipeRepository _searchRecipeRepository;
+  late final TextEditingController _titleController;
+  late final TextEditingController _ingredientController;
+  late Future<RecipeSearchPage> _results;
+  String _title = '';
+  String _ingredient = '';
+  int _page = 1;
 
   @override
   void initState() {
     super.initState();
-    _recipes = _recipeRepository.findAll();
+    _searchRecipeRepository = widget.recipeRepository ?? _recipeRepository;
+    _titleController = TextEditingController();
+    _ingredientController = TextEditingController();
+    _results = _loadResults();
+  }
+
+  @override
+  void dispose() {
+    _titleController.dispose();
+    _ingredientController.dispose();
+    super.dispose();
+  }
+
+  Future<RecipeSearchPage> _loadResults() {
+    return _searchRecipeRepository.search(
+      title: _title,
+      ingredient: _ingredient,
+      page: _page,
+      size: _pageSize,
+    );
+  }
+
+  void _submitSearch() {
+    FocusScope.of(context).unfocus();
+    setState(() {
+      _title = _titleController.text.trim();
+      _ingredient = _ingredientController.text.trim();
+      _page = 1;
+      _results = _loadResults();
+    });
+  }
+
+  void _clearSearch() {
+    _titleController.clear();
+    _ingredientController.clear();
+    setState(() {
+      _title = '';
+      _ingredient = '';
+      _page = 1;
+      _results = _loadResults();
+    });
+  }
+
+  void _loadPage(int page) {
+    if (page == _page) return;
+    setState(() {
+      _page = page;
+      _results = _loadResults();
+    });
   }
 
   void _retry() {
-    setState(() => _recipes = _recipeRepository.findAll());
+    setState(() => _results = _loadResults());
   }
 
   @override
@@ -609,14 +667,47 @@ class _SearchScreenState extends State<SearchScreen> {
       title: '검색',
       children: [
         TextField(
-          onChanged: (value) => setState(() => _query = value.trim()),
+          controller: _titleController,
+          textInputAction: TextInputAction.next,
           decoration: const InputDecoration(
             prefixIcon: Icon(Icons.search_rounded, color: AppColors.muted),
-            hintText: '레시피 이름 또는 설명 검색',
+            labelText: '요리 이름',
+            hintText: '예: 가지 탕수육',
           ),
         ),
-        FutureBuilder<List<RecipeSummary>>(
-          future: _recipes,
+        const SizedBox(height: 10),
+        TextField(
+          controller: _ingredientController,
+          textInputAction: TextInputAction.search,
+          onSubmitted: (_) => _submitSearch(),
+          decoration: const InputDecoration(
+            prefixIcon: Icon(Icons.kitchen_rounded, color: AppColors.muted),
+            labelText: '재료',
+            hintText: '예: 두부',
+          ),
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              flex: 2,
+              child: FilledButton.icon(
+                onPressed: _submitSearch,
+                icon: const Icon(Icons.search_rounded),
+                label: const Text('검색'),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: OutlinedButton(
+                onPressed: _clearSearch,
+                child: const Text('초기화'),
+              ),
+            ),
+          ],
+        ),
+        FutureBuilder<RecipeSearchPage>(
+          future: _results,
           builder: (context, snapshot) {
             if (snapshot.connectionState != ConnectionState.done) {
               return const _RecipeLoading();
@@ -625,15 +716,8 @@ class _SearchScreenState extends State<SearchScreen> {
               return _RecipeLoadError(onRetry: _retry);
             }
 
-            final query = _query.toLowerCase();
-            final items = (snapshot.data ?? const <RecipeSummary>[])
-                .where(
-                  (recipe) =>
-                      query.isEmpty ||
-                      recipe.title.toLowerCase().contains(query) ||
-                      recipe.description.toLowerCase().contains(query),
-                )
-                .toList(growable: false);
+            final result = snapshot.data;
+            final items = result?.items ?? const <RecipeSummary>[];
 
             if (items.isEmpty) {
               return const _RecipeEmpty(message: '조건에 맞는 레시피가 없어요.');
@@ -642,7 +726,7 @@ class _SearchScreenState extends State<SearchScreen> {
             return Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                SectionTitle('검색 결과 ${items.length}'),
+                SectionTitle('검색 결과 ${result!.totalItems}'),
                 for (final recipe in items)
                   Padding(
                     padding: const EdgeInsets.only(bottom: 10),
@@ -651,11 +735,98 @@ class _SearchScreenState extends State<SearchScreen> {
                       onChanged: _retry,
                     ),
                   ),
+                if (result.totalPages > 1)
+                  _RecipePagination(
+                    page: result.page,
+                    totalPages: result.totalPages,
+                    onPageSelected: _loadPage,
+                  ),
               ],
             );
           },
         ),
       ],
+    );
+  }
+}
+
+class _RecipePagination extends StatelessWidget {
+  const _RecipePagination({
+    required this.page,
+    required this.totalPages,
+    required this.onPageSelected,
+  });
+
+  final int page;
+  final int totalPages;
+  final ValueChanged<int> onPageSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final canGoBack = page > 1;
+    final canGoForward = page < totalPages;
+
+    Widget pageButton({
+      required String tooltip,
+      required IconData icon,
+      required int targetPage,
+      required bool enabled,
+    }) {
+      return IconButton(
+        tooltip: tooltip,
+        visualDensity: VisualDensity.standard,
+        constraints: const BoxConstraints.tightFor(
+          width: CookPilotSpacing.minimumTapTarget,
+          height: CookPilotSpacing.minimumTapTarget,
+        ),
+        onPressed: enabled ? () => onPageSelected(targetPage) : null,
+        icon: Icon(icon),
+      );
+    }
+
+    // 48dp 탭 타겟을 지키면서 360dp 폭 기기에서 한 줄을 유지하려면
+    // 컨트롤은 4개(처음·이전·다음·마지막)까지다. ±5 점프를 두면 일곱 개가
+    // 한 줄에 못 들어가 마지막 버튼이 다음 줄로 밀린다(실기기 제보).
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Wrap(
+        alignment: WrapAlignment.center,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          pageButton(
+            tooltip: '처음 페이지',
+            icon: Icons.first_page_rounded,
+            targetPage: 1,
+            enabled: canGoBack,
+          ),
+          pageButton(
+            tooltip: '이전 페이지',
+            icon: Icons.chevron_left_rounded,
+            targetPage: page - 1,
+            enabled: canGoBack,
+          ),
+          SizedBox(
+            width: 72,
+            child: Text(
+              '$page / $totalPages',
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontWeight: FontWeight.w700),
+            ),
+          ),
+          pageButton(
+            tooltip: '다음 페이지',
+            icon: Icons.chevron_right_rounded,
+            targetPage: page + 1,
+            enabled: canGoForward,
+          ),
+          pageButton(
+            tooltip: '마지막 페이지',
+            icon: Icons.last_page_rounded,
+            targetPage: totalPages,
+            enabled: canGoForward,
+          ),
+        ],
+      ),
     );
   }
 }

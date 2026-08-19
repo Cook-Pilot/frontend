@@ -65,6 +65,81 @@ void main() {
     expect(recipes.single.favorite, isTrue);
   });
 
+  test('요리 이름과 재료 조건으로 서버 페이지 검색을 요청한다', () async {
+    final repository = RecipeRepository(
+      baseUrl: baseUrl,
+      client: MockClient((request) async {
+        expect(request.url.path, '/api/v1/recipes/search');
+        expect(request.url.queryParameters, {
+          'title': '가지 탕수육',
+          'ingredient': '가지',
+          'page': '6',
+          'size': '9',
+        });
+        expect(request.headers[cookPilotUserIdHeader], userId);
+        return _jsonResponse('''
+          {
+            "items": [
+              {
+                "id": "$recipeId",
+                "title": "가지 탕수육",
+                "description": "바삭한 가지 요리",
+                "imageUrl": null,
+                "hasPersonalVersion": false,
+                "latestPersonalVersionId": null,
+                "favorite": false
+              }
+            ],
+            "page": 6,
+            "pageSize": 9,
+            "totalPages": 12,
+            "totalItems": 103
+          }
+        ''');
+      }),
+    );
+
+    final result = await repository.search(
+      title: '  가지 탕수육 ',
+      ingredient: ' 가지  ',
+      page: 6,
+    );
+
+    expect(result.items.single.title, '가지 탕수육');
+    expect(result.page, 6);
+    expect(result.pageSize, 9);
+    expect(result.totalPages, 12);
+    expect(result.totalItems, 103);
+  });
+
+  test('검색 items가 배열이 아니면 API 예외로 처리한다', () async {
+    final repository = RecipeRepository(
+      baseUrl: baseUrl,
+      client: MockClient(
+        (_) async => _jsonResponse('''
+          {
+            "items": {},
+            "page": 1,
+            "pageSize": 9,
+            "totalPages": 0,
+            "totalItems": 0
+          }
+        '''),
+      ),
+    );
+
+    await expectLater(
+      repository.search(),
+      throwsA(
+        isA<RecipeApiException>().having(
+          (exception) => exception.message,
+          'message',
+          contains('검색 응답'),
+        ),
+      ),
+    );
+  });
+
   test('상세 응답에서 재료와 조리 단계를 화면 모델로 변환한다', () async {
     const summary = RecipeSummary(
       id: recipeId,
