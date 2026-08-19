@@ -4,8 +4,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  testWidgets('요리 이름과 재료를 서버에 보내고 5페이지씩 이동한다', (tester) async {
+  testWidgets('요리 이름과 재료를 서버에 보내고 페이지를 이동한다', (tester) async {
     final repository = _FakeRecipeRepository();
+
+    // 제보된 실기기(1080×2400, 3x = 논리 360dp 폭)에서 페이지 컨트롤이
+    // 한 줄에 들어가는지 함께 검증한다.
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 3.0;
+    addTearDown(tester.view.reset);
 
     await tester.pumpWidget(
       MaterialApp(home: SearchScreen(recipeRepository: repository)),
@@ -25,18 +31,25 @@ void main() {
     );
     expect(find.text('검색 결과 103'), findsOneWidget);
     expect(find.text('1 / 12'), findsOneWidget);
-    final nextFiveSize = tester.getSize(find.byTooltip('5페이지 다음'));
-    expect(nextFiveSize.width, greaterThanOrEqualTo(48));
-    expect(nextFiveSize.height, greaterThanOrEqualTo(48));
+    final nextSize = tester.getSize(find.byTooltip('다음 페이지'));
+    expect(nextSize.width, greaterThanOrEqualTo(48));
+    expect(nextSize.height, greaterThanOrEqualTo(48));
 
-    await tester.tap(find.byTooltip('5페이지 다음'));
+    // 48dp 버튼 네 개와 페이지 표시가 360dp 폭에서 줄바꿈 없이 놓인다.
+    await tester.ensureVisible(find.byTooltip('마지막 페이지'));
+    await tester.pumpAndSettle();
+    final firstTop = tester.getTopLeft(find.byTooltip('처음 페이지')).dy;
+    final lastTop = tester.getTopLeft(find.byTooltip('마지막 페이지')).dy;
+    expect(lastTop, firstTop);
+
+    await tester.tap(find.byTooltip('다음 페이지'));
     await tester.pumpAndSettle();
 
     expect(
       repository.calls.last,
-      const _SearchCall(title: '가지 탕수육', ingredient: '가지', page: 6),
+      const _SearchCall(title: '가지 탕수육', ingredient: '가지', page: 2),
     );
-    expect(find.text('6 / 12'), findsOneWidget);
+    expect(find.text('2 / 12'), findsOneWidget);
 
     await tester.tap(find.byTooltip('마지막 페이지'));
     await tester.pumpAndSettle();
@@ -58,7 +71,7 @@ void main() {
     await tester.enterText(find.byType(TextField).at(1), '두부');
     await tester.tap(find.widgetWithText(FilledButton, '검색'));
     await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip('5페이지 다음'));
+    await tester.tap(find.byTooltip('다음 페이지'));
     await tester.pumpAndSettle();
 
     await tester.tap(find.widgetWithText(OutlinedButton, '초기화'));

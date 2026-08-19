@@ -690,6 +690,7 @@ class _SearchScreenState extends State<SearchScreen> {
         Row(
           children: [
             Expanded(
+              flex: 2,
               child: FilledButton.icon(
                 onPressed: _submitSearch,
                 icon: const Icon(Icons.search_rounded),
@@ -697,7 +698,12 @@ class _SearchScreenState extends State<SearchScreen> {
               ),
             ),
             const SizedBox(width: 10),
-            OutlinedButton(onPressed: _clearSearch, child: const Text('초기화')),
+            Expanded(
+              child: OutlinedButton(
+                onPressed: _clearSearch,
+                child: const Text('초기화'),
+              ),
+            ),
           ],
         ),
         FutureBuilder<RecipeSearchPage>(
@@ -778,6 +784,9 @@ class _RecipePagination extends StatelessWidget {
       );
     }
 
+    // 48dp 탭 타겟을 지키면서 360dp 폭 기기에서 한 줄을 유지하려면
+    // 컨트롤은 4개(처음·이전·다음·마지막)까지다. ±5 점프를 두면 일곱 개가
+    // 한 줄에 못 들어가 마지막 버튼이 다음 줄로 밀린다(실기기 제보).
     return Padding(
       padding: const EdgeInsets.only(top: 8),
       child: Wrap(
@@ -788,12 +797,6 @@ class _RecipePagination extends StatelessWidget {
             tooltip: '처음 페이지',
             icon: Icons.first_page_rounded,
             targetPage: 1,
-            enabled: canGoBack,
-          ),
-          pageButton(
-            tooltip: '5페이지 이전',
-            icon: Icons.keyboard_double_arrow_left_rounded,
-            targetPage: (page - 5).clamp(1, totalPages),
             enabled: canGoBack,
           ),
           pageButton(
@@ -814,12 +817,6 @@ class _RecipePagination extends StatelessWidget {
             tooltip: '다음 페이지',
             icon: Icons.chevron_right_rounded,
             targetPage: page + 1,
-            enabled: canGoForward,
-          ),
-          pageButton(
-            tooltip: '5페이지 다음',
-            icon: Icons.keyboard_double_arrow_right_rounded,
-            targetPage: (page + 5).clamp(1, totalPages),
             enabled: canGoForward,
           ),
           pageButton(
