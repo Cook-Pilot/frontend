@@ -62,6 +62,15 @@
   `BetaUserRepository`는 세션에 사용자가 있으면 네트워크를 타지 않으므로
   `BetaUserSession.setCurrentUser`로 충분해 주입 지점을 만들지 않았다.
 
+## CI 대응 (openapi-drift)
+
+- `openapi-drift` job 실패는 이 PR의 변경 때문이 아니라 backend main의 `docs/openapi.json`이
+  앞서간 드리프트였다. backend main 사본으로 통째로 갱신했다(추가 195줄, 삭제 0줄).
+- 추가된 항목: `auth-controller`(`POST /api/v1/auth/dev`, `POST /api/v1/auth/{provider}`),
+  `POST /api/v1/reviews/photos`, `PATCH /api/v1/users/me`와 `UpdateProfileRequest`,
+  `User.gender/ageGroup/profileAskedAt`. 삭제·변경된 필드가 없어
+  `lib/features/*/data/`의 기존 클라이언트에 영향이 없다.
+
 ## 이후 작업에서 지킬 것
 
 - 온보딩 노출 여부는 항상 서버의 `profileAskedAt`으로만 판단한다.

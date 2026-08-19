@@ -30,6 +30,25 @@
         },
         "type" : "object"
       },
+      "AuthResponse" : {
+        "properties" : {
+          "displayName" : {
+            "type" : "string"
+          },
+          "expiresAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "token" : {
+            "type" : "string"
+          },
+          "userId" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
       "ComposedIngredient" : {
         "properties" : {
           "amount" : {
@@ -139,6 +158,16 @@
             "type" : "string"
           }
         },
+        "type" : "object"
+      },
+      "DevLoginRequest" : {
+        "properties" : {
+          "secret" : {
+            "minLength" : 1,
+            "type" : "string"
+          }
+        },
+        "required" : [ "secret" ],
         "type" : "object"
       },
       "FavoriteRecipeResponse" : {
@@ -377,6 +406,14 @@
           },
           "version" : {
             "$ref" : "#/components/schemas/PersonalRecipeVersion"
+          }
+        },
+        "type" : "object"
+      },
+      "PhotoUploadResponse" : {
+        "properties" : {
+          "url" : {
+            "type" : "string"
           }
         },
         "type" : "object"
@@ -667,6 +704,16 @@
         },
         "type" : "object"
       },
+      "SocialLoginRequest" : {
+        "properties" : {
+          "token" : {
+            "minLength" : 1,
+            "type" : "string"
+          }
+        },
+        "required" : [ "token" ],
+        "type" : "object"
+      },
       "StepAdjustment" : {
         "properties" : {
           "cautionNote" : {
@@ -788,8 +835,25 @@
         "required" : [ "clientSessionId", "rating", "recipeId" ],
         "type" : "object"
       },
+      "UpdateProfileRequest" : {
+        "properties" : {
+          "ageGroup" : {
+            "format" : "int32",
+            "type" : "integer"
+          },
+          "gender" : {
+            "enum" : [ "M", "F", "N" ],
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
       "User" : {
         "properties" : {
+          "ageGroup" : {
+            "format" : "int32",
+            "type" : "integer"
+          },
           "anonymous" : {
             "type" : "boolean"
           },
@@ -803,8 +867,16 @@
           "email" : {
             "type" : "string"
           },
+          "gender" : {
+            "enum" : [ "M", "F", "N" ],
+            "type" : "string"
+          },
           "id" : {
             "format" : "uuid",
+            "type" : "string"
+          },
+          "profileAskedAt" : {
+            "format" : "date-time",
             "type" : "string"
           }
         },
@@ -845,6 +917,70 @@
           }
         },
         "tags" : [ "ai-feedback-controller" ]
+      }
+    },
+    "/api/v1/auth/dev" : {
+      "post" : {
+        "operationId" : "loginAsDeveloper",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/DevLoginRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/AuthResponse"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [ "auth-controller" ]
+      }
+    },
+    "/api/v1/auth/{provider}" : {
+      "post" : {
+        "operationId" : "login",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "provider",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/SocialLoginRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/AuthResponse"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [ "auth-controller" ]
       }
     },
     "/api/v1/cooking-history" : {
@@ -1207,6 +1343,40 @@
         "tags" : [ "review-controller" ]
       }
     },
+    "/api/v1/reviews/photos" : {
+      "post" : {
+        "operationId" : "uploadPhoto",
+        "requestBody" : {
+          "content" : {
+            "multipart/form-data" : {
+              "schema" : {
+                "properties" : {
+                  "file" : {
+                    "format" : "binary",
+                    "type" : "string"
+                  }
+                },
+                "required" : [ "file" ],
+                "type" : "object"
+              }
+            }
+          }
+        },
+        "responses" : {
+          "201" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/PhotoUploadResponse"
+                }
+              }
+            },
+            "description" : "Created"
+          }
+        },
+        "tags" : [ "review-controller" ]
+      }
+    },
     "/api/v1/reviews/{reviewId}" : {
       "get" : {
         "operationId" : "get",
@@ -1300,6 +1470,31 @@
     "/api/v1/users/me" : {
       "get" : {
         "operationId" : "me",
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/User"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [ "user-controller" ]
+      },
+      "patch" : {
+        "operationId" : "updateProfile",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/UpdateProfileRequest"
+              }
+            }
+          }
+        },
         "responses" : {
           "200" : {
             "content" : {
