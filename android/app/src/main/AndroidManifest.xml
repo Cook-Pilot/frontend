@@ -55,17 +55,20 @@
             </intent-filter>
         </receiver>
 
-        <!-- 카카오 로그인 리다이렉트. 카카오톡 앱으로 로그인한 뒤 우리 앱으로 돌아오는 경로다.
-             스킴의 키는 gradle 의 manifestPlaceholders 로 주입한다(네이티브 앱 키와 같아야 한다). -->
+        <!-- 카카오 웹 로그인이 끝난 뒤 앱으로 돌아오는 경로(kakao<네이티브앱키>://oauth).
+             이 스킴이 없으면 동의까지 마쳐도 앱으로 복귀하지 못해 무한 로딩이 된다.
+             AppsHandlerActivity(host=address)는 카카오싱크·앱 연결용이라 로그인과 무관하다.
+             키는 gradle 의 manifestPlaceholders 로 주입한다(Dart 쪽 값과 같아야 한다). -->
         <activity
-            android:name="com.kakao.sdk.flutter.auth.AppsHandlerActivity"
+            android:name="com.kakao.sdk.flutter.auth.AuthCodeHandlerActivity"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="kakao${KAKAO_NATIVE_APP_KEY}" />
-                <data android:host="address" />
+                <data
+                    android:scheme="kakao${KAKAO_NATIVE_APP_KEY}"
+                    android:host="oauth" />
             </intent-filter>
         </activity>
     </application>
