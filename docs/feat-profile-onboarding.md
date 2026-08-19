@@ -42,6 +42,9 @@
   - 온보딩 판정 3분기(null/값 있음/필드 없음), PATCH body 3종(부분/전체/빈 body)
 - `test/features/mvp/profile_onboarding_screen_test.dart`
   - 선택 전 확인 비활성 → 하나 선택 시 고른 값만 전송, 건너뛰기 빈 body 전송
+- `test/features/mvp/auth_onboarding_flow_test.dart`
+  - 로그인 후 `needsOnboarding` true → 온보딩 화면, false → `MainShell`,
+    프로필 조회 실패(500) → `MainShell`
 - 로컬 백엔드 실측: 부분 입력 허용, 빈 body로 `profileAskedAt` 기록,
   허용값 밖(`gender: "X"`)은 400 확인
 - `flutter analyze` 0 issues, `dart format` clean
@@ -51,9 +54,13 @@
 
 - `jsonEncode({'gender': ?gender, ...})`가 문법 오류라는 지적은 오탐.
   Dart 3.9 null-aware element이고 SDK는 `^3.12.2`, `flutter analyze` 0 issues.
-- `_openHome`의 온보딩 분기 위젯 테스트 부재 지적은 유효하나 이번 PR에서는 보류.
-  `AuthScreen`이 리포지토리를 내부에서 생성해 주입 지점부터 만들어야 하는데,
-  분기 로직 3줄 대비 인프라 비용이 크다. auth_screen을 다음에 손댈 때 주입 도입.
+- 홈 진입이 프로필 조회 타임아웃(기본 8초)만큼 지연된다는 지적은 유효.
+  이 호출만 `requestTimeout: 3초`로 줄여 반영했다.
+- `_openHome`의 온보딩 분기 위젯 테스트 부재 지적은 유효해 반영했다.
+  `AuthScreen`에 `profileRepository` 주입 파라미터(테스트 전용, 앱에서는 null)를
+  두고 `test/features/mvp/auth_onboarding_flow_test.dart`로 3분기를 덮었다.
+  `BetaUserRepository`는 세션에 사용자가 있으면 네트워크를 타지 않으므로
+  `BetaUserSession.setCurrentUser`로 충분해 주입 지점을 만들지 않았다.
 
 ## 이후 작업에서 지킬 것
 

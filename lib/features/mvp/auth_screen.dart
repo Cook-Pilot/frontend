@@ -25,7 +25,10 @@ const _tasteOptions = [
 ];
 
 class AuthScreen extends StatelessWidget {
-  const AuthScreen({super.key});
+  const AuthScreen({super.key, this.profileRepository});
+
+  /// 테스트에서 프로필 조회를 갈아끼우기 위한 통로. 실제 앱에서는 null.
+  final UserProfileRepository? profileRepository;
 
   @override
   Widget build(BuildContext context) {
@@ -153,9 +156,10 @@ class AuthScreen extends StatelessWidget {
     // 온보딩은 다음 로그인에서 다시 시도하면 된다.
     var needsOnboarding = false;
     try {
-      needsOnboarding = await UserProfileRepository(
-        requestTimeout: const Duration(seconds: 3),
-      ).needsOnboarding();
+      final repository =
+          profileRepository ??
+          UserProfileRepository(requestTimeout: const Duration(seconds: 3));
+      needsOnboarding = await repository.needsOnboarding();
     } on Object {
       // 의도적으로 무시.
     }
