@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/api/api_config.dart';
+import '../../auth/data/auth_session.dart';
 
 const cookPilotUserIdHeader = 'X-CookPilot-User-Id';
 const anonymousUserIdempotencyHeader = 'Idempotency-Key';
@@ -56,7 +57,12 @@ class BetaUserSession {
   static BetaUser? get currentUser => _currentUser;
   static String? get userId => _currentUser?.id;
 
+  /// 로그인 세션이 있으면 Bearer 토큰을, 없으면 기존 익명 헤더를 쓴다.
+  /// 소셜 로그인 전환 기간 동안 두 방식이 함께 산다(서버도 같은 규칙).
   static Map<String, String> get requestHeaders {
+    final tokenHeaders = AuthSession.requestHeaders;
+    if (tokenHeaders.isNotEmpty) return tokenHeaders;
+
     final id = userId;
     if (id == null) {
       throw const BetaUserException('베타 사용자 세션이 준비되지 않았습니다.');

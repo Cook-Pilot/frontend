@@ -25,6 +25,13 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+
+        // 카카오 로그인 리다이렉트 스킴(kakao<네이티브앱키>://address)에 쓰인다.
+        // AndroidManifest 는 빌드 타임에 확정되므로 --dart-define 으로는 바꿀 수 없다.
+        // Dart 쪽 기본값(lib/core/api/kakao_config.dart)과 같은 값을 유지해야 한다.
+        manifestPlaceholders["KAKAO_NATIVE_APP_KEY"] =
+            (project.findProperty("kakaoNativeAppKey") as String?)
+                ?: "49c1ac97b674198d1b8f7d47f38897f8"
     }
 
     buildTypes {

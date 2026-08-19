@@ -3,6 +3,11 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../app/app_theme.dart';
+import '../auth/data/auth_api.dart';
+import '../auth/data/auth_session.dart';
+import '../auth/data/google_login.dart';
+import '../auth/data/kakao_login.dart';
+import '../auth/presentation/developer_login.dart';
 import '../user/data/beta_user_repository.dart';
 import 'main_shell.dart';
 import 'mvp_widgets.dart';
@@ -31,24 +36,28 @@ class AuthScreen extends StatelessWidget {
       children: [
         const SizedBox(height: 40),
         Center(
-          child: Container(
-            width: 64,
-            height: 64,
-            decoration: BoxDecoration(
-              color: AppColors.accent,
-              borderRadius: BorderRadius.circular(20),
-              boxShadow: const [
-                BoxShadow(
-                  color: AppColors.shadow,
-                  blurRadius: 18,
-                  offset: Offset(0, 6),
-                ),
-              ],
-            ),
-            child: const Icon(
-              Icons.local_fire_department_rounded,
-              color: Colors.white,
-              size: 36,
+          // 로고 7번 연타 = 개발자 로그인 입구. 방어는 서버 시크릿이 한다.
+          child: DeveloperLoginGate(
+            onLoggedIn: () => _openHomeDirectly(context),
+            child: Container(
+              width: 64,
+              height: 64,
+              decoration: BoxDecoration(
+                color: AppColors.accent,
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: const [
+                  BoxShadow(
+                    color: AppColors.shadow,
+                    blurRadius: 18,
+                    offset: Offset(0, 6),
+                  ),
+                ],
+              ),
+              child: const Icon(
+                Icons.local_fire_department_rounded,
+                color: Colors.white,
+                size: 36,
+              ),
             ),
           ),
         ),
@@ -74,7 +83,7 @@ class AuthScreen extends StatelessWidget {
               backgroundColor: AppColors.kakao,
               foregroundColor: const Color(0xFF191600),
             ),
-            onPressed: () => _openHome(context),
+            onPressed: () => unawaited(_loginWithKakao(context)),
             icon: const Icon(Icons.chat_bubble_rounded),
             label: const Text('카카오로 시작하기'),
           ),
@@ -82,7 +91,7 @@ class AuthScreen extends StatelessWidget {
         const SizedBox(height: 10),
         PressableScale(
           child: OutlinedButton.icon(
-            onPressed: () => _openHome(context),
+            onPressed: () => unawaited(_loginWithGoogle(context)),
             icon: const Icon(Icons.g_mobiledata_rounded),
             label: const Text('Google로 시작하기'),
           ),
@@ -133,6 +142,50 @@ class AuthScreen extends StatelessWidget {
           child: const Text('계정이 없나요? 회원가입'),
         ),
       ],
+    );
+  }
+
+  /// 카카오 로그인 → 서버 세션 토큰 발급 → 홈.
+  ///
+  /// 카카오에서 받은 액세스 토큰은 서버로 보내 검증받는다(POST /auth/kakao).
+  /// 클라이언트가 신원을 주장하는 구조가 아니다.
+  Future<void> _loginWithKakao(BuildContext context) async {
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final kakaoToken = await const KakaoLogin().obtainAccessToken();
+      final session = await AuthApi().loginWithProvider('kakao', kakaoToken);
+      await AuthSession.save(session);
+      if (!context.mounted) return;
+      _openHomeDirectly(context);
+    } on KakaoLoginCancelled {
+      // 사용자가 직접 닫았다. 오류 안내를 띄우지 않는다.
+    } on AuthException catch (error) {
+      messenger.showSnackBar(SnackBar(content: Text(error.message)));
+    }
+  }
+
+  /// 구글 로그인 → 서버 세션 토큰 발급 → 홈.
+  Future<void> _loginWithGoogle(BuildContext context) async {
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final idToken = await const GoogleLogin().obtainIdToken();
+      final session = await AuthApi().loginWithProvider('google', idToken);
+      await AuthSession.save(session);
+      if (!context.mounted) return;
+      _openHomeDirectly(context);
+    } on GoogleLoginCancelled {
+      // 사용자가 직접 닫았다.
+    } on AuthException catch (error) {
+      messenger.showSnackBar(SnackBar(content: Text(error.message)));
+    }
+  }
+
+  /// 이미 로그인된 상태에서 홈으로. 익명 발급을 타지 않는다.
+  void _openHomeDirectly(BuildContext context) {
+    unawaited(
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute<void>(builder: (_) => const MainShell()),
+      ),
     );
   }
 
