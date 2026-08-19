@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../app/app_theme.dart';
+import '../auth/presentation/account_sheet.dart';
 import '../cooking/application/cooking_session_store.dart';
 import '../cooking/data/exception_advice_api.dart';
 import '../cooking/presentation/native_speech_output.dart';
@@ -10,6 +11,7 @@ import '../recipe/data/recipe_api.dart';
 import '../recipe/domain/recipe.dart';
 import '../review/application/pending_review_draft_store.dart';
 import '../review/data/review_api.dart';
+import 'auth_screen.dart';
 import 'cook_flow_screens.dart';
 import 'mvp_widgets.dart';
 
@@ -441,17 +443,26 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   ),
                   PressableScale(
-                    child: Container(
-                      width: 44,
-                      height: 44,
-                      decoration: BoxDecoration(
-                        color: AppColors.accentSoft,
-                        shape: BoxShape.circle,
-                        border: Border.all(color: AppColors.line),
+                    child: InkWell(
+                      customBorder: const CircleBorder(),
+                      onTap: () => unawaited(
+                        showAccountSheet(
+                          context,
+                          firstScreen: () => const AuthScreen(),
+                        ),
                       ),
-                      child: const Icon(
-                        Icons.person_rounded,
-                        color: AppColors.accent,
+                      child: Container(
+                        width: 44,
+                        height: 44,
+                        decoration: BoxDecoration(
+                          color: AppColors.accentSoft,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: AppColors.line),
+                        ),
+                        child: const Icon(
+                          Icons.person_rounded,
+                          color: AppColors.accent,
+                        ),
                       ),
                     ),
                   ),
