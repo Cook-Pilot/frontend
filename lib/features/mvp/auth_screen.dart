@@ -33,6 +33,21 @@ Future<Widget> homeAfterLogin({
   return const MainShell();
 }
 
+const _tasteOptions = [
+  '마라탕',
+  '김치찌개',
+  '파스타',
+  '초밥',
+  '떡볶이',
+  '삼겹살',
+  '샐러드',
+  '카레',
+  '치킨',
+  '냉면',
+  '크림리조또',
+  '제육볶음',
+];
+
 class AuthScreen extends StatelessWidget {
   const AuthScreen({super.key});
 
@@ -154,6 +169,199 @@ class AuthScreen extends StatelessWidget {
       Navigator.of(
         context,
       ).pushReplacement(MaterialPageRoute<void>(builder: (_) => next)),
+    );
+  }
+}
+
+/// 입맛·맵기 선택 화면. **아직 진입점이 없다.**
+///
+/// 예전 '회원가입' 목업 버튼으로 들어가던 화면인데, 익명 발급을 걷어내면서 그 버튼이
+/// 사라졌다. 백엔드에 입맛 컬럼도 API 도 없어 지금은 고른 값을 저장할 곳이 없다 —
+/// 온보딩에 입맛 단계를 붙일 때 여기서 이어간다(#58).
+class TasteProfileScreen extends StatefulWidget {
+  const TasteProfileScreen({super.key});
+
+  @override
+  State<TasteProfileScreen> createState() => _TasteProfileScreenState();
+}
+
+class _TasteProfileScreenState extends State<TasteProfileScreen> {
+  final Set<String> selected = {'마라탕', '김치찌개', '치킨'};
+
+  @override
+  Widget build(BuildContext context) {
+    return PageShell(
+      title: '내 입맛 설정',
+      leading: IconButton(
+        onPressed: () => Navigator.of(context).pop(),
+        icon: const Icon(Icons.chevron_left_rounded),
+      ),
+      children: [
+        Text(
+          '끌리는 음식을 3개 이상 골라주세요',
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+            fontWeight: FontWeight.w900,
+            color: AppColors.ink,
+          ),
+        ),
+        const SizedBox(height: 8),
+        const Text(
+          '고른 음식으로 입맛 프로필을 만들어요.',
+          style: TextStyle(color: AppColors.slate),
+        ),
+        const SizedBox(height: 22),
+        GridView.count(
+          crossAxisCount: 3,
+          shrinkWrap: true,
+          mainAxisSpacing: 10,
+          crossAxisSpacing: 10,
+          childAspectRatio: 1,
+          physics: const NeverScrollableScrollPhysics(),
+          children: [
+            for (final option in _tasteOptions)
+              _TasteOption(
+                label: option,
+                selected: selected.contains(option),
+                onTap: () {
+                  setState(() {
+                    if (selected.contains(option)) {
+                      selected.remove(option);
+                    } else {
+                      selected.add(option);
+                    }
+                  });
+                },
+              ),
+          ],
+        ),
+        const SectionTitle('매운맛, 어디까지 되세요?'),
+        ...['진라면 순한맛도 부담돼요', '신라면 정도가 딱 좋아요', '불닭볶음면도 문제없어요', '핵불닭도 갑니다'].map(
+          (label) => Card(
+            child: ListTile(
+              leading: Icon(
+                label.startsWith('신라면')
+                    ? Icons.radio_button_checked_rounded
+                    : Icons.radio_button_off_rounded,
+                color: label.startsWith('신라면')
+                    ? AppColors.accent
+                    : AppColors.muted,
+              ),
+              title: Text(label),
+              subtitle: Text(label.startsWith('신라면') ? '맵기 2~3' : '맵기 선택'),
+              dense: true,
+            ),
+          ),
+        ),
+      ],
+      bottom: PressableScale(
+        child: FilledButton(
+          // TODO(#58): 고른 값을 PATCH /users/me 로 저장한다. 지금은 화면만 넘어간다.
+          onPressed: selected.length >= 3
+              ? () {
+                  unawaited(
+                    Navigator.of(context).pushAndRemoveUntil(
+                      MaterialPageRoute<void>(
+                        builder: (_) => const MainShell(),
+                      ),
+                      (route) => false,
+                    ),
+                  );
+                }
+              : null,
+          child: Text('다음 · ${selected.length}개 선택됨'),
+        ),
+      ),
+    );
+  }
+}
+
+class _TasteOption extends StatelessWidget {
+  const _TasteOption({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return PressableScale(
+      child: InkWell(
+        borderRadius: BorderRadius.circular(AppShape.inner),
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: AppMotion.short,
+          curve: AppMotion.easeInOut,
+          decoration: BoxDecoration(
+            color: selected ? AppColors.accentSoft : AppColors.card,
+            borderRadius: BorderRadius.circular(AppShape.inner),
+            border: Border.all(
+              color: selected ? AppColors.accent : AppColors.line,
+              width: selected ? 1.4 : 1,
+            ),
+          ),
+          child: Stack(
+            children: [
+              Positioned.fill(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 30),
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: AppColors.wash,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(
+                      Icons.restaurant_menu_rounded,
+                      color: Color(0xFFC08A5A),
+                      size: 26,
+                    ),
+                  ),
+                ),
+              ),
+              Positioned(
+                right: 8,
+                top: 8,
+                child: AnimatedScale(
+                  scale: selected ? 1 : 0.6,
+                  duration: AppMotion.fast,
+                  curve: AppMotion.easeOut,
+                  child: AnimatedOpacity(
+                    opacity: selected ? 1 : 0,
+                    duration: AppMotion.fast,
+                    curve: AppMotion.easeOut,
+                    child: const Icon(
+                      Icons.check_circle,
+                      color: AppColors.accent,
+                      size: 18,
+                    ),
+                  ),
+                ),
+              ),
+              Positioned(
+                left: 8,
+                right: 8,
+                bottom: 8,
+                child: Text(
+                  label,
+                  textAlign: TextAlign.center,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: AppColors.ink,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

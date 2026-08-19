@@ -22,7 +22,9 @@
 2. **`beta_user_repository.dart` 를 통째로 지운다.** 익명 발급, 기기 UUID 생성, SharedPreferences 저장까지 전부 이 파일에 있었고 다른 쓰임새가 없다.
 3. **로그인 화면은 소셜 버튼 둘만 남긴다.** 목업 입력칸과 게스트·회원가입 버튼을 지웠다. "따로 가입할 필요 없어요" 한 줄을 대신 넣었다 — 회원가입 링크가 사라진 이유를 사용자가 알 수 있어야 한다.
 4. **온보딩 분기를 `homeAfterLogin()` 으로 빼고 모든 로그인 경로가 지나가게 한다.** 이제 카카오·구글·개발자 로그인 모두 프로필을 물어봤는지 확인한 뒤 홈으로 간다. 화면 전환에서 분리한 이유는 테스트다 — 위젯 테스트가 소셜 SDK 를 탈 수 없어 버튼을 눌러서는 분기를 검증할 수 없다. `AuthScreen` 의 `profileRepository` 주입 파라미터는 이 함수로 옮겨가 더 이상 쓰이지 않으므로 제거했다.
-5. **`TasteProfileScreen` 도 함께 지운다.** '회원가입' 버튼이 유일한 진입점이었다. **#55 의 온보딩과는 다른 화면이다** — 그쪽은 성별·연령대를 서버에 저장하지만, 이쪽은 입맛·맵기를 고르게 해 놓고 아무 데도 보내지 않는 목업이다. 백엔드에 입맛 컬럼도 API 도 없어 지금 살릴 방법이 없다. 입맛 수집을 진짜 기능으로 만들 때 온보딩 화면에 이어 붙이는 편이 낫다.
+5. **`TasteProfileScreen` 은 진입점 없이 남긴다.** '회원가입' 버튼이 유일한 입구였으므로 이 PR 이후 도달할 수 없는 화면이 된다. **#55 의 온보딩과는 다른 화면이다** — 그쪽은 성별·연령대를 서버에 저장하지만, 이쪽은 입맛·맵기를 고르게 해 놓고 아무 데도 보내지 않는다. 백엔드에 입맛 컬럼도 API 도 없어 지금은 살릴 수 없다.
+
+   지우지 않는 이유는 **UI 가 이미 다 그려져 있고 곧 쓸 자리가 정해져 있어서다** — 온보딩에 입맛 단계를 붙이는 후속 작업(#58)이 이 화면에서 이어간다. 대신 익명 발급을 타던 '다음' 버튼은 걷어냈고, 진입점이 없다는 사실을 화면 주석에 적었다.
 
 ## 변경 사항
 
@@ -30,7 +32,7 @@
 | --- | --- |
 | `features/auth/data/auth_session.dart` | 세션이 없거나 만료면 `AuthException` 을 던진다(빈 맵 반환 폐기) |
 | `features/user/data/beta_user_repository.dart` | **삭제** (260줄) |
-| `features/mvp/auth_screen.dart` | 목업 UI 와 `TasteProfileScreen` 삭제, 온보딩 분기를 `homeAfterLogin()` 으로 추출 |
+| `features/mvp/auth_screen.dart` | 목업 UI 삭제, 온보딩 분기를 `homeAfterLogin()` 으로 추출. `TasteProfileScreen` 은 진입점 없이 보존(#58) |
 | `features/user/data/user_profile_repository.dart` | 헤더 출처를 `AuthSession` 으로, 예외를 `AuthException` 으로 |
 | `features/{recipe,review,recommendation,cooking}/data/*.dart` | 헤더 출처를 `AuthSession` 으로 (8곳) |
 | `test/helpers/auth_fakes.dart` | **신규** — `signInForTest()`, `resetAuthForTest()`, `FakeTokenStorage` |
@@ -47,6 +49,7 @@
 ## 이후 작업에서 지킬 것
 
 - **백엔드를 먼저 머지·배포한 뒤 이 PR 을 머지한다.** `docs/openapi.json` 동기화 검사(`openapi-drift`)가 backend main 과 바이트 비교를 하므로, 순서가 바뀌면 CI 가 빨갛게 뜬다.
+- **`TasteProfileScreen` 은 당분간 도달할 수 없다.** #58 이 온보딩에 입맛 단계를 붙일 때까지는 참조되지 않는 화면으로 남는다. 그때까지 방치될 것 같으면 지우고 git 기록에서 되살리는 편이 낫다.
 - **세션 복원으로 들어오면 온보딩을 건너뛴다.** `main()` 의 `AuthSession.restore()` 경로는 곧장 `MainShell` 로 간다(#55 때부터 그랬다). 14일 안에 다시 로그인하지 않는 사용자는 온보딩을 못 본다.
 - **토큰이 만료되면 지금은 화면마다 오류 문구만 뜬다.** 재로그인으로 유도하는 흐름은 아직 없다(백엔드 #66 리프레시 토큰과 함께 다룬다).
 - **HTTPS 전까지 실사용자 로그인을 열지 않는다.** 이제 익명 폴백이 없어 토큰이 유일한 신원이라 탈취의 대가가 더 커졌다.
