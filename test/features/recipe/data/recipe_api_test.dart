@@ -1,26 +1,23 @@
 import 'dart:async';
 
+import 'package:cookpilot/features/auth/data/auth_api.dart';
 import 'package:cookpilot/features/recipe/data/recipe_api.dart';
-import 'package:cookpilot/features/user/data/beta_user_repository.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
+import '../../../helpers/auth_fakes.dart';
+
 void main() {
   const baseUrl = 'http://example.test';
   const recipeId = '10000000-0000-0000-0000-000000000001';
-  const userId = '90000000-0000-0000-0000-000000000001';
 
-  setUp(() {
-    BetaUserSession.setCurrentUser(
-      const BetaUser(id: userId, displayName: '베타 사용자 1', betaNumber: 1),
-    );
-  });
+  setUp(signInForTest);
 
-  tearDown(BetaUserSession.clear);
+  tearDown(resetAuthForTest);
 
   test('사용자 세션이 없으면 HTTP 요청을 보내지 않는다', () async {
-    BetaUserSession.clear();
+    resetAuthForTest();
     var requestCount = 0;
     final repository = RecipeRepository(
       baseUrl: baseUrl,
@@ -30,7 +27,7 @@ void main() {
       }),
     );
 
-    await expectLater(repository.findAll(), throwsA(isA<BetaUserException>()));
+    await expectLater(repository.findAll(), throwsA(isA<AuthException>()));
     expect(requestCount, 0);
   });
 
@@ -39,7 +36,7 @@ void main() {
       baseUrl: baseUrl,
       client: MockClient((request) async {
         expect(request.url.toString(), '$baseUrl/api/v1/recipes');
-        expect(request.headers[cookPilotUserIdHeader], userId);
+        expect(request.headers['Authorization'], testAuthHeader);
         return _jsonResponse('''
           [
             {
@@ -214,7 +211,7 @@ void main() {
           request.url.toString(),
           '$baseUrl/api/v1/personal-versions/$versionId',
         );
-        expect(request.headers[cookPilotUserIdHeader], userId);
+        expect(request.headers['Authorization'], testAuthHeader);
         return _jsonResponse('''
           {
             "version": {
@@ -370,7 +367,7 @@ void main() {
           request.url.toString(),
           '$baseUrl/api/v1/recipes/$recipeId/personal-versions',
         );
-        expect(request.headers[cookPilotUserIdHeader], userId);
+        expect(request.headers['Authorization'], testAuthHeader);
         return _jsonResponse('''
           [
             {

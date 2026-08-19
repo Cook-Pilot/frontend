@@ -6,7 +6,7 @@ import 'package:http/http.dart' as http;
 
 import '../../../core/api/api_config.dart';
 import '../../cooking/domain/cooking_setup_snapshot.dart';
-import '../../user/data/beta_user_repository.dart';
+import '../../auth/data/auth_session.dart';
 
 enum PersonalVersionIngredientAdjustmentType {
   add('ADD'),
@@ -216,7 +216,7 @@ final class PersonalVersionApprovalApi
               'personal-versions',
             ),
             headers: <String, String>{
-              ...BetaUserSession.requestHeaders,
+              ...AuthSession.requestHeaders,
               'Content-Type': 'application/json',
             },
             body: jsonEncode(request.toJson()),

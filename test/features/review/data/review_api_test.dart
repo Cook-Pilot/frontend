@@ -1,15 +1,16 @@
 import 'dart:convert';
 
+import 'package:cookpilot/features/auth/data/auth_api.dart';
 import 'package:cookpilot/features/cooking/domain/cooking_setup_snapshot.dart';
 import 'package:cookpilot/features/review/data/review_api.dart';
-import 'package:cookpilot/features/user/data/beta_user_repository.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
+import '../../../helpers/auth_fakes.dart';
+
 void main() {
   const baseUrl = 'http://example.test';
-  const userId = '90000000-0000-0000-0000-000000000001';
   const recipeId = '10000000-0000-0000-0000-000000000001';
   const ingredientId = '11000000-0000-0000-0000-000000000001';
   const stepId = '12000000-0000-0000-0000-000000000001';
@@ -47,13 +48,9 @@ void main() {
     ],
   );
 
-  setUp(() {
-    BetaUserSession.setCurrentUser(
-      const BetaUser(id: userId, displayName: '베타 사용자 1', betaNumber: 1),
-    );
-  });
+  setUp(signInForTest);
 
-  tearDown(BetaUserSession.clear);
+  tearDown(resetAuthForTest);
 
   test('PR 37 후기 사실만 저장하고 실행 diff는 개인 버전 요청으로 분리한다', () async {
     late Map<String, dynamic> requestBody;
@@ -62,7 +59,7 @@ void main() {
       client: MockClient((request) async {
         expect(request.method, 'POST');
         expect(request.url.toString(), '$baseUrl/api/v1/reviews');
-        expect(request.headers[cookPilotUserIdHeader], userId);
+        expect(request.headers['Authorization'], testAuthHeader);
         requestBody = jsonDecode(request.body) as Map<String, dynamic>;
         return _jsonResponse(
           '{"id":"50000000-0000-0000-0000-000000000001",'
@@ -140,7 +137,7 @@ void main() {
           from.toUtc().toIso8601String(),
         );
         expect(request.url.queryParameters['to'], to.toUtc().toIso8601String());
-        expect(request.headers[cookPilotUserIdHeader], userId);
+        expect(request.headers['Authorization'], testAuthHeader);
         return _jsonResponse('''
           [
             {
@@ -173,7 +170,7 @@ void main() {
   });
 
   test('사용자 세션이 없으면 후기 HTTP 요청을 보내지 않는다', () async {
-    BetaUserSession.clear();
+    resetAuthForTest();
     var requestCount = 0;
     final repository = ReviewRepository(
       baseUrl: baseUrl,
@@ -192,7 +189,7 @@ void main() {
         comment: '',
         nextTimeNote: '',
       ),
-      throwsA(isA<BetaUserException>()),
+      throwsA(isA<AuthException>()),
     );
     expect(requestCount, 0);
   });

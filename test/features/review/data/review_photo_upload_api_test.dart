@@ -3,20 +3,18 @@ import 'dart:io';
 
 import 'package:cookpilot/features/review/application/review_photo_upload_port.dart';
 import 'package:cookpilot/features/review/data/review_photo_upload_api.dart';
-import 'package:cookpilot/features/user/data/beta_user_repository.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
+import '../../../helpers/auth_fakes.dart';
+
 void main() {
-  const userId = '90000000-0000-0000-0000-000000000001';
   late Directory temp;
   late String photoPath;
 
   setUp(() async {
-    BetaUserSession.setCurrentUser(
-      const BetaUser(id: userId, displayName: '베타 사용자', betaNumber: 1),
-    );
+    await signInForTest();
     temp = await Directory.systemTemp.createTemp('review_photo_upload');
     final file = File('${temp.path}/photo.jpg');
     await file.writeAsBytes([1, 2, 3]);
@@ -24,7 +22,7 @@ void main() {
   });
 
   tearDown(() async {
-    BetaUserSession.clear();
+    resetAuthForTest();
     if (await temp.exists()) {
       await temp.delete(recursive: true);
     }
@@ -53,7 +51,7 @@ void main() {
       captured.url.toString(),
       'http://example.test/api/v1/reviews/photos',
     );
-    expect(captured.headers[cookPilotUserIdHeader], userId);
+    expect(captured.headers['Authorization'], testAuthHeader);
     expect(captured.headers['Content-Type'], startsWith('multipart/form-data'));
   });
 

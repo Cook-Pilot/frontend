@@ -5,25 +5,20 @@ import 'package:cookpilot/features/recipe/domain/recipe.dart';
 import 'package:cookpilot/features/recommendation/data/recommendation_api.dart';
 import 'package:cookpilot/features/review/application/pending_review_draft_store.dart';
 import 'package:cookpilot/features/review/data/personal_version_approval_api.dart';
-import 'package:cookpilot/features/user/data/beta_user_repository.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
+import '../../helpers/auth_fakes.dart';
 import '../../helpers/cooking_fakes.dart';
 
 void main() {
-  const userId = '90000000-0000-0000-0000-000000000001';
   const versionId = '20000000-0000-0000-0000-000000000001';
 
-  setUp(() {
-    BetaUserSession.setCurrentUser(
-      const BetaUser(id: userId, displayName: '베타 사용자', betaNumber: 1),
-    );
-  });
+  setUp(signInForTest);
 
-  tearDown(BetaUserSession.clear);
+  tearDown(resetAuthForTest);
 
   testWidgets('최근 개인 버전을 보여주고 사용자가 선택한 뒤 적용한다', (tester) async {
     final repository = RecipeRepository(

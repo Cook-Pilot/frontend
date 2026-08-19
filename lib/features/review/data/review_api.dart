@@ -5,7 +5,7 @@ import 'package:http/http.dart' as http;
 
 import '../../../core/api/api_config.dart';
 import '../../cooking/domain/cooking_setup_snapshot.dart';
-import '../../user/data/beta_user_repository.dart';
+import '../../auth/data/auth_session.dart';
 
 class ReviewApiException implements Exception {
   const ReviewApiException(this.message, {this.statusCode});
@@ -157,7 +157,7 @@ class ReviewRepository {
           .post(
             Uri.parse('$_baseUrl/api/v1/reviews'),
             headers: {
-              ...BetaUserSession.requestHeaders,
+              ...AuthSession.requestHeaders,
               'Content-Type': 'application/json',
             },
             body: jsonEncode(body),
@@ -189,7 +189,7 @@ class ReviewRepository {
     );
     final response = await _translateTransportErrors(
       () => _client
-          .get(uri, headers: BetaUserSession.requestHeaders)
+          .get(uri, headers: AuthSession.requestHeaders)
           .timeout(const Duration(seconds: 8)),
     );
     if (response.statusCode != 200) {

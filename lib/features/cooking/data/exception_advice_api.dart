@@ -4,7 +4,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import '../../../core/api/api_config.dart';
-import '../../user/data/beta_user_repository.dart';
+import '../../auth/data/auth_session.dart';
 import '../application/cooking_ports.dart';
 
 final class ExceptionAdviceApiException implements Exception {
@@ -40,7 +40,7 @@ final class HttpExceptionAdvicePort implements ExceptionAdvicePort {
           .post(
             Uri.parse('$_baseUrl/api/v1/ai-feedback'),
             headers: <String, String>{
-              ...BetaUserSession.requestHeaders,
+              ...AuthSession.requestHeaders,
               'Content-Type': 'application/json',
             },
             body: jsonEncode(<String, Object?>{
