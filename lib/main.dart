@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:kakao_flutter_sdk_user/kakao_flutter_sdk_user.dart';
 
 import 'app/cookpilot_app.dart';
-import 'core/api/kakao_config.dart';
+import 'core/api/social_config.dart';
 import 'features/auth/data/auth_session.dart';
 
 Future<void> main() async {

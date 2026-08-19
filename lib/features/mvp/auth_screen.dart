@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../app/app_theme.dart';
 import '../auth/data/auth_api.dart';
 import '../auth/data/auth_session.dart';
+import '../auth/data/google_login.dart';
 import '../auth/data/kakao_login.dart';
 import '../auth/presentation/developer_login.dart';
 import '../user/data/beta_user_repository.dart';
@@ -90,7 +91,7 @@ class AuthScreen extends StatelessWidget {
         const SizedBox(height: 10),
         PressableScale(
           child: OutlinedButton.icon(
-            onPressed: () => _openHome(context),
+            onPressed: () => unawaited(_loginWithGoogle(context)),
             icon: const Icon(Icons.g_mobiledata_rounded),
             label: const Text('Google로 시작하기'),
           ),
@@ -158,6 +159,22 @@ class AuthScreen extends StatelessWidget {
       _openHomeDirectly(context);
     } on KakaoLoginCancelled {
       // 사용자가 직접 닫았다. 오류 안내를 띄우지 않는다.
+    } on AuthException catch (error) {
+      messenger.showSnackBar(SnackBar(content: Text(error.message)));
+    }
+  }
+
+  /// 구글 로그인 → 서버 세션 토큰 발급 → 홈.
+  Future<void> _loginWithGoogle(BuildContext context) async {
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final idToken = await const GoogleLogin().obtainIdToken();
+      final session = await AuthApi().loginWithProvider('google', idToken);
+      await AuthSession.save(session);
+      if (!context.mounted) return;
+      _openHomeDirectly(context);
+    } on GoogleLoginCancelled {
+      // 사용자가 직접 닫았다.
     } on AuthException catch (error) {
       messenger.showSnackBar(SnackBar(content: Text(error.message)));
     }

@@ -29,7 +29,10 @@
 | `features/auth/presentation/developer_login.dart` | 로고 7번 연타 → 시크릿 입력 → 로그인 |
 | `features/user/data/beta_user_repository.dart` | `requestHeaders` 가 토큰 우선, 없으면 익명 폴백 |
 | `features/mvp/auth_screen.dart` | 로고를 `DeveloperLoginGate` 로 감쌈 |
-| `pubspec.yaml` | `flutter_secure_storage` 추가 |
+| `features/auth/data/kakao_login.dart` | 카카오 액세스 토큰 획득(카카오톡/웹 분기) |
+| `features/auth/data/google_login.dart` | 구글 ID 토큰 획득 |
+| `core/api/social_config.dart` | 카카오 네이티브 앱 키·구글 웹 클라이언트 ID(둘 다 공개 값) |
+| `pubspec.yaml` | `flutter_secure_storage`, `kakao_flutter_sdk_user`, `google_sign_in` 추가 |
 
 ## 앱 시작 시 세션 복원
 
@@ -69,6 +72,22 @@
 - **AndroidManifest 의 리다이렉트 스킴은 빌드 타임에 확정된다** — `--dart-define` 으로는 못 바꾸므로 gradle `manifestPlaceholders` 로 주입한다. Dart 기본값과 같은 값을 유지해야 한다.
 
 이메일 동의항목은 신청하지 않았다. 카카오는 이메일 제공에 **비즈 앱 전환**이 필요한데, 백엔드가 계정을 이메일이 아니라 카카오 회원번호로 식별하므로 없이도 동작한다.
+
+## 구글 로그인
+
+'Google로 시작하기' 버튼도 실제 로그인으로 연결된다.
+
+```
+구글 SDK 로그인 → ID 토큰(JWT)
+  → POST /auth/google {"token": "..."}   서버가 구글 공개키(JWKS)로 검증
+  → 우리 세션 토큰 저장 → 홈
+```
+
+- **`serverClientId` 로 웹 클라이언트 ID 를 넘겨야 ID 토큰이 발급된다.** 이름이 '웹'이라 헷갈리지만 안드로이드 로그인에도 필요하다 — 앱이 받는 ID 토큰의 대상(`aud`)이 이 값으로 찍히고, 서버는 그 `aud` 를 검사한다(`GOOGLE_CLIENT_IDS` 와 같은 값이어야 한다). 이걸 모르면 "토큰은 받았는데 서버가 계속 거부"에 빠진다.
+- **안드로이드 클라이언트 ID 는 코드에 넣지 않는다.** 구글이 패키지명 + SHA-1 로 알아서 매칭한다.
+- **클라이언트 보안 비밀(client secret)은 쓰지 않는다.** 앱이 ID 토큰을 직접 받고 서버가 공개키로 검증하므로 개입할 자리가 없다. 저장소·서버 어디에도 두지 않는다.
+- 취소(`GoogleSignInExceptionCode.canceled`)는 오류로 다루지 않는다.
+- `initialize()` 는 한 번만 호출한다.
 
 ## openapi 사본 갱신
 
