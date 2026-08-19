@@ -78,6 +78,11 @@ final class InMemoryReviewPhotoFileStore implements ReviewPhotoFileGateway {
   }
 
   @override
+  Future<void> clearAll() async {
+    existingPaths.clear();
+  }
+
+  @override
   Future<List<String>> pruneMissing(List<String> relativePaths) async {
     return relativePaths.where(existingPaths.contains).toList(growable: false);
   }

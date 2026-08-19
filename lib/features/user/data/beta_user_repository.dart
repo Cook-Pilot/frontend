@@ -84,6 +84,9 @@ abstract interface class BetaUserStorage {
 
   Future<bool> writeUserId(String userId);
 
+  /// 탈퇴 시 저장된 사용자 id 를 지운다. 설치 id 는 계정이 아니라 기기 식별이라 남긴다.
+  Future<void> clearUserId();
+
   Future<String?> readInstallationId();
 
   Future<bool> writeInstallationId(String installationId);
@@ -102,6 +105,11 @@ class SharedPreferencesBetaUserStorage implements BetaUserStorage {
   @override
   Future<bool> writeUserId(String userId) async {
     return (await _preferences()).setString(_userIdStorageKey, userId);
+  }
+
+  @override
+  Future<void> clearUserId() async {
+    await (await _preferences()).remove(_userIdStorageKey);
   }
 
   @override

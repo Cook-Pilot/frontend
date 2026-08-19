@@ -301,6 +301,11 @@ class _MemoryBetaUserStorage implements BetaUserStorage {
   }
 
   @override
+  Future<void> clearUserId() async {
+    userId = null;
+  }
+
+  @override
   Future<String?> readInstallationId() async => installationId;
 
   @override

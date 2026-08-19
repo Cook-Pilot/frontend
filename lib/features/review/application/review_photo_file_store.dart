@@ -23,6 +23,9 @@ abstract interface class ReviewPhotoFileGateway {
   /// 세션의 사진 디렉토리 전체를 삭제한다(후기 저장 완료 후 정리).
   Future<void> clearSession(String clientSessionId);
 
+  /// 보관 중인 후기 사진 전부를 삭제한다(회원 탈퇴 시 기기 쪽 정리).
+  Future<void> clearAll();
+
   /// 파일이 실제로 존재하는 경로만 순서를 보존해 돌려준다.
   Future<List<String>> pruneMissing(List<String> relativePaths);
 
@@ -71,6 +74,15 @@ final class ReviewPhotoFileStore implements ReviewPhotoFileGateway {
     final directory = Directory(
       '${documents.path}/$_rootDirectoryName/$clientSessionId',
     );
+    if (await directory.exists()) {
+      await directory.delete(recursive: true);
+    }
+  }
+
+  @override
+  Future<void> clearAll() async {
+    final documents = await _documentsDirectoryLoader();
+    final directory = Directory('${documents.path}/$_rootDirectoryName');
     if (await directory.exists()) {
       await directory.delete(recursive: true);
     }
