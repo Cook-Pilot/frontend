@@ -54,6 +54,20 @@
                 <action android:name="com.htc.intent.action.QUICKBOOT_POWERON"/>
             </intent-filter>
         </receiver>
+
+        <!-- 카카오 로그인 리다이렉트. 카카오톡 앱으로 로그인한 뒤 우리 앱으로 돌아오는 경로다.
+             스킴의 키는 gradle 의 manifestPlaceholders 로 주입한다(네이티브 앱 키와 같아야 한다). -->
+        <activity
+            android:name="com.kakao.sdk.flutter.auth.AppsHandlerActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="kakao${KAKAO_NATIVE_APP_KEY}" />
+                <data android:host="address" />
+            </intent-filter>
+        </activity>
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and

@@ -53,6 +53,23 @@
 - 전체 409개 통과, `flutter analyze` 무경고
 - 실제 개발자 로그인은 서버에 `DEV_LOGIN_SECRET` 설정 후 확인 필요
 
+## 카카오 로그인
+
+로그인 화면의 '카카오로 시작하기' 버튼이 실제 로그인으로 연결된다(그 전에는 익명 발급으로 이어지는 목이었다).
+
+```
+카카오 SDK 로그인 → 액세스 토큰
+  → POST /auth/kakao {"token": "..."}   서버가 카카오에 되물어 검증
+  → 우리 세션 토큰 저장 → 홈
+```
+
+- **카카오톡 설치 여부로 분기한다.** 설치돼 있으면 앱으로, 아니면 웹 계정 로그인으로 간다. 카카오톡이 있어도 실패하면(로그인 안 된 카카오톡 등) 웹으로 한 번 더 시도한다.
+- **사용자 취소는 오류가 아니다.** `KakaoLoginCancelled` 로 구분해 실패 안내를 띄우지 않는다.
+- **네이티브 앱 키는 비밀이 아니다.** 앱에 embed 되는 공개 값이고, 카카오는 이 키가 아니라 **등록된 키 해시(앱 서명)** 로 정당한 앱인지 검증한다. 그래서 저장소에 두되, 바꿔야 할 때를 위해 Dart 는 `--dart-define=KAKAO_NATIVE_APP_KEY`, Android 는 gradle 속성 `kakaoNativeAppKey` 로 덮어쓸 수 있게 했다.
+- **AndroidManifest 의 리다이렉트 스킴은 빌드 타임에 확정된다** — `--dart-define` 으로는 못 바꾸므로 gradle `manifestPlaceholders` 로 주입한다. Dart 기본값과 같은 값을 유지해야 한다.
+
+이메일 동의항목은 신청하지 않았다. 카카오는 이메일 제공에 **비즈 앱 전환**이 필요한데, 백엔드가 계정을 이메일이 아니라 카카오 회원번호로 식별하므로 없이도 동작한다.
+
 ## openapi 사본 갱신
 
 `docs/openapi.json` 을 backend main 과 맞췄다(17 → 20개). 이 브랜치가 쓰는 `POST /auth/dev`·`/auth/{provider}` 가 스펙에 들어오고, 앞서 머지된 `reviews/photos` 도 함께 반영된다. CI 의 `openapi-drift` 는 backend main 과 바이트 비교를 하므로 이 갱신 없이는 통과하지 못한다.
