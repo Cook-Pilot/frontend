@@ -31,7 +31,7 @@ android {
         // Dart 쪽 기본값(lib/core/api/kakao_config.dart)과 같은 값을 유지해야 한다.
         manifestPlaceholders["KAKAO_NATIVE_APP_KEY"] =
             (project.findProperty("kakaoNativeAppKey") as String?)
-                ?: "c7cffdeb995c2993764e5ec94d032c8e"
+                ?: "49c1ac97b674198d1b8f7d47f38897f8"
     }
 
     buildTypes {

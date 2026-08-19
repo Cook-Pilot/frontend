@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:kakao_flutter_sdk_user/kakao_flutter_sdk_user.dart';
 
@@ -20,6 +21,7 @@ class KakaoLogin {
         if (error.code == 'CANCELED') {
           throw const KakaoLoginCancelled();
         }
+        debugPrint('[카카오] 카카오톡 로그인 실패 → 웹으로 재시도: $error');
         // 카카오톡은 있는데 실패한 경우(로그인 안 된 카카오톡 등) 웹으로 한 번 더 시도한다.
         return _loginWithAccount();
       }
@@ -35,8 +37,14 @@ class KakaoLogin {
       if (error.code == 'CANCELED') {
         throw const KakaoLoginCancelled();
       }
+      // 원인을 삼키면 진단할 수 없다. 사용자에게는 일반 문구를 보이되 로그에는 남긴다.
+      debugPrint(
+        '[카카오] 로그인 실패 (PlatformException ${error.code}): ${error.message}',
+      );
       throw const AuthException('카카오 로그인에 실패했습니다.');
-    } on Object {
+    } on Object catch (error, stackTrace) {
+      debugPrint('[카카오] 로그인 실패 ($error)');
+      debugPrintStack(stackTrace: stackTrace, maxFrames: 5);
       throw const AuthException('카카오 로그인에 실패했습니다.');
     }
   }

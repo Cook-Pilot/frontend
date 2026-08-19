@@ -7,7 +7,7 @@
 /// 키를 바꿔야 하면 빌드 시 --dart-define=KAKAO_NATIVE_APP_KEY=... 로 덮어쓴다.
 const kakaoNativeAppKey = String.fromEnvironment(
   'KAKAO_NATIVE_APP_KEY',
-  defaultValue: 'c7cffdeb995c2993764e5ec94d032c8e',
+  defaultValue: '49c1ac97b674198d1b8f7d47f38897f8',
 );
 
 /// 구글 **웹 애플리케이션** 클라이언트 ID.
