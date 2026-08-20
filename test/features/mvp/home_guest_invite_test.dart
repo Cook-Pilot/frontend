@@ -84,7 +84,7 @@ void main() {
     await _pumpGuestHome(tester, repository);
 
     expect(find.byKey(const Key('home-recent-login-invite')), findsNothing);
-    expect(find.text('아직 최근 조리 데이터가 없어요'), findsOneWidget);
+    expect(find.text('아직 만든 요리가 없어요'), findsOneWidget);
     expect(repository.findRecentCalls, 1);
     expect(repository.findFavoritesCalls, 1);
   });

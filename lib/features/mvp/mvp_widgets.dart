@@ -50,7 +50,12 @@ class PageShell extends StatelessWidget {
     this.actions,
     this.bottom,
     this.leading,
+    this.accentHeader = false,
   });
+
+  /// 상단바를 주황으로 채운다. 조리를 마치고 후기로 넘어왔다는 신호를 색으로 준다 —
+  /// 어두운 조리 화면에서 나온 직후라 밝음/어두움/밝음의 왕복이 흐름의 끝을 만든다.
+  final bool accentHeader;
 
   final String? title;
   final Widget? leading;
@@ -70,6 +75,17 @@ class PageShell extends StatelessWidget {
               leading: leading,
               title: Text(title!, maxLines: 1, overflow: TextOverflow.ellipsis),
               actions: actions,
+              backgroundColor: accentHeader ? AppColors.accent : null,
+              foregroundColor: accentHeader ? Colors.white : null,
+              titleTextStyle: accentHeader
+                  ? const TextStyle(
+                      fontFamily: 'Pretendard',
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: -0.3,
+                      color: Colors.white,
+                    )
+                  : null,
             ),
       body: SafeArea(
         child: ListView(
@@ -540,6 +556,215 @@ class InfoStrip extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// 가로로 넘기는 포스터 카드. 넷플릭스식 홈의 기본 단위다.
+///
+/// 세로 3:4 로 잡았다. 영화 포스터는 2:3 이 표준이지만 음식 사진은 가로가 표준이라,
+/// 그대로 세로로 길게 자르면 음식이 잘린다.
+class RecipePosterCard extends StatelessWidget {
+  const RecipePosterCard({
+    super.key,
+    required this.title,
+    required this.image,
+    this.meta,
+    this.badge,
+    this.progress,
+    this.width = 116,
+    required this.onTap,
+  });
+
+  final String title;
+  final String image;
+  final String? meta;
+  final String? badge;
+
+  /// 0~1. 이어서 요리하기 카드에만 쓴다.
+  final double? progress;
+  final double width;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return PressableScale(
+      child: InkWell(
+        borderRadius: BorderRadius.circular(AppShape.inner),
+        onTap: onTap,
+        child: SizedBox(
+          width: width,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // 높이를 폭에서 계산하지 않는다. 그리드 셀에서는 폭이 무한으로 들어와
+              // (부모가 정해 줌) 곱셈이 무한 높이를 만든다.
+              AspectRatio(
+                aspectRatio: 3 / 4,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    FoodImage(
+                      image: image,
+                      width: width.isFinite ? width : null,
+                      radius: 12,
+                    ),
+                    Positioned.fill(
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(12),
+                          gradient: const LinearGradient(
+                            begin: Alignment.bottomCenter,
+                            end: Alignment.topCenter,
+                            colors: [Color(0x99000000), Color(0x00000000)],
+                            stops: [0, 0.55],
+                          ),
+                        ),
+                      ),
+                    ),
+                    if (badge != null)
+                      Positioned(
+                        top: 6,
+                        left: 6,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: AppColors.accent,
+                            borderRadius: BorderRadius.circular(5),
+                          ),
+                          child: Text(
+                            badge!,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 9,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ),
+                      ),
+                    Positioned(
+                      left: 8,
+                      right: 8,
+                      bottom: progress != null ? 12 : 8,
+                      child: Text(
+                        title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                          height: 1.3,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                    if (progress != null)
+                      Positioned(
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        child: ClipRRect(
+                          borderRadius: const BorderRadius.vertical(
+                            bottom: Radius.circular(12),
+                          ),
+                          child: LinearProgressIndicator(
+                            value: progress!.clamp(0, 1),
+                            minHeight: 3,
+                            backgroundColor: Colors.white24,
+                            valueColor: const AlwaysStoppedAnimation(
+                              AppColors.accent,
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              if (meta != null) ...[
+                const SizedBox(height: 6),
+                Text(
+                  meta!,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: AppColors.muted,
+                    fontSize: 10.5,
+                    height: 1.35,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 제목 한 줄 + 가로 스크롤 카드 묶음.
+///
+/// 화면 폭 끝까지 카드가 이어져야 "옆에 더 있다"가 보이므로, 목록만 좌우 여백을
+/// 갖고 바깥 패딩은 두지 않는다(호출부가 음수 마진을 쓰지 않아도 되게).
+class RecipeRail extends StatelessWidget {
+  const RecipeRail({
+    super.key,
+    required this.title,
+    required this.children,
+    this.trailing,
+    this.cardHeight = 210,
+  });
+
+  final String title;
+  final List<Widget> children;
+  final String? trailing;
+  final double cardHeight;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(0, 18, 0, 10),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
+            children: [
+              Expanded(
+                child: Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.3,
+                    color: AppColors.ink,
+                  ),
+                ),
+              ),
+              if (trailing != null)
+                Text(
+                  trailing!,
+                  style: const TextStyle(fontSize: 11, color: AppColors.muted),
+                ),
+            ],
+          ),
+        ),
+        SizedBox(
+          height: cardHeight,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            clipBehavior: Clip.none,
+            padding: EdgeInsets.zero,
+            itemCount: children.length,
+            separatorBuilder: (_, _) => const SizedBox(width: 10),
+            itemBuilder: (_, index) => children[index],
+          ),
+        ),
+      ],
     );
   }
 }
