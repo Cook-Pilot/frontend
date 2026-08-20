@@ -73,7 +73,7 @@ void main() {
           'page': '6',
           'size': '9',
         });
-        expect(request.headers[cookPilotUserIdHeader], userId);
+        expect(request.headers['Authorization'], testAuthHeader);
         return _jsonResponse('''
           {
             "items": [
