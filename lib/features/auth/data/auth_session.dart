@@ -48,9 +48,6 @@ class SecureAuthTokenStorage implements AuthTokenStorage {
 }
 
 /// 현재 로그인 세션. API 호출부는 [requestHeaders] 만 본다.
-///
-/// 익명 발급에서 소셜 로그인으로 넘어가는 동안 두 방식이 함께 산다 —
-/// 토큰이 있으면 Bearer 를, 없으면 기존 익명 헤더를 쓴다(서버도 같은 규칙).
 class AuthSession {
   static AuthSessionToken? _token;
   static AuthTokenStorage _storage = const SecureAuthTokenStorage();
@@ -81,10 +78,15 @@ class AuthSession {
     await _storage.clear();
   }
 
-  /// 토큰이 있으면 Bearer 헤더. 없으면 빈 맵 — 호출부가 익명 헤더로 떨어진다.
+  /// 모든 API 요청에 붙는 인증 헤더.
+  ///
+  /// 세션이 없거나 만료됐으면 던진다. 헤더 없이 보내 봐야 서버가 401 로 거절하는데,
+  /// 그러면 화면마다 401 을 따로 해석해야 한다 — 요청을 보내기 전에 여기서 막는다.
   static Map<String, String> get requestHeaders {
     final token = _token;
-    if (token == null || token.isExpired) return const {};
+    if (token == null || token.isExpired) {
+      throw const AuthException('로그인이 필요합니다. 다시 로그인해 주세요.');
+    }
     return {'Authorization': 'Bearer ${token.token}'};
   }
 

@@ -1,20 +1,8 @@
 import 'package:cookpilot/features/auth/data/auth_api.dart';
 import 'package:cookpilot/features/auth/data/auth_session.dart';
-import 'package:cookpilot/features/user/data/beta_user_repository.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-class _FakeTokenStorage implements AuthTokenStorage {
-  AuthSessionToken? stored;
-
-  @override
-  Future<AuthSessionToken?> read() async => stored;
-
-  @override
-  Future<void> write(AuthSessionToken token) async => stored = token;
-
-  @override
-  Future<void> clear() async => stored = null;
-}
+import '../../helpers/auth_fakes.dart';
 
 AuthSessionToken tokenExpiring(Duration fromNow) => AuthSessionToken(
   token: 'jwt',
@@ -24,18 +12,15 @@ AuthSessionToken tokenExpiring(Duration fromNow) => AuthSessionToken(
 );
 
 void main() {
-  late _FakeTokenStorage storage;
+  late FakeTokenStorage storage;
 
   setUp(() {
-    storage = _FakeTokenStorage();
+    storage = FakeTokenStorage();
     AuthSession.debugReset();
     AuthSession.debugUseStorage(storage);
   });
 
-  tearDown(() {
-    AuthSession.debugReset();
-    BetaUserSession.clear();
-  });
+  tearDown(resetAuthForTest);
 
   test('저장한 토큰은 Bearer 헤더로 나온다', () async {
     await AuthSession.save(tokenExpiring(const Duration(days: 1)));
@@ -44,10 +29,15 @@ void main() {
     expect(AuthSession.isLoggedIn, isTrue);
   });
 
-  test('만료된 토큰은 헤더를 내지 않는다', () async {
+  test('로그인 전에는 요청 헤더를 만들지 못한다', () {
+    expect(() => AuthSession.requestHeaders, throwsA(isA<AuthException>()));
+    expect(AuthSession.isLoggedIn, isFalse);
+  });
+
+  test('만료된 토큰으로도 요청 헤더를 만들지 못한다', () async {
     await AuthSession.save(tokenExpiring(const Duration(minutes: -1)));
 
-    expect(AuthSession.requestHeaders, isEmpty);
+    expect(() => AuthSession.requestHeaders, throwsA(isA<AuthException>()));
     expect(AuthSession.isLoggedIn, isFalse);
   });
 
@@ -70,36 +60,7 @@ void main() {
 
     await AuthSession.signOut();
 
-    expect(AuthSession.requestHeaders, isEmpty);
+    expect(() => AuthSession.requestHeaders, throwsA(isA<AuthException>()));
     expect(storage.stored, isNull);
-  });
-
-  group('전환기 헤더 규칙', () {
-    test('토큰이 있으면 Bearer 를 쓴다', () async {
-      BetaUserSession.setCurrentUser(
-        const BetaUser(
-          id: '11111111-1111-1111-1111-111111111111',
-          displayName: '베타 사용자 1',
-          betaNumber: 1,
-        ),
-      );
-      await AuthSession.save(tokenExpiring(const Duration(days: 1)));
-
-      expect(BetaUserSession.requestHeaders, {'Authorization': 'Bearer jwt'});
-    });
-
-    test('토큰이 없으면 기존 익명 헤더로 떨어진다', () {
-      BetaUserSession.setCurrentUser(
-        const BetaUser(
-          id: '11111111-1111-1111-1111-111111111111',
-          displayName: '베타 사용자 1',
-          betaNumber: 1,
-        ),
-      );
-
-      expect(BetaUserSession.requestHeaders, {
-        cookPilotUserIdHeader: '11111111-1111-1111-1111-111111111111',
-      });
-    });
   });
 }

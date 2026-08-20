@@ -1,33 +1,29 @@
 import 'dart:convert';
 
 import 'package:cookpilot/features/recommendation/data/recommendation_api.dart';
-import 'package:cookpilot/features/user/data/beta_user_repository.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
+import '../../../helpers/auth_fakes.dart';
+
 void main() {
   const baseUrl = 'http://example.test';
-  const userId = '90000000-0000-0000-0000-000000000001';
   const recipeId = '10000000-0000-0000-0000-000000000005';
   const ingredientId = '20000000-0000-0000-0000-000000000504';
   const recommendationId = '70000000-0000-0000-0000-000000000001';
   const reviewId = '60000000-0000-0000-0000-000000000001';
 
-  setUp(() {
-    BetaUserSession.setCurrentUser(
-      const BetaUser(id: userId, displayName: '베타 사용자', betaNumber: 1),
-    );
-  });
+  setUp(signInForTest);
 
-  tearDown(BetaUserSession.clear);
+  tearDown(resetAuthForTest);
 
   test('추천과 근거를 읽고 수정 수락 피드백을 전송한다', () async {
     Map<String, dynamic>? feedbackBody;
     final repository = RecommendationRepository(
       baseUrl: baseUrl,
       client: MockClient((request) async {
-        expect(request.headers[cookPilotUserIdHeader], userId);
+        expect(request.headers['Authorization'], testAuthHeader);
         if (request.method == 'GET') {
           expect(
             request.url.path,

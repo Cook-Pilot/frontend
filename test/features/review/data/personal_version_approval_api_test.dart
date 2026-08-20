@@ -5,10 +5,11 @@ import 'package:cookpilot/features/cooking/domain/cooking_setup_snapshot.dart';
 import 'package:cookpilot/features/recipe/data/recipe_api.dart';
 import 'package:cookpilot/features/recipe/domain/recipe.dart';
 import 'package:cookpilot/features/review/data/personal_version_approval_api.dart';
-import 'package:cookpilot/features/user/data/beta_user_repository.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+
+import '../../../helpers/auth_fakes.dart';
 
 void main() {
   const baseUrl = 'http://example.test';
@@ -17,13 +18,9 @@ void main() {
   const reviewId = '50000000-0000-0000-0000-000000000001';
   const versionId = '20000000-0000-0000-0000-000000000001';
 
-  setUp(() {
-    BetaUserSession.setCurrentUser(
-      const BetaUser(id: userId, displayName: '베타 사용자', betaNumber: 1),
-    );
-  });
+  setUp(signInForTest);
 
-  tearDown(BetaUserSession.clear);
+  tearDown(resetAuthForTest);
 
   test('snapshot을 PR 37 setup diff로 변환하고 201 생성 marker를 반환한다', () async {
     late Map<String, dynamic> requestBody;
@@ -35,7 +32,7 @@ void main() {
           request.url.toString(),
           '$baseUrl/api/v1/reviews/$reviewId/personal-versions',
         );
-        expect(request.headers[cookPilotUserIdHeader], userId);
+        expect(request.headers['Authorization'], testAuthHeader);
         expect(request.headers['content-type'], 'application/json');
         requestBody = jsonDecode(request.body) as Map<String, dynamic>;
         return _jsonResponse('''

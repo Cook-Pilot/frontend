@@ -4,7 +4,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import '../../../core/api/api_config.dart';
-import '../../user/data/beta_user_repository.dart';
+import '../../auth/data/auth_session.dart';
 import '../domain/recipe.dart';
 
 class RecipeSummary {
@@ -326,7 +326,7 @@ class RecipeRepository {
     return _translateTransportErrors(() async {
       final uri = Uri.parse('$_baseUrl$path');
       final response = await _client
-          .get(uri, headers: BetaUserSession.requestHeaders)
+          .get(uri, headers: AuthSession.requestHeaders)
           .timeout(const Duration(seconds: 8));
       if (response.statusCode != 200) {
         throw RecipeApiException(
@@ -346,7 +346,7 @@ class RecipeRepository {
     return _translateTransportErrors(() async {
       final uri = Uri.parse('$_baseUrl$path');
       final request = http.Request(method, uri);
-      request.headers.addAll(BetaUserSession.requestHeaders);
+      request.headers.addAll(AuthSession.requestHeaders);
       final streamed = await _client
           .send(request)
           .timeout(const Duration(seconds: 8));

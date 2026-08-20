@@ -4,7 +4,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import '../../../core/api/api_config.dart';
-import '../../user/data/beta_user_repository.dart';
+import '../../auth/data/auth_session.dart';
 
 enum RecommendationDecision {
   accepted('ACCEPTED'),
@@ -220,7 +220,7 @@ class RecommendationRepository implements RecommendationDataSource {
   }) async {
     try {
       final request = http.Request(method, Uri.parse('$_baseUrl$path'));
-      request.headers.addAll(BetaUserSession.requestHeaders);
+      request.headers.addAll(AuthSession.requestHeaders);
       if (body != null) {
         request.headers['Content-Type'] = 'application/json';
         request.body = jsonEncode(body);

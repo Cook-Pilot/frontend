@@ -1,21 +1,18 @@
 import 'dart:convert';
 
-import 'package:cookpilot/features/user/data/beta_user_repository.dart';
 import 'package:cookpilot/features/user/data/user_profile_repository.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
+import '../../../helpers/auth_fakes.dart';
+
 void main() {
   const userId = '90000000-0000-0000-0000-000000000001';
 
-  setUp(() {
-    BetaUserSession.setCurrentUser(
-      const BetaUser(id: userId, displayName: '베타 사용자 1', betaNumber: 1),
-    );
-  });
+  setUp(signInForTest);
 
-  tearDown(BetaUserSession.clear);
+  tearDown(resetAuthForTest);
 
   UserProfileRepository repositoryReturning(
     Map<String, dynamic> body, {
@@ -39,7 +36,7 @@ void main() {
       {'id': userId, 'profileAskedAt': null},
       onRequest: (request) {
         expect(request.method, 'GET');
-        expect(request.headers[cookPilotUserIdHeader], userId);
+        expect(request.headers['Authorization'], testAuthHeader);
       },
     );
     final asked = repositoryReturning({

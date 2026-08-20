@@ -3,7 +3,8 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import '../../../core/api/api_config.dart';
-import 'beta_user_repository.dart';
+import '../../auth/data/auth_api.dart';
+import '../../auth/data/auth_session.dart';
 
 /// `GET/PATCH /api/v1/users/me`로 성별·연령대 온보딩 상태를 다룬다.
 class UserProfileRepository {
@@ -24,10 +25,10 @@ class UserProfileRepository {
   /// 필드 자체가 없는 구버전 서버 응답에는 온보딩을 띄우지 않는다.
   Future<bool> needsOnboarding() async {
     final response = await _client
-        .get(_meUri, headers: BetaUserSession.requestHeaders)
+        .get(_meUri, headers: AuthSession.requestHeaders)
         .timeout(requestTimeout);
     if (response.statusCode != 200) {
-      throw BetaUserException('사용자 프로필을 확인하지 못했습니다. (${response.statusCode})');
+      throw AuthException('사용자 프로필을 확인하지 못했습니다. (${response.statusCode})');
     }
     final decoded = jsonDecode(response.body);
     return decoded is Map<String, dynamic> &&
@@ -42,14 +43,14 @@ class UserProfileRepository {
         .patch(
           _meUri,
           headers: {
-            ...BetaUserSession.requestHeaders,
+            ...AuthSession.requestHeaders,
             'Content-Type': 'application/json',
           },
           body: jsonEncode({'gender': ?gender, 'ageGroup': ?ageGroup}),
         )
         .timeout(requestTimeout);
     if (response.statusCode != 200) {
-      throw BetaUserException('프로필 저장에 실패했습니다. (${response.statusCode})');
+      throw AuthException('프로필 저장에 실패했습니다. (${response.statusCode})');
     }
   }
 }

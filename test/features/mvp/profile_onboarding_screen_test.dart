@@ -1,23 +1,18 @@
 import 'dart:convert';
 
 import 'package:cookpilot/features/mvp/profile_onboarding_screen.dart';
-import 'package:cookpilot/features/user/data/beta_user_repository.dart';
 import 'package:cookpilot/features/user/data/user_profile_repository.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
+import '../../helpers/auth_fakes.dart';
+
 void main() {
-  const userId = '90000000-0000-0000-0000-000000000001';
+  setUp(signInForTest);
 
-  setUp(() {
-    BetaUserSession.setCurrentUser(
-      const BetaUser(id: userId, displayName: '베타 사용자 1', betaNumber: 1),
-    );
-  });
-
-  tearDown(BetaUserSession.clear);
+  tearDown(resetAuthForTest);
 
   // 화면을 띄우고, PATCH로 전송된 body들을 기록해 돌려준다.
   Future<List<Object?>> pumpScreen(WidgetTester tester) async {

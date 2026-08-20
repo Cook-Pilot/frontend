@@ -4,7 +4,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import '../../../core/api/api_config.dart';
-import '../../user/data/beta_user_repository.dart';
+import '../../auth/data/auth_session.dart';
 import '../application/review_photo_upload_port.dart';
 
 /// 제안 계약(docs/feat-review-photo-#47.md) 기준 HTTP 어댑터.
@@ -25,7 +25,7 @@ final class ReviewPhotoUploadApi implements ReviewPhotoUploadPort {
   @override
   Future<String> upload(String absolutePath) async {
     final request = http.MultipartRequest('POST', Uri.parse('$_baseUrl$_path'))
-      ..headers.addAll(BetaUserSession.requestHeaders);
+      ..headers.addAll(AuthSession.requestHeaders);
     request.files.add(
       await http.MultipartFile.fromPath(_filePartName, absolutePath),
     );
