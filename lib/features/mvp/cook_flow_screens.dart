@@ -2929,18 +2929,13 @@ class _CookSessionScreenState extends State<CookSessionScreen>
     final isLast = step == widget.recipe.steps.length;
     final hasTimer = current.timerDuration > Duration.zero;
 
-    // 조리 화면은 앱에서 유일하게 어둡다. 탐색 화면은 손에 들고 30cm 앞에서 보지만
-    // 여기는 조리대에 세워 두고 팔 길이 밖에서 2초씩 흘끗 본다 — 대비를 최대로 올린다.
     final screen = Scaffold(
-      backgroundColor: CookColors.surface,
       appBar: AppBar(
-        backgroundColor: CookColors.surface,
-        foregroundColor: CookColors.slate,
         titleTextStyle: const TextStyle(
           fontFamily: 'Pretendard',
           fontSize: 14,
           fontWeight: FontWeight.w600,
-          color: CookColors.muted,
+          color: AppColors.muted,
         ),
         leading: IconButton(
           onPressed: _finishing ? null : _closeCookingSession,
@@ -2976,7 +2971,7 @@ class _CookSessionScreenState extends State<CookSessionScreen>
                     fontWeight: FontWeight.w800,
                     fontSize: 12,
                     letterSpacing: 1.2,
-                    color: CookColors.accent,
+                    color: AppColors.accent,
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -2986,7 +2981,7 @@ class _CookSessionScreenState extends State<CookSessionScreen>
                     textAlign: TextAlign.right,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(color: CookColors.slate),
+                    style: TextStyle(color: AppColors.slate),
                   ),
                 ),
               ],
@@ -2995,8 +2990,8 @@ class _CookSessionScreenState extends State<CookSessionScreen>
             LinearProgressIndicator(
               value: step / widget.recipe.steps.length,
               minHeight: 3,
-              backgroundColor: CookColors.line,
-              valueColor: const AlwaysStoppedAnimation(CookColors.accent),
+              backgroundColor: AppColors.line,
+              valueColor: const AlwaysStoppedAnimation(AppColors.accent),
             ),
             const SizedBox(height: 18),
             Column(
@@ -3018,14 +3013,14 @@ class _CookSessionScreenState extends State<CookSessionScreen>
                     fontSize: 25,
                     height: 1.45,
                     letterSpacing: -0.6,
-                    color: CookColors.ink,
+                    color: AppColors.ink,
                     fontWeight: FontWeight.w700,
                   ),
                 ),
                 const SizedBox(height: 8),
                 Text(
                   current.description,
-                  style: const TextStyle(color: CookColors.slate),
+                  style: const TextStyle(color: AppColors.slate),
                 ),
               ],
             ),
@@ -3033,12 +3028,12 @@ class _CookSessionScreenState extends State<CookSessionScreen>
             Container(
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
-                color: CookColors.raised,
-                border: Border.all(color: CookColors.line),
+                color: AppColors.card,
+                border: Border.all(color: AppColors.line),
                 borderRadius: BorderRadius.circular(AppShape.container),
                 boxShadow: const [
                   BoxShadow(
-                    color: Colors.black54,
+                    color: AppColors.shadow,
                     blurRadius: 22,
                     offset: Offset(0, 8),
                   ),
@@ -3046,10 +3041,7 @@ class _CookSessionScreenState extends State<CookSessionScreen>
               ),
               child: Column(
                 children: [
-                  const Text(
-                    '남은 시간',
-                    style: TextStyle(color: Color(0xB3FFFFFF)),
-                  ),
+                  const Text('남은 시간', style: TextStyle(color: AppColors.muted)),
                   const SizedBox(height: 8),
                   // 시계만 실제로 동작하는 부분: 타이머 상태에 맞춰 매초 갱신된다.
                   AnimatedBuilder(
@@ -3059,7 +3051,7 @@ class _CookSessionScreenState extends State<CookSessionScreen>
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                        color: Colors.white,
+                        color: AppColors.ink,
                         fontSize: 44,
                         fontWeight: FontWeight.w800,
                         letterSpacing: -1,
@@ -3079,7 +3071,7 @@ class _CookSessionScreenState extends State<CookSessionScreen>
                             ? _toggleTimer
                             : null,
                         style: FilledButton.styleFrom(
-                          backgroundColor: CookColors.accent,
+                          backgroundColor: AppColors.accent,
                           minimumSize: const Size.fromHeight(48),
                         ),
                         child: Text(_timerLabel(current.minutes)),
@@ -3087,13 +3079,13 @@ class _CookSessionScreenState extends State<CookSessionScreen>
                     ),
                   ),
                   const SizedBox(height: 10),
-                  // 시계 보조 컨트롤: 1분 추가 / 리셋. 다크 카드에 맞춘 아웃라인 버튼.
+                  // 시계 보조 컨트롤: 1분 추가 / 리셋.
                   AnimatedBuilder(
                     animation: _timer,
                     builder: (context, _) {
                       final style = OutlinedButton.styleFrom(
-                        foregroundColor: Colors.white,
-                        side: const BorderSide(color: Color(0x33FFFFFF)),
+                        foregroundColor: AppColors.ink,
+                        side: const BorderSide(color: AppColors.line),
                         minimumSize: const Size.fromHeight(44),
                       );
                       return Row(
@@ -3238,58 +3230,7 @@ class _CookSessionScreenState extends State<CookSessionScreen>
           _closeCookingSession();
         }
       },
-      // 화면 안의 카드·버튼·본문도 조리 팔레트를 따르게 한다. 여기서 한 번 감싸지
-      // 않으면 어두운 바탕 위에 흰 카드와 밝은 본문이 그대로 남는다.
-      child: Theme(data: _cookingTheme(context), child: screen),
-    );
-  }
-
-  /// 조리 모드 테마. 주황은 "지금 살아 있는 것"(도는 타이머, 듣는 마이크)에만 쓰고
-  /// 나머지는 회색으로 둔다 — 어두운 배경에서 주황이 여러 군데면 어디를 볼지 알 수 없다.
-  ThemeData _cookingTheme(BuildContext context) {
-    final base = Theme.of(context);
-    return base.copyWith(
-      scaffoldBackgroundColor: CookColors.surface,
-      colorScheme: base.colorScheme.copyWith(
-        // 공용 위젯(InfoStrip·FoodImage 등)이 이 brightness 를 보고 어두운 쪽으로 갈린다.
-        brightness: Brightness.dark,
-        primary: CookColors.accent,
-        surface: CookColors.raised,
-        onSurface: CookColors.ink,
-      ),
-      dividerColor: CookColors.line,
-      cardTheme: base.cardTheme.copyWith(
-        color: CookColors.raised,
-        shadowColor: Colors.black54,
-      ),
-      textTheme: base.textTheme.apply(
-        bodyColor: CookColors.ink,
-        displayColor: CookColors.ink,
-      ),
-      listTileTheme: const ListTileThemeData(
-        textColor: CookColors.ink,
-        iconColor: CookColors.slate,
-      ),
-      outlinedButtonTheme: OutlinedButtonThemeData(
-        style: OutlinedButton.styleFrom(
-          foregroundColor: CookColors.ink,
-          side: const BorderSide(color: CookColors.line, width: 1.2),
-          minimumSize: const Size.fromHeight(56),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-        ),
-      ),
-      filledButtonTheme: FilledButtonThemeData(
-        style: FilledButton.styleFrom(
-          backgroundColor: CookColors.accent,
-          foregroundColor: CookColors.surface,
-          minimumSize: const Size.fromHeight(56),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-        ),
-      ),
+      child: screen,
     );
   }
 

@@ -178,22 +178,20 @@ class FoodImage extends StatelessWidget {
   final double? height;
   final double radius;
 
-  Widget _placeholder(bool dark) {
+  Widget _placeholder() {
     return Container(
       width: width,
       height: height,
-      decoration: BoxDecoration(
+      decoration: const BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: dark
-              ? const [Color(0xFF241F1B), Color(0xFF181410)]
-              : const [Color(0xFFFBEBD9), Color(0xFFF3D8BC)],
+          colors: [Color(0xFFFBEBD9), Color(0xFFF3D8BC)],
         ),
       ),
-      child: Icon(
+      child: const Icon(
         Icons.restaurant_rounded,
-        color: dark ? CookColors.muted : const Color(0xFFC08A5A),
+        color: Color(0xFFC08A5A),
         size: 32,
       ),
     );
@@ -206,7 +204,6 @@ class FoodImage extends StatelessWidget {
     // iOS 메모리 상한(EXC_RESOURCE)에 걸려 앱이 강제 종료된다.
     // width가 double.infinity로 오는 채움형 배치가 있어(조리 화면 등) 유한한
     // 값일 때만 쓰고, 아니면 화면 폭을 상한으로 삼는다.
-    final dark = Theme.of(context).brightness == Brightness.dark;
     final dpr = MediaQuery.devicePixelRatioOf(context);
     final logicalWidth = (width != null && width!.isFinite)
         ? width!
@@ -215,14 +212,14 @@ class FoodImage extends StatelessWidget {
     return ClipRRect(
       borderRadius: BorderRadius.circular(radius),
       child: image.isEmpty
-          ? _placeholder(dark)
+          ? _placeholder()
           : Image.network(
               image,
               width: width,
               height: height,
               fit: BoxFit.cover,
               cacheWidth: cacheWidth,
-              errorBuilder: (context, error, stack) => _placeholder(dark),
+              errorBuilder: (context, error, stack) => _placeholder(),
             ),
     );
   }
@@ -528,19 +525,16 @@ class InfoStrip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // 조리 화면은 어두운 테마로 감싸 있다. 여기서 색을 고정하면 그 화면에서만
-    // 밝은 판이 남아 배경과 싸운다.
-    final dark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: dark ? CookColors.raised : AppColors.wash,
+        color: AppColors.wash,
         borderRadius: BorderRadius.circular(AppShape.inner),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, color: dark ? CookColors.accent : AppColors.accent),
+          Icon(icon, color: AppColors.accent),
           const SizedBox(width: 10),
           Expanded(
             child: Column(
@@ -550,18 +544,13 @@ class InfoStrip extends StatelessWidget {
                   title,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
+                  style: const TextStyle(
                     fontWeight: FontWeight.w700,
-                    color: dark ? CookColors.ink : AppColors.ink,
+                    color: AppColors.ink,
                   ),
                 ),
                 const SizedBox(height: 4),
-                Text(
-                  body,
-                  style: TextStyle(
-                    color: dark ? CookColors.slate : AppColors.slate,
-                  ),
-                ),
+                Text(body, style: const TextStyle(color: AppColors.slate)),
               ],
             ),
           ),

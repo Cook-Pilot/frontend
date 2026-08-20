@@ -49,24 +49,6 @@ class AppColors {
   static const shadow = Color(0x1A17130F);
 }
 
-/// 조리 모드 팔레트. 앱 테마와 무관하게 항상 어둡다.
-///
-/// 탐색 화면은 손에 들고 30cm 앞에서 훑어보지만, 조리 화면은 조리대에 세워 두고
-/// 팔 길이 밖에서 2초씩 흘끗 본다. 같은 밝기로 두면 둘 다 어중간해진다.
-/// 주황은 여기서 "지금 살아 있는 것"(도는 타이머, 듣는 마이크)에만 쓴다 —
-/// 어두운 배경에서 주황이 여러 군데 있으면 어디를 볼지 알 수 없다.
-class CookColors {
-  const CookColors._();
-
-  static const surface = Color(0xFF14110F);
-  static const raised = Color(0xFF221D19);
-  static const ink = Color(0xFFF8F4F0);
-  static const slate = Color(0xFFCBC0B6);
-  static const muted = Color(0xFF8D8177);
-  static const line = Color(0xFF2F2823);
-  static const accent = Color(0xFFFF7038);
-}
-
 /// Shared easing curves and durations, tuned per the "ease-out for entering,
 /// ease-in-out for on-screen movement" rule of thumb. Keep every ad-hoc
 /// animation in the app pulling from here so motion feels like one system.
