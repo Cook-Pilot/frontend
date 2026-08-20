@@ -10,13 +10,19 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../helpers/review_photo_fakes.dart';
+import '../../helpers/auth_fakes.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  setUp(() {
+  setUp(() async {
     SharedPreferences.setMockInitialValues(<String, Object>{});
+    // 후기 저장이 로그인 게이트를 지나야 하므로 로그인 상태로 돌린다.
+    await signInForTest();
   });
+
+  // 전역 세션 상태가 다른 테스트로 새지 않게 되돌린다.
+  tearDown(resetAuthForTest);
 
   testWidgets('사진을 첨부하면 즉시 업로드를 시작하고 draft에 보존하며 삭제할 수 있다', (tester) async {
     final picker = FakeReviewPhotoPicker()

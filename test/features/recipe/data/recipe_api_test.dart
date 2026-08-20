@@ -16,7 +16,22 @@ void main() {
 
   tearDown(resetAuthForTest);
 
-  test('사용자 세션이 없으면 HTTP 요청을 보내지 않는다', () async {
+  test('세션이 없어도 읽기는 헤더 없이 요청을 보낸다 — 게스트 열람', () async {
+    resetAuthForTest();
+    final repository = RecipeRepository(
+      baseUrl: baseUrl,
+      client: MockClient((request) async {
+        expect(request.headers.containsKey('Authorization'), isFalse);
+        return _jsonResponse('[]');
+      }),
+    );
+
+    await expectLater(repository.findAll(), completion(isEmpty));
+  });
+
+  test('계정 데이터 읽기는 게스트면 요청 전에 던진다', () async {
+    // 즐겨찾기·최근 조리·개인 버전은 계정 데이터다. 게스트가 부르면 서버 401이
+    // '네트워크 오류'로 위장되므로, 요청을 만들기 전에 AuthException 으로 알린다.
     resetAuthForTest();
     var requestCount = 0;
     final repository = RecipeRepository(
@@ -27,7 +42,29 @@ void main() {
       }),
     );
 
-    await expectLater(repository.findAll(), throwsA(isA<AuthException>()));
+    await expectLater(
+      repository.findFavorites(),
+      throwsA(isA<AuthException>()),
+    );
+    await expectLater(repository.findRecent(), throwsA(isA<AuthException>()));
+    expect(requestCount, 0);
+  });
+
+  test('세션이 없으면 쓰기는 HTTP 요청 전에 던진다', () async {
+    resetAuthForTest();
+    var requestCount = 0;
+    final repository = RecipeRepository(
+      baseUrl: baseUrl,
+      client: MockClient((_) async {
+        requestCount++;
+        return _jsonResponse('{}');
+      }),
+    );
+
+    await expectLater(
+      repository.addFavorite('r-1'),
+      throwsA(isA<AuthException>()),
+    );
     expect(requestCount, 0);
   });
 

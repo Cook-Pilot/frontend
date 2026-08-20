@@ -35,7 +35,9 @@ void main() {
     expect(find.text('열리면 안 되는 후기 화면'), findsNothing);
   });
 
-  testWidgets('pending review가 있으면 새 조리 대신 같은 후기를 연다', (tester) async {
+  testWidgets('pending review가 있으면 선택 시트를 띄우고, 이어가기를 고르면 후기를 연다', (
+    tester,
+  ) async {
     final draft = _buildDraft();
     final store = _FakePendingReviewDraftStore(draft: draft);
     PendingReviewDraft? receivedDraft;
@@ -56,12 +58,73 @@ void main() {
     await tester.tap(find.text('이 설정으로 조리 시작'));
     await tester.pumpAndSettle();
 
-    expect(store.loadCalls, 1);
+    // 강제 이동 대신 선택 시트가 뜬다.
+    expect(find.text('작성 중인 후기가 있어요'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('pending-review-continue-button')));
+    await tester.pumpAndSettle();
+
     expect(receivedDraft, same(draft));
     expect(cookingRouteBuilds, 0);
     expect(find.text('후기 이어가기 화면'), findsOneWidget);
-    expect(find.text('열리면 안 되는 조리 화면'), findsNothing);
-    expect(find.text('작성 중인 후기를 먼저 이어갈게요.'), findsOneWidget);
+  });
+
+  testWidgets('선택 시트에서 새 조리 시작을 고르면 조리를 열고 초안은 남긴다', (tester) async {
+    final draft = _buildDraft();
+    final store = _FakePendingReviewDraftStore(draft: draft);
+    var reviewRouteBuilds = 0;
+    var cookingRouteBuilds = 0;
+
+    await _pumpSetup(
+      tester,
+      store: store,
+      pendingReviewScreenBuilder: (_) {
+        reviewRouteBuilds += 1;
+        return const Scaffold(body: Text('열리면 안 되는 후기 화면'));
+      },
+      cookSessionScreenBuilder: (_) {
+        cookingRouteBuilds += 1;
+        return const Scaffold(body: Text('새 조리 화면'));
+      },
+    );
+    await tester.tap(find.text('이 설정으로 조리 시작'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('pending-review-start-new-button')));
+    await tester.pumpAndSettle();
+
+    expect(cookingRouteBuilds, 1);
+    expect(reviewRouteBuilds, 0);
+    expect(find.text('새 조리 화면'), findsOneWidget);
+    // 초안은 지우지 않는다 — 새 조리를 완료하는 시점에만 덮어써진다.
+    expect(await store.load(), isNotNull);
+  });
+
+  testWidgets('선택 시트를 닫으면 아무 화면도 열지 않는다', (tester) async {
+    final store = _FakePendingReviewDraftStore(draft: _buildDraft());
+    var reviewRouteBuilds = 0;
+    var cookingRouteBuilds = 0;
+
+    await _pumpSetup(
+      tester,
+      store: store,
+      pendingReviewScreenBuilder: (_) {
+        reviewRouteBuilds += 1;
+        return const Scaffold(body: Text('열리면 안 되는 후기 화면'));
+      },
+      cookSessionScreenBuilder: (_) {
+        cookingRouteBuilds += 1;
+        return const Scaffold(body: Text('열리면 안 되는 조리 화면'));
+      },
+    );
+    await tester.tap(find.text('이 설정으로 조리 시작'));
+    await tester.pumpAndSettle();
+    // 시트 바깥을 눌러 닫는다.
+    await tester.tapAt(const Offset(10, 10));
+    await tester.pumpAndSettle();
+
+    expect(cookingRouteBuilds, 0);
+    expect(reviewRouteBuilds, 0);
+    expect(find.text('작성 중인 후기가 있어요'), findsNothing);
   });
 
   testWidgets('pending review 조회 오류는 새 조리를 fail-closed한다', (tester) async {

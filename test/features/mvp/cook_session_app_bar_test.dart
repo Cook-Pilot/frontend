@@ -53,4 +53,67 @@ void main() {
       findsNothing,
     );
   });
+
+  testWidgets('앱바의 이전 단계 버튼은 첫 단계에서 비활성, 이후 단계에서 뒤로 이동한다', (tester) async {
+    const twoStepRecipe = Recipe(
+      id: '10000000-0000-0000-0000-000000000004',
+      title: '이전 단계 테스트 레시피',
+      description: '이전 단계 이동을 검증한다.',
+      baseServings: 1,
+      imageUrl: '',
+      ingredients: <Ingredient>[],
+      steps: <CookStep>[
+        CookStep(
+          stepIndex: 0,
+          instruction: '재료를 손질하세요.',
+          timerSeconds: null,
+          cautionNote: null,
+          imageUrl: '',
+        ),
+        CookStep(
+          stepIndex: 1,
+          instruction: '팬에 볶으세요.',
+          timerSeconds: null,
+          cautionNote: null,
+          imageUrl: '',
+        ),
+      ],
+      hasPersonalVersion: false,
+    );
+
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: CookSessionScreen(
+          recipe: twoStepRecipe,
+          servings: 1,
+          alarm: SilentTimerAlarm(),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    final previousButton = find.byKey(const Key('previous-step-button'));
+    expect(previousButton, findsOneWidget);
+    // 첫 단계에서는 비활성이다.
+    expect(
+      tester
+          .widget<TextButton>(
+            find.ancestor(
+              of: find.text('이전 단계'),
+              matching: find.byType(TextButton),
+            ),
+          )
+          .onPressed,
+      isNull,
+    );
+
+    // 2단계로 이동한 뒤 이전 단계를 누르면 1단계로 돌아온다.
+    await tester.tap(find.text('다음 단계'));
+    await tester.pump();
+    expect(find.text('2 / 2 단계'), findsOneWidget);
+
+    await tester.tap(previousButton);
+    await tester.pump();
+    expect(find.text('1 / 2 단계'), findsOneWidget);
+  });
 }

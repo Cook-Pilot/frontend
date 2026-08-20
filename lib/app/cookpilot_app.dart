@@ -1,14 +1,10 @@
 import 'package:flutter/material.dart';
 
-import '../features/mvp/auth_screen.dart';
 import '../features/mvp/main_shell.dart';
 import 'app_theme.dart';
 
 class CookPilotApp extends StatelessWidget {
-  const CookPilotApp({super.key, this.startLoggedIn = false});
-
-  /// 저장된 세션을 복원했는지. 참이면 로그인 화면 없이 바로 홈으로 시작한다.
-  final bool startLoggedIn;
+  const CookPilotApp({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -16,7 +12,9 @@ class CookPilotApp extends StatelessWidget {
       title: 'CookPilot',
       debugShowCheckedModeBanner: false,
       theme: buildCookPilotTheme(),
-      home: startLoggedIn ? const MainShell() : const AuthScreen(),
+      // 게스트 우선: 앱은 항상 홈에서 시작한다. 로그인은 저장이 필요한 순간
+      // (후기·즐겨찾기·마이)에만 화면 위로 띄운다.
+      home: const MainShell(),
     );
   }
 }

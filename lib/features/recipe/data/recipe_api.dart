@@ -183,7 +183,7 @@ class RecipeRepository {
   final String _baseUrl;
 
   Future<List<RecipeSummary>> findAll() async {
-    return _findSummaries('/api/v1/recipes');
+    return _findSummaries('/api/v1/recipes', accountData: false);
   }
 
   Future<RecipeSearchPage> search({
@@ -200,7 +200,7 @@ class RecipeRepository {
         'size': '$size',
       },
     ).query;
-    final response = await _get('/api/v1/recipes/search?$query');
+    final response = await _getCatalog('/api/v1/recipes/search?$query');
     final decoded = jsonDecode(response.body);
     if (decoded is! Map<String, dynamic>) {
       throw const RecipeApiException('레시피 검색 응답 형식이 올바르지 않습니다.');
@@ -209,17 +209,17 @@ class RecipeRepository {
   }
 
   Future<List<RecipeSummary>> findRecent() async {
-    return _findSummaries('/api/v1/home/recent-recipes');
+    return _findSummaries('/api/v1/home/recent-recipes', accountData: true);
   }
 
   Future<List<RecipeSummary>> findFavorites() async {
-    return _findSummaries('/api/v1/favorites');
+    return _findSummaries('/api/v1/favorites', accountData: true);
   }
 
   Future<PersonalRecipeVersionDetail> findPersonalVersionDetail(
     String versionId,
   ) async {
-    final response = await _get('/api/v1/personal-versions/$versionId');
+    final response = await _getAccount('/api/v1/personal-versions/$versionId');
     final decoded = jsonDecode(response.body);
     if (decoded is! Map<String, dynamic>) {
       throw const RecipeApiException('개인 레시피 응답 형식이 올바르지 않습니다.');
@@ -230,7 +230,9 @@ class RecipeRepository {
   Future<List<PersonalRecipeVersionSummary>> findPersonalVersions(
     String recipeId,
   ) async {
-    final response = await _get('/api/v1/recipes/$recipeId/personal-versions');
+    final response = await _getAccount(
+      '/api/v1/recipes/$recipeId/personal-versions',
+    );
     final decoded = jsonDecode(response.body);
     if (decoded is! List ||
         decoded.any((item) => item is! Map<String, dynamic>)) {
@@ -253,8 +255,13 @@ class RecipeRepository {
     await _request('DELETE', '/api/v1/recipes/$recipeId/favorite', {204});
   }
 
-  Future<List<RecipeSummary>> _findSummaries(String path) async {
-    final response = await _get(path);
+  Future<List<RecipeSummary>> _findSummaries(
+    String path, {
+    required bool accountData,
+  }) async {
+    final response = await (accountData
+        ? _getAccount(path)
+        : _getCatalog(path));
     final decoded = jsonDecode(response.body);
     if (decoded is! List) {
       throw const RecipeApiException('레시피 목록 응답 형식이 올바르지 않습니다.');
@@ -279,7 +286,7 @@ class RecipeRepository {
   }
 
   Future<Recipe> findById(RecipeSummary summary) async {
-    final response = await _get('/api/v1/recipes/${summary.id}');
+    final response = await _getCatalog('/api/v1/recipes/${summary.id}');
     final decoded = jsonDecode(response.body);
     if (decoded is! Map<String, dynamic>) {
       throw const RecipeApiException('레시피 상세 응답 형식이 올바르지 않습니다.');
@@ -322,11 +329,21 @@ class RecipeRepository {
     );
   }
 
-  Future<http.Response> _get(String path) async {
+  /// 카탈로그 읽기(목록·검색·상세) — 게스트 허용. 세션이 없으면 헤더 없이 보낸다.
+  Future<http.Response> _getCatalog(String path) =>
+      _get(path, AuthSession.optionalRequestHeaders);
+
+  /// 계정 데이터 읽기(즐겨찾기·최근 조리·개인 버전) — 게스트면 요청 전에 던진다.
+  /// 게스트가 여기 닿으면 서버 401이 '네트워크 오류'로 위장되므로, 호출부 실수를
+  /// 명확한 AuthException 으로 바꿔 준다. 화면은 게스트일 때 이 경로를 부르면 안 된다.
+  Future<http.Response> _getAccount(String path) =>
+      _get(path, AuthSession.requestHeaders);
+
+  Future<http.Response> _get(String path, Map<String, String> headers) async {
     return _translateTransportErrors(() async {
       final uri = Uri.parse('$_baseUrl$path');
       final response = await _client
-          .get(uri, headers: AuthSession.requestHeaders)
+          .get(uri, headers: headers)
           .timeout(const Duration(seconds: 8));
       if (response.statusCode != 200) {
         throw RecipeApiException(

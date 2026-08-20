@@ -8,30 +8,9 @@ import '../auth/data/auth_session.dart';
 import '../auth/data/google_login.dart';
 import '../auth/data/kakao_login.dart';
 import '../auth/presentation/developer_login.dart';
-import '../user/data/user_profile_repository.dart';
+import '../user/data/profile_onboarding_cache.dart';
 import 'main_shell.dart';
 import 'mvp_widgets.dart';
-import 'profile_onboarding_screen.dart';
-
-/// 로그인 직후 갈 화면. 아직 프로필을 물어보지 않았으면 온보딩을 먼저 띄운다.
-///
-/// 프로필 확인이 실패하거나 늦어도 홈 진입을 막지 않는다 — 온보딩은 다음 로그인에서
-/// 다시 시도하면 되지만, 여기서 막히면 앱을 아예 쓸 수 없다.
-Future<Widget> homeAfterLogin({
-  UserProfileRepository? profileRepository,
-}) async {
-  try {
-    final repository =
-        profileRepository ??
-        UserProfileRepository(requestTimeout: const Duration(seconds: 3));
-    if (await repository.needsOnboarding()) {
-      return const ProfileOnboardingScreen();
-    }
-  } on Object {
-    // 의도적으로 무시.
-  }
-  return const MainShell();
-}
 
 const _tasteOptions = [
   '마라탕',
@@ -55,7 +34,17 @@ class AuthScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return PageShell(
       children: [
-        const SizedBox(height: 40),
+        // 홈이 항상 아래에 있으므로 이 화면은 언제나 '위에 얹힌' 화면이다.
+        // 닫으면 게스트인 채 하던 일로 돌아간다.
+        Align(
+          alignment: Alignment.centerLeft,
+          child: IconButton(
+            key: const Key('auth-close-button'),
+            onPressed: () => Navigator.of(context).pop(false),
+            icon: const Icon(Icons.close_rounded, color: AppColors.slate),
+          ),
+        ),
+        const SizedBox(height: 8),
         Center(
           // 로고 7번 연타 = 개발자 로그인 입구. 방어는 서버 시크릿이 한다.
           child: DeveloperLoginGate(
@@ -123,6 +112,17 @@ class AuthScreen extends StatelessWidget {
           textAlign: TextAlign.center,
           style: TextStyle(color: AppColors.muted, fontSize: 13, height: 1.5),
         ),
+        const SizedBox(height: 6),
+        Center(
+          child: TextButton(
+            key: const Key('auth-browse-as-guest-button'),
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text(
+              '로그인 없이 둘러보기',
+              style: TextStyle(color: AppColors.slate),
+            ),
+          ),
+        ),
       ],
     );
   }
@@ -162,14 +162,13 @@ class AuthScreen extends StatelessWidget {
     }
   }
 
+  /// 로그인 성공 뒤에는 항상 로그인을 요구했던 화면(후기 저장·마이 등)으로
+  /// 그대로 복귀한다. 프로필(성별·연령대) 입력은 로그인 흐름에 끼우지 않는다 —
+  /// 우상단 사람 버튼(마이)에서 한다. 하던 일을 끊지 않기 위해서다.
   Future<void> _openHome(BuildContext context) async {
-    final next = await homeAfterLogin();
-    if (!context.mounted) return;
-    unawaited(
-      Navigator.of(
-        context,
-      ).pushReplacement(MaterialPageRoute<void>(builder: (_) => next)),
-    );
+    // 마이 진입 시 온보딩 여부를 캐시로 즉답할 수 있게 뒤에서 채워 둔다.
+    unawaited(ProfileOnboardingCache.refresh());
+    Navigator.of(context).pop(true);
   }
 }
 

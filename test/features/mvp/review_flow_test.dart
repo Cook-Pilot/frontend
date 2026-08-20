@@ -14,15 +14,80 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../helpers/cooking_fakes.dart';
+import '../../helpers/auth_fakes.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  setUp(() {
+  setUp(() async {
     SharedPreferences.setMockInitialValues(<String, Object>{});
+    // 후기 저장이 로그인 게이트를 지나야 하므로 로그인 상태로 돌린다.
+    await signInForTest();
   });
 
+  // 전역 세션 상태가 다른 테스트로 새지 않게 되돌린다.
+  tearDown(resetAuthForTest);
+
   group('조리 완료 전환', () {
+    testWidgets('완료 후 후기에서 뒤로 돌아오면 단계 둘러보기와 후기 재진입이 된다', (tester) async {
+      const browseRecipe = Recipe(
+        id: '10000000-0000-0000-0000-000000000093',
+        title: '완료 후 둘러보기 레시피',
+        description: '완료 뒤 단계 이동을 검증한다.',
+        baseServings: 2,
+        imageUrl: '',
+        ingredients: <Ingredient>[],
+        steps: <CookStep>[
+          CookStep(
+            stepIndex: 0,
+            instruction: '재료를 손질하세요.',
+            timerSeconds: null,
+            cautionNote: null,
+            imageUrl: '',
+          ),
+          CookStep(
+            stepIndex: 1,
+            instruction: '팬에 볶으세요.',
+            timerSeconds: null,
+            cautionNote: null,
+            imageUrl: '',
+          ),
+        ],
+        hasPersonalVersion: false,
+      );
+      final pendingStore = _FakePendingReviewDraftStore();
+
+      await _pumpLastCookingStep(
+        tester,
+        pendingStore: pendingStore,
+        recipe: browseRecipe,
+      );
+      await tester.tap(find.text('다음 단계'));
+      await tester.pump();
+      await tester.tap(find.text('조리 완료'));
+      await _pumpAsyncWork(tester);
+      expect(find.byType(ReviewScreen), findsOneWidget);
+
+      // 후기에서 뒤로 → 방금 끝낸 조리의 마지막 단계로 돌아온다.
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+      expect(find.byType(ReviewScreen), findsNothing);
+      expect(find.text('2 / 2 단계'), findsOneWidget);
+
+      // 완료 뒤에도 단계 둘러보기가 된다.
+      await tester.tap(find.byKey(const Key('previous-step-button')));
+      await tester.pump();
+      expect(find.text('1 / 2 단계'), findsOneWidget);
+      await tester.tap(find.text('다음 단계'));
+      await tester.pump();
+      expect(find.text('2 / 2 단계'), findsOneWidget);
+
+      // 완료 버튼을 다시 누르면 후기로 재진입한다.
+      await tester.tap(find.text('조리 완료'));
+      await tester.pumpAndSettle();
+      expect(find.byType(ReviewScreen), findsOneWidget);
+    });
+
     testWidgets('pending draft 저장 실패 뒤 같은 완료 동작을 재시도할 수 있다', (tester) async {
       final pendingStore = _FakePendingReviewDraftStore(
         saveFailuresRemaining: 1,
@@ -690,6 +755,29 @@ void main() {
         '40000000-0000-0000-0000-000000000002',
       ]);
       expect(await store.load(), isNull);
+    });
+
+    testWidgets('게스트가 다음에 할게요를 누르면 초안을 보관하고 홈으로 나간다', (tester) async {
+      resetAuthForTest();
+      final store = _FakePendingReviewDraftStore();
+      await _pumpReview(tester, store: store);
+
+      await tester.tap(find.text('조리 기록 저장'));
+      await tester.pumpAndSettle();
+      // 로그인 게이트 시트가 뜬다.
+      expect(find.text('후기를 저장하려면 로그인이 필요해요'), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('login-gate-later-button')));
+      await tester.pumpAndSettle();
+
+      // 화면에 갇히지 않고 홈으로 나가며, 초안은 기기에 남는다.
+      expect(find.byType(ReviewScreen), findsNothing);
+      expect(find.text('테스트 홈 화면'), findsOneWidget);
+      expect(
+        find.byKey(const Key('guest-review-draft-kept-snack-bar')),
+        findsOneWidget,
+      );
+      expect(await store.load(), isNotNull);
     });
 
     testWidgets('저장에 성공하면 버튼을 더 누르지 않아도 홈으로 이동하고 결과를 스낵바로 알린다', (tester) async {

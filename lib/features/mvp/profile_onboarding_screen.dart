@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../app/app_theme.dart';
+import '../user/data/profile_onboarding_cache.dart';
 import '../user/data/user_profile_repository.dart';
 import 'main_shell.dart';
 import 'mvp_widgets.dart';
@@ -18,7 +19,9 @@ const _ageGroupOptions = [
   (60, '60세 이상'),
 ];
 
-/// 로그인 직후 profileAskedAt == null일 때 한 번 보여주는 성별·연령대 온보딩.
+/// 성별·연령대 프로필 화면. 마이(아바타)에서 들어온다 —
+/// 아직 안 물어봤으면(profileAskedAt == null) 마이 진입 시 바로 뜨고,
+/// 그 뒤로는 계정 시트의 '프로필 설정'으로 다시 들어온다.
 /// 입력하든 건너뛰든 PATCH /users/me로 서버에 "물어봤음"을 기록한다.
 class ProfileOnboardingScreen extends StatefulWidget {
   const ProfileOnboardingScreen({super.key, this.repository});
@@ -49,6 +52,7 @@ class _ProfileOnboardingScreenState extends State<ProfileOnboardingScreen> {
   /// 건너뛰기: 화면은 바로 넘기고 뒤에서 조용히 빈 body PATCH.
   /// 실패는 무시한다 — 다음 로그인에서 온보딩이 다시 뜰 뿐이다.
   void _skip() {
+    ProfileOnboardingCache.markAsked();
     _goHome();
     unawaited(_repository.updateProfile().catchError((Object _) {}));
   }
@@ -64,6 +68,7 @@ class _ProfileOnboardingScreenState extends State<ProfileOnboardingScreen> {
       return;
     }
     if (!mounted) return;
+    ProfileOnboardingCache.markAsked();
     _goHome();
   }
 

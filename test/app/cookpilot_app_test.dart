@@ -4,19 +4,11 @@ import 'package:cookpilot/features/mvp/main_shell.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  testWidgets('세션을 복원하면 로그인 화면을 건너뛴다', (tester) async {
-    await tester.pumpWidget(const CookPilotApp(startLoggedIn: true));
+  testWidgets('앱은 세션 여부와 무관하게 홈으로 시작한다', (tester) async {
+    await tester.pumpWidget(const CookPilotApp());
     await tester.pump();
 
     expect(find.byType(MainShell), findsOneWidget);
     expect(find.byType(AuthScreen), findsNothing);
-  });
-
-  testWidgets('세션이 없으면 로그인 화면으로 시작한다', (tester) async {
-    await tester.pumpWidget(const CookPilotApp());
-    await tester.pump();
-
-    expect(find.byType(AuthScreen), findsOneWidget);
-    expect(find.byType(MainShell), findsNothing);
   });
 }

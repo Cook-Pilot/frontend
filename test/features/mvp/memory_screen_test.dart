@@ -4,7 +4,17 @@ import 'package:cookpilot/features/review/data/review_api.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../../helpers/auth_fakes.dart';
+
 void main() {
+  setUp(() async {
+    // 메모리 탭은 게스트에게 로그인 안내를 보여주므로, 달력 테스트는 로그인 상태로 돌린다.
+    await signInForTest();
+  });
+
+  // 전역 세션 상태가 다른 테스트로 새지 않게 되돌린다.
+  tearDown(resetAuthForTest);
+
   const recipeId = '10000000-0000-0000-0000-000000000001';
 
   CookingHistoryEntry history({

@@ -18,6 +18,8 @@ import '../cooking/presentation/native_speech_input.dart';
 import '../cooking/presentation/native_speech_output.dart';
 import '../cooking/presentation/timer_alarm_provider.dart';
 import '../cooking/presentation/widgets/help_question_sheet.dart';
+import '../auth/data/auth_session.dart';
+import '../auth/presentation/login_gate.dart';
 import '../recipe/data/recipe_api.dart';
 import '../recipe/domain/recipe.dart';
 import '../recommendation/data/recommendation_api.dart';
@@ -29,6 +31,7 @@ import '../review/data/review_api.dart';
 import '../review/data/review_photo_upload_api.dart';
 import '../review/presentation/review_photo_picker.dart';
 import 'main_shell.dart';
+import 'auth_screen.dart';
 import 'mvp_widgets.dart';
 
 class RecipeDetailScreen extends StatefulWidget {
@@ -55,6 +58,15 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
 
   Future<void> _toggleFavorite() async {
     if (_savingFavorite) return;
+    // 즐겨찾기는 계정에 저장된다 — 게스트면 여기서 로그인을 권한다.
+    if (!AuthSession.isLoggedIn) {
+      final loggedIn = await ensureLoggedIn(
+        context,
+        reason: '즐겨찾기는 로그인하면 저장할 수 있어요',
+        loginScreen: () => const AuthScreen(),
+      );
+      if (!loggedIn || !mounted) return;
+    }
     setState(() => _savingFavorite = true);
     try {
       if (_isFavorite) {
@@ -445,6 +457,69 @@ class CookSetupScreen extends StatefulWidget {
   State<CookSetupScreen> createState() => _CookSetupScreenState();
 }
 
+/// 작성 중인 후기 초안이 있을 때 새 조리 시작 직전에 묻는다.
+///
+/// 초안 저장소는 한 개만 담으므로, 새 조리를 마치면 이전 초안을 덮어쓴다.
+/// 그래서 강제로 후기로 보내는 대신 선택하게 한다 — 단, 덮어쓴다는 사실은
+/// 시트에서 미리 고지한다.
+enum PendingReviewChoice { continueReview, startNewCooking }
+
+Future<PendingReviewChoice?> showPendingReviewChoiceSheet(
+  BuildContext context,
+) {
+  return showModalBottomSheet<PendingReviewChoice>(
+    context: context,
+    showDragHandle: true,
+    builder: (sheetContext) => SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 4, 20, 16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Icon(
+              Icons.rate_review_outlined,
+              color: AppColors.accent,
+              size: 36,
+            ),
+            const SizedBox(height: 10),
+            Text(
+              '작성 중인 후기가 있어요',
+              textAlign: TextAlign.center,
+              style: Theme.of(sheetContext).textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w800,
+                color: AppColors.ink,
+              ),
+            ),
+            const SizedBox(height: 6),
+            const Text(
+              '새 조리를 마치면 이전 후기 초안은 사라져요.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: AppColors.slate, fontSize: 13),
+            ),
+            const SizedBox(height: 16),
+            FilledButton(
+              key: const Key('pending-review-continue-button'),
+              onPressed: () => Navigator.of(
+                sheetContext,
+              ).pop(PendingReviewChoice.continueReview),
+              child: const Text('후기 이어가기'),
+            ),
+            const SizedBox(height: 8),
+            OutlinedButton(
+              key: const Key('pending-review-start-new-button'),
+              onPressed: () => Navigator.of(
+                sheetContext,
+              ).pop(PendingReviewChoice.startNewCooking),
+              child: const Text('새 조리 시작하기'),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
 class _CookSetupScreenState extends State<CookSetupScreen> {
   late int servings;
   late final RecipeRepository _recipeRepository;
@@ -476,7 +551,9 @@ class _CookSetupScreenState extends State<CookSetupScreen> {
     servings = widget.recipe.baseServings.round().clamp(1, 99);
     _applySelectedRecipe();
     unawaited(_loadPersonalVersions());
-    if (_recommendationDataSource != null) {
+    // 추천은 조리 기록 기반이라 게스트에겐 없다. 요청을 보내 봐야 401 이
+    // '추천 오류'로 보이므로 부르지 않고, 화면에서 로그인 안내로 대신한다.
+    if (_recommendationDataSource != null && AuthSession.isLoggedIn) {
       unawaited(_loadRecommendations());
     }
   }
@@ -506,22 +583,36 @@ class _CookSetupScreenState extends State<CookSetupScreen> {
         return;
       }
       if (pendingReviewDraft case final PendingReviewDraft draft) {
-        ScaffoldMessenger.of(context)
-          ..hideCurrentSnackBar()
-          ..showSnackBar(const SnackBar(content: Text('작성 중인 후기를 먼저 이어갈게요.')));
-        await Navigator.of(context).push(
-          MaterialPageRoute<void>(
-            builder: (_) =>
-                widget.pendingReviewScreenBuilder?.call(draft) ??
-                ReviewScreen(
-                  initialDraft: draft,
-                  pendingReviewDraftStore: _pendingReviewDraftStore,
-                ),
-          ),
-        );
-        return;
+        // 강제로 후기로 보내지 않는다 — 다른 요리를 못 하게 막던 지점.
+        // 대신 선택하게 하고, 새 조리를 고르면 완료 시점에 이전 초안이
+        // 덮어써진다는 사실을 시트에서 미리 알린다.
+        final choice = await showPendingReviewChoiceSheet(context);
+        if (!mounted) {
+          return;
+        }
+        switch (choice) {
+          case null:
+            return;
+          case PendingReviewChoice.continueReview:
+            await Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) =>
+                    widget.pendingReviewScreenBuilder?.call(draft) ??
+                    ReviewScreen(
+                      initialDraft: draft,
+                      pendingReviewDraftStore: _pendingReviewDraftStore,
+                    ),
+              ),
+            );
+            return;
+          case PendingReviewChoice.startNewCooking:
+            break; // 아래로 진행 — 초안은 새 조리 완료 시점에 덮어써진다.
+        }
       }
 
+      if (!mounted) {
+        return;
+      }
       final snapshot = _buildSnapshot();
       await Navigator.of(context).push(
         MaterialPageRoute<void>(
@@ -803,7 +894,14 @@ class _CookSetupScreenState extends State<CookSetupScreen> {
         ),
         if (_recommendationDataSource != null) ...[
           const SectionTitle('내 기록에서 찾은 추천'),
-          if (_loadingRecommendations)
+          if (!AuthSession.isLoggedIn)
+            const InfoStrip(
+              key: Key('cook-setup-guest-recommendation'),
+              icon: Icons.lock_open_rounded,
+              title: '로그인하면 맞춤 추천이 나와요',
+              body: '내 조리 기록을 바탕으로 재료 변경안을 제안해 드려요.',
+            )
+          else if (_loadingRecommendations)
             const InfoStrip(
               icon: Icons.auto_awesome_rounded,
               title: '내 조리 기록을 확인하고 있어요',
@@ -2226,12 +2324,6 @@ class _CookSessionScreenState extends State<CookSessionScreen>
   }
 
   void _moveCookingStep(int delta, {required bool fromVoice}) {
-    if (_completed || _completionLocked) {
-      return;
-    }
-    // 화면 버튼 이동도 완료 확인의 번복이다(음성 경로는 _applyVoiceIntent가
-    // 이미 취소함).
-    _voiceFinishPending = false;
     final target = step + delta;
     if (target < 1) {
       _setVoiceMessage('첫 단계예요. 이전 단계가 없어요.');
@@ -2241,6 +2333,34 @@ class _CookSessionScreenState extends State<CookSessionScreen>
       _setVoiceMessage('마지막 단계예요. 완료했다면 “조리 완료”라고 말해주세요.');
       return;
     }
+    if (_completed || _completionLocked) {
+      // 완료 잠금(_completionLocked)은 완료 초안이 캐시되는 순간부터 영구라,
+      // 후기에서 뒤로 돌아온 '둘러보기'까지 막아 버린다. 저장이 진행 중일 때만
+      // 잠그고, 그 외에는 이동만 허용한다 — 세션 저장·음성·알람은 완료 상태
+      // 그대로다(_scheduleAlarm 과 _persist 계열은 자체 가드가 막는다).
+      if (_finishing) {
+        return;
+      }
+      setState(() {
+        step = target;
+        _helpAnswer = null;
+        _helpLoading = false;
+        _voiceMessage = null;
+      });
+      // _resetTimerForStep 은 완료 잠금에 막히므로 표시용 리셋만 직접 한다.
+      final recordedSeconds = _timerSecondsByStep[step - 1];
+      _timer.reset(
+        recordedSeconds != null
+            ? Duration(seconds: recordedSeconds)
+            : widget.recipe.steps[step - 1].timerDuration,
+        autoStart: false,
+      );
+      _lastStatus = _timer.status;
+      return;
+    }
+    // 화면 버튼 이동도 완료 확인의 번복이다(음성 경로는 _applyVoiceIntent가
+    // 이미 취소함).
+    _voiceFinishPending = false;
     // 화면 버튼으로 이동할 때도 진행 중인 음성 세션을 끊어, 이전 단계에서
     // 시작된 인식 결과가 새 단계에 적용되지 않도록 한다.
     _manualSpeechStartPending = false;
@@ -2341,7 +2461,29 @@ class _CookSessionScreenState extends State<CookSessionScreen>
   }
 
   Future<void> _finishCooking() async {
-    if (_completed || _finishing || !mounted) {
+    if (_finishing || !mounted) {
+      return;
+    }
+    if (_completed) {
+      // 이미 완료된 조리 — 후기에서 뒤로 돌아와 마지막 단계를 보던 상태다.
+      // 완료를 다시 눌러도 조용히 무시하지 않고 후기로 재진입시킨다.
+      final draft = _completionDraft;
+      if (draft == null) {
+        return;
+      }
+      setState(() => _finishing = true);
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => ReviewScreen(
+            initialDraft: draft,
+            pendingReviewDraftStore: _pendingReviewDraftStore,
+            cookingSessionStore: _store,
+          ),
+        ),
+      );
+      if (mounted) {
+        setState(() => _finishing = false);
+      }
       return;
     }
     PendingReviewDraft draft;
@@ -2415,7 +2557,10 @@ class _CookSessionScreenState extends State<CookSessionScreen>
     if (!mounted) {
       return;
     }
-    await Navigator.of(context).pushReplacement(
+    // 조리 화면을 스택에 남긴 채 후기를 얹는다 — 후기에서 뒤로가면 방금 끝낸
+    // 조리의 마지막 단계로 돌아가 내용을 다시 볼 수 있다. 후기를 저장하면
+    // ReviewScreen 이 스택 전체를 홈으로 교체하므로 이 화면은 그때 정리된다.
+    await Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => ReviewScreen(
           initialDraft: draft,
@@ -2424,6 +2569,11 @@ class _CookSessionScreenState extends State<CookSessionScreen>
         ),
       ),
     );
+    // 후기에서 뒤로 돌아왔다. 완료 버튼이 다시 눌릴 수 있게 진행 상태만 푼다
+    // (_completed 는 유지 — 완료 자체를 되돌리는 게 아니다).
+    if (mounted) {
+      setState(() => _finishing = false);
+    }
   }
 
   void _closeCookingSession() {
@@ -2790,6 +2940,18 @@ class _CookSessionScreenState extends State<CookSessionScreen>
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
         ),
+        actions: [
+          // 이전 단계로. 화면을 닫는 뒤로가기(X)와 헷갈리지 않게 라벨을 붙인다.
+          TextButton.icon(
+            key: const Key('previous-step-button'),
+            onPressed: (_finishing || step <= 1)
+                ? null
+                : () => _moveCookingStep(-1, fromVoice: false),
+            icon: const Icon(Icons.arrow_back_rounded, size: 18),
+            label: const Text('이전 단계'),
+          ),
+          const SizedBox(width: 4),
+        ],
       ),
       body: SafeArea(
         child: ListView(
@@ -3610,6 +3772,38 @@ class _ReviewScreenState extends State<ReviewScreen>
 
   Future<void> _save({bool completeBlockedAsReviewOnly = false}) async {
     if (_saving || _leaving || _saved != null) return;
+    // 후기는 계정에 저장된다 — 게스트면 저장 직전에 로그인을 권한다.
+    // 초안은 이미 로컬에 저장돼 있어 로그인 화면을 다녀와도 잃지 않는다.
+    if (!AuthSession.isLoggedIn) {
+      final loggedIn = await ensureLoggedIn(
+        context,
+        reason: '후기를 저장하려면 로그인이 필요해요',
+        loginScreen: () => const AuthScreen(),
+      );
+      if (!mounted) return;
+      if (!loggedIn) {
+        // 게스트를 이 화면에 가두지 않는다. 초안을 기기에 보관하고 홈으로 보낸다 —
+        // 홈의 '후기 작성 이어가기' 카드로 언제든 돌아올 수 있고, 로그인하면 이어서 저장된다.
+        if (!_finalized && !await _flushDraft()) {
+          // 초안 저장에 실패하면 내보내지 않는다 — 나가는 순간 후기를 잃는다.
+          return;
+        }
+        if (!mounted) return;
+        final messenger = ScaffoldMessenger.of(context);
+        _goHome();
+        messenger
+          ..hideCurrentSnackBar()
+          ..showSnackBar(
+            const SnackBar(
+              key: Key('guest-review-draft-kept-snack-bar'),
+              content: Text(
+                "후기 초안을 이 기기에 보관했어요. 홈의 '후기 작성 이어가기'에서 로그인하고 저장할 수 있어요.",
+              ),
+            ),
+          );
+        return;
+      }
+    }
     setState(() {
       _saving = true;
       _saveError = null;
