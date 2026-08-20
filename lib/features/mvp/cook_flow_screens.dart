@@ -3033,7 +3033,8 @@ class _CookSessionScreenState extends State<CookSessionScreen>
             Container(
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
-                color: CookColors.ink,
+                color: CookColors.raised,
+                border: Border.all(color: CookColors.line),
                 borderRadius: BorderRadius.circular(AppShape.container),
                 boxShadow: const [
                   BoxShadow(
@@ -3250,6 +3251,8 @@ class _CookSessionScreenState extends State<CookSessionScreen>
     return base.copyWith(
       scaffoldBackgroundColor: CookColors.surface,
       colorScheme: base.colorScheme.copyWith(
+        // 공용 위젯(InfoStrip·FoodImage 등)이 이 brightness 를 보고 어두운 쪽으로 갈린다.
+        brightness: Brightness.dark,
         primary: CookColors.accent,
         surface: CookColors.raised,
         onSurface: CookColors.ink,
