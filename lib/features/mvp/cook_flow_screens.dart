@@ -2918,6 +2918,18 @@ class _CookSessionScreenState extends State<CookSessionScreen>
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
         ),
+        actions: [
+          // 이전 단계로. 화면을 닫는 뒤로가기(X)와 헷갈리지 않게 라벨을 붙인다.
+          TextButton.icon(
+            key: const Key('previous-step-button'),
+            onPressed: (_finishing || step <= 1)
+                ? null
+                : () => _moveCookingStep(-1, fromVoice: false),
+            icon: const Icon(Icons.arrow_back_rounded, size: 18),
+            label: const Text('이전 단계'),
+          ),
+          const SizedBox(width: 4),
+        ],
       ),
       body: SafeArea(
         child: ListView(
