@@ -2439,7 +2439,29 @@ class _CookSessionScreenState extends State<CookSessionScreen>
   }
 
   Future<void> _finishCooking() async {
-    if (_completed || _finishing || !mounted) {
+    if (_finishing || !mounted) {
+      return;
+    }
+    if (_completed) {
+      // 이미 완료된 조리 — 후기에서 뒤로 돌아와 마지막 단계를 보던 상태다.
+      // 완료를 다시 눌러도 조용히 무시하지 않고 후기로 재진입시킨다.
+      final draft = _completionDraft;
+      if (draft == null) {
+        return;
+      }
+      setState(() => _finishing = true);
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => ReviewScreen(
+            initialDraft: draft,
+            pendingReviewDraftStore: _pendingReviewDraftStore,
+            cookingSessionStore: _store,
+          ),
+        ),
+      );
+      if (mounted) {
+        setState(() => _finishing = false);
+      }
       return;
     }
     PendingReviewDraft draft;
@@ -2513,9 +2535,10 @@ class _CookSessionScreenState extends State<CookSessionScreen>
     if (!mounted) {
       return;
     }
-    // 조리가 끝났으니 상세·조리설정 화면으로 돌아갈 일은 없다. 조리 스택을
-    // 전부 걷어내고 루트(홈) 위에 후기만 얹는다 — 뒤로가기가 홈으로 떨어진다.
-    await Navigator.of(context).pushAndRemoveUntil(
+    // 조리 화면을 스택에 남긴 채 후기를 얹는다 — 후기에서 뒤로가면 방금 끝낸
+    // 조리의 마지막 단계로 돌아가 내용을 다시 볼 수 있다. 후기를 저장하면
+    // ReviewScreen 이 스택 전체를 홈으로 교체하므로 이 화면은 그때 정리된다.
+    await Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => ReviewScreen(
           initialDraft: draft,
@@ -2523,8 +2546,12 @@ class _CookSessionScreenState extends State<CookSessionScreen>
           cookingSessionStore: _store,
         ),
       ),
-      (route) => route.isFirst,
     );
+    // 후기에서 뒤로 돌아왔다. 완료 버튼이 다시 눌릴 수 있게 진행 상태만 푼다
+    // (_completed 는 유지 — 완료 자체를 되돌리는 게 아니다).
+    if (mounted) {
+      setState(() => _finishing = false);
+    }
   }
 
   void _closeCookingSession() {
