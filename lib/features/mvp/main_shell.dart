@@ -889,7 +889,20 @@ class _MemoryScreenState extends State<MemoryScreen> {
     final today = widget.initialDate ?? DateTime.now();
     _month = DateTime(today.year, today.month);
     _selectedDate = DateTime(today.year, today.month, today.day);
-    _history = _loadMonth();
+    // 조리 기록은 계정 데이터다. 게스트는 요청을 만들지 않는다 —
+    // 만들면 리스너 없는 실패 Future 가 미처리 오류로 남는다.
+    _history = AuthSession.isLoggedIn
+        ? _loadMonth()
+        : Future.value(const <CookingHistoryEntry>[]);
+  }
+
+  /// 게스트가 로그인 버튼을 눌렀을 때. 로그인까지 마치면 기록을 불러온다.
+  Future<void> _signInFromMemory() async {
+    final loggedIn = await Navigator.of(
+      context,
+    ).push<bool>(MaterialPageRoute<bool>(builder: (_) => const AuthScreen()));
+    if (!mounted || loggedIn != true || !AuthSession.isLoggedIn) return;
+    setState(() => _history = _loadMonth());
   }
 
   Future<List<CookingHistoryEntry>> _loadMonth() {
@@ -934,6 +947,48 @@ class _MemoryScreenState extends State<MemoryScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // 게스트에게는 달력·기록 대신 로그인 안내를 보여준다.
+    // 기록이 없는 게 아니라 '계정이 없어서 보여줄 수 없는' 상태이기 때문이다.
+    if (!AuthSession.isLoggedIn) {
+      return PageShell(
+        title: '레시피 메모리',
+        children: [
+          const SizedBox(height: 48),
+          const Center(
+            child: Icon(
+              Icons.bookmark_border_rounded,
+              size: 48,
+              color: AppColors.accent,
+            ),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            '로그인하면 조리 기록이 여기 모여요',
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w800,
+              color: AppColors.ink,
+            ),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            '요리를 마치고 남긴 후기가 달력으로 정리됩니다.',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: AppColors.slate, fontSize: 14),
+          ),
+          const SizedBox(height: 20),
+          Center(
+            child: FilledButton.icon(
+              key: const Key('memory-login-button'),
+              onPressed: () => unawaited(_signInFromMemory()),
+              icon: const Icon(Icons.login_rounded),
+              label: const Text('로그인하기'),
+            ),
+          ),
+        ],
+      );
+    }
+
     return PageShell(
       title: '레시피 메모리',
       children: [
