@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -151,7 +152,7 @@ class _CookLogLoaderState extends State<CookLogLoader>
     if (motionOff) {
       _controller.stop();
     } else {
-      _controller.repeat();
+      unawaited(_controller.repeat());
     }
   }
 
