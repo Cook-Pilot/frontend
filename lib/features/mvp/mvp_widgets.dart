@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../app/app_theme.dart';
 import '../recipe/domain/recipe.dart';
+import 'shell_tab.dart';
 
 /// Wraps a tappable child and scales it down slightly on press, so buttons
 /// and cards feel like they are listening the instant they're touched.
@@ -42,6 +43,52 @@ class _PressableScaleState extends State<PressableScale> {
   }
 }
 
+/// 어디서든 홈으로 돌아가는 로고. 넷플릭스 좌상단 로고와 같은 자리, 같은 뜻이다.
+///
+/// 깊이 들어간 화면(레시피 상세 → 조리 설정 → …)에서 뒤로가기를 여러 번 누르는 대신
+/// 한 번에 처음으로 돌아온다. 조리 중에는 붙이지 않는다 — 진행 중인 세션을 실수로
+/// 날릴 수 있어 그 화면은 X 버튼이 확인을 거쳐 닫는다.
+/// 루트로 돌아간 뒤 홈 탭까지 간다. 둘 중 하나만 하면 '검색 탭의 루트'에 남는다.
+void goHome(BuildContext context) {
+  Navigator.of(context).popUntil((route) => route.isFirst);
+  shellTabIndex.value = shellHomeTab;
+}
+
+class HomeLogoButton extends StatelessWidget {
+  const HomeLogoButton({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return PressableScale(
+      child: InkWell(
+        key: const Key('home-logo'),
+        customBorder: const CircleBorder(),
+        onTap: () => goHome(context),
+        child: Padding(
+          padding: const EdgeInsets.all(8),
+          child: Container(
+            width: 28,
+            height: 28,
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [AppColors.accent, AppColors.accentDeep],
+              ),
+              borderRadius: BorderRadius.circular(9),
+            ),
+            child: const Icon(
+              Icons.local_fire_department_rounded,
+              color: Colors.white,
+              size: 17,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class PageShell extends StatelessWidget {
   const PageShell({
     super.key,
@@ -51,7 +98,11 @@ class PageShell extends StatelessWidget {
     this.bottom,
     this.leading,
     this.accentHeader = false,
+    this.homeLogo = false,
   });
+
+  /// 상단 오른쪽에 홈으로 가는 로고를 붙인다.
+  final bool homeLogo;
 
   /// 상단바를 주황으로 채운다. 조리를 마치고 후기로 넘어왔다는 신호를 색으로 준다 —
   /// 어두운 조리 화면에서 나온 직후라 밝음/어두움/밝음의 왕복이 흐름의 끝을 만든다.
@@ -74,7 +125,7 @@ class PageShell extends StatelessWidget {
           : AppBar(
               leading: leading,
               title: Text(title!, maxLines: 1, overflow: TextOverflow.ellipsis),
-              actions: actions,
+              actions: [...?actions, if (homeLogo) const HomeLogoButton()],
               backgroundColor: accentHeader ? AppColors.accent : null,
               foregroundColor: accentHeader ? Colors.white : null,
               titleTextStyle: accentHeader

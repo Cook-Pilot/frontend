@@ -16,6 +16,7 @@ import '../user/data/profile_onboarding_cache.dart';
 import 'account_screen.dart';
 import 'auth_screen.dart';
 import 'cook_flow_screens.dart';
+import 'shell_tab.dart';
 import 'mvp_widgets.dart';
 
 final _recipeRepository = RecipeRepository();
@@ -30,17 +31,28 @@ typedef HomeCookingScreenBuilder =
 class MainShell extends StatefulWidget {
   const MainShell({super.key});
 
-  /// 자식 화면이 탭을 바꾼다(홈 우상단 검색 아이콘 → 검색 탭).
-  static void goToTab(BuildContext context, int index) {
-    context.findAncestorStateOfType<_MainShellState>()?._select(index);
-  }
-
   @override
   State<MainShell> createState() => _MainShellState();
 }
 
 class _MainShellState extends State<MainShell> {
-  int index = 0;
+  @override
+  void initState() {
+    super.initState();
+    shellTabIndex.addListener(_onTabChanged);
+  }
+
+  @override
+  void dispose() {
+    shellTabIndex.removeListener(_onTabChanged);
+    super.dispose();
+  }
+
+  void _onTabChanged() {
+    if (mounted) setState(() {});
+  }
+
+  int get index => shellTabIndex.value;
 
   // 로그인 상태가 바뀔 때마다 올린다. 홈의 key 가 바뀌면서 개인화 데이터를
   // 다시 불러온다 — 다른 탭에서 로그인해도 홈이 낡은 게스트 화면으로 남지 않는다.
@@ -48,7 +60,7 @@ class _MainShellState extends State<MainShell> {
 
   void _onSessionChanged() => setState(() => _sessionEpoch++);
 
-  void _select(int value) => setState(() => index = value);
+  void _select(int value) => shellTabIndex.value = value;
 
   @override
   Widget build(BuildContext context) {
@@ -511,7 +523,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   PressableScale(
                     child: InkWell(
                       customBorder: const CircleBorder(),
-                      onTap: () => MainShell.goToTab(context, 1),
+                      onTap: () => shellTabIndex.value = shellSearchTab,
                       child: Container(
                         width: 44,
                         height: 44,
