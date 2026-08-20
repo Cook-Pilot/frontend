@@ -31,6 +31,13 @@ class _LoginScreen extends StatelessWidget {
   Widget build(BuildContext context) => const Scaffold(body: Text('로그인 화면'));
 }
 
+class _ProfileScreen extends StatelessWidget {
+  const _ProfileScreen();
+
+  @override
+  Widget build(BuildContext context) => const Scaffold(body: Text('프로필 화면'));
+}
+
 Widget hostWith(GlobalKey<NavigatorState> navigatorKey) {
   return MaterialApp(
     navigatorKey: navigatorKey,
@@ -42,6 +49,7 @@ Widget hostWith(GlobalKey<NavigatorState> navigatorKey) {
               context,
               firstScreen: () => const _FirstScreen(),
               loginScreen: () => const _LoginScreen(),
+              profileScreen: () => const _ProfileScreen(),
             ),
             child: const Text('열기'),
           ),
@@ -97,5 +105,17 @@ void main() {
     expect(AuthSession.isLoggedIn, isTrue);
     expect(storage.stored, isNotNull);
     expect(find.text('첫 화면'), findsNothing);
+  });
+
+  testWidgets('로그인 상태면 프로필 설정으로 들어갈 수 있다', (tester) async {
+    final navigatorKey = GlobalKey<NavigatorState>();
+    await tester.pumpWidget(hostWith(navigatorKey));
+
+    await tester.tap(find.text('열기'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('account-sheet-profile-tile')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('프로필 화면'), findsOneWidget);
   });
 }

@@ -18,7 +18,9 @@ const _ageGroupOptions = [
   (60, '60세 이상'),
 ];
 
-/// 로그인 직후 profileAskedAt == null일 때 한 번 보여주는 성별·연령대 온보딩.
+/// 성별·연령대 프로필 화면. 마이(아바타)에서 들어온다 —
+/// 아직 안 물어봤으면(profileAskedAt == null) 마이 진입 시 바로 뜨고,
+/// 그 뒤로는 계정 시트의 '프로필 설정'으로 다시 들어온다.
 /// 입력하든 건너뛰든 PATCH /users/me로 서버에 "물어봤음"을 기록한다.
 class ProfileOnboardingScreen extends StatefulWidget {
   const ProfileOnboardingScreen({super.key, this.repository});

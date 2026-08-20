@@ -14,6 +14,7 @@ Future<void> showAccountSheet(
   BuildContext context, {
   required Widget Function() firstScreen,
   required Widget Function() loginScreen,
+  required Widget Function() profileScreen,
 }) async {
   final loggedIn = AuthSession.isLoggedIn;
   final action = await showModalBottomSheet<_AccountAction>(
@@ -32,14 +33,25 @@ Future<void> showAccountSheet(
             ),
           ),
           const Divider(height: 1),
-          if (loggedIn)
+          if (loggedIn) ...[
+            ListTile(
+              key: const Key('account-sheet-profile-tile'),
+              leading: const Icon(Icons.tune_rounded, color: AppColors.accent),
+              title: const Text('프로필 설정'),
+              subtitle: const Text(
+                '성별·연령대로 추천을 맞춰드려요',
+                style: TextStyle(color: AppColors.muted),
+              ),
+              onTap: () =>
+                  Navigator.of(sheetContext).pop(_AccountAction.editProfile),
+            ),
             ListTile(
               leading: const Icon(Icons.logout_rounded),
               title: const Text('로그아웃'),
               onTap: () =>
                   Navigator.of(sheetContext).pop(_AccountAction.signOut),
-            )
-          else
+            ),
+          ] else
             ListTile(
               key: const Key('account-sheet-login-tile'),
               leading: const Icon(Icons.login_rounded, color: AppColors.accent),
@@ -56,6 +68,10 @@ Future<void> showAccountSheet(
   if (action == null || !context.mounted) return;
 
   switch (action) {
+    case _AccountAction.editProfile:
+      await Navigator.of(
+        context,
+      ).push<void>(MaterialPageRoute<void>(builder: (_) => profileScreen()));
     case _AccountAction.signIn:
       // 로그인 화면은 홈 위에 얹힌다. 성공하면 pop 으로 돌아오고,
       // 호출부(main_shell)가 시트 종료 후 홈을 새로고침한다.
@@ -73,4 +89,4 @@ Future<void> showAccountSheet(
   }
 }
 
-enum _AccountAction { signIn, signOut }
+enum _AccountAction { signIn, signOut, editProfile }

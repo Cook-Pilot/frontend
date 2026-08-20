@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/auth_fakes.dart';
+
 void main() {
   setUp(() async {
     // 메모리 탭은 게스트에게 로그인 안내를 보여주므로, 달력 테스트는 로그인 상태로 돌린다.

@@ -8,30 +8,8 @@ import '../auth/data/auth_session.dart';
 import '../auth/data/google_login.dart';
 import '../auth/data/kakao_login.dart';
 import '../auth/presentation/developer_login.dart';
-import '../user/data/user_profile_repository.dart';
 import 'main_shell.dart';
 import 'mvp_widgets.dart';
-import 'profile_onboarding_screen.dart';
-
-/// 로그인 직후 갈 화면. 아직 프로필을 물어보지 않았으면 온보딩을 먼저 띄운다.
-///
-/// 프로필 확인이 실패하거나 늦어도 홈 진입을 막지 않는다 — 온보딩은 다음 로그인에서
-/// 다시 시도하면 되지만, 여기서 막히면 앱을 아예 쓸 수 없다.
-Future<Widget> homeAfterLogin({
-  UserProfileRepository? profileRepository,
-}) async {
-  try {
-    final repository =
-        profileRepository ??
-        UserProfileRepository(requestTimeout: const Duration(seconds: 3));
-    if (await repository.needsOnboarding()) {
-      return const ProfileOnboardingScreen();
-    }
-  } on Object {
-    // 의도적으로 무시.
-  }
-  return const MainShell();
-}
 
 const _tasteOptions = [
   '마라탕',
@@ -183,26 +161,11 @@ class AuthScreen extends StatelessWidget {
     }
   }
 
-  /// 로그인 성공 뒤 다음 행선지.
-  ///
-  /// 이 화면은 항상 홈 위에 얹혀 있으므로, 온보딩이 필요 없으면 pop(true) 로
-  /// 로그인을 요구했던 화면(후기 저장·마이 등)에 그대로 복귀한다.
-  /// 온보딩이 필요하면 스택을 온보딩으로 교체한다 — 온보딩 완료가 홈으로 보낸다.
-  /// 이때 하던 작업 화면은 사라지지만, 후기 초안은 로컬에 저장돼 있어
-  /// 홈의 '이어서' 경로로 되찾을 수 있다.
+  /// 로그인 성공 뒤에는 항상 로그인을 요구했던 화면(후기 저장·마이 등)으로
+  /// 그대로 복귀한다. 프로필(성별·연령대) 입력은 로그인 흐름에 끼우지 않는다 —
+  /// 우상단 사람 버튼(마이)에서 한다. 하던 일을 끊지 않기 위해서다.
   Future<void> _openHome(BuildContext context) async {
-    final next = await homeAfterLogin();
-    if (!context.mounted) return;
-    if (next is MainShell) {
-      Navigator.of(context).pop(true);
-      return;
-    }
-    unawaited(
-      Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute<void>(builder: (_) => next),
-        (route) => false,
-      ),
-    );
+    Navigator.of(context).pop(true);
   }
 }
 

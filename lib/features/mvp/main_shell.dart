@@ -200,6 +200,7 @@ class _HomeScreenState extends State<HomeScreen> {
       context,
       firstScreen: () => const MainShell(),
       loginScreen: () => const AuthScreen(),
+      profileScreen: () => const ProfileOnboardingScreen(),
     );
     // 시트에서 로그인/로그아웃이 일어났을 수 있다 — 개인화 플래그를 다시 그린다.
     if (mounted) _refreshHome();
