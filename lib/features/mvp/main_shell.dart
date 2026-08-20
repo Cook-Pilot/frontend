@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../app/app_theme.dart';
+import '../../app/cooklog_mark.dart';
 import '../../design/cookpilot_spacing.dart';
 import '../auth/data/auth_session.dart';
 import '../cooking/application/cooking_session_store.dart';
@@ -499,6 +500,10 @@ class _HomeScreenState extends State<HomeScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
+                        const Padding(
+                          padding: EdgeInsets.only(bottom: 8),
+                          child: CookLogMark(size: 26),
+                        ),
                         const Text(
                           '셰프님 👋',
                           style: TextStyle(
@@ -766,6 +771,7 @@ class _SearchScreenState extends State<SearchScreen> {
   @override
   Widget build(BuildContext context) {
     return PageShell(
+      homeLogo: true,
       title: '검색',
       children: [
         TextField(
@@ -1100,6 +1106,7 @@ class _MemoryScreenState extends State<MemoryScreen> {
     }
 
     return PageShell(
+      homeLogo: true,
       title: '레시피 메모리',
       children: [
         Row(
@@ -1829,7 +1836,7 @@ class _RecipeDetailLoaderState extends State<_RecipeDetailLoader> {
         if (snapshot.connectionState != ConnectionState.done) {
           return Scaffold(
             appBar: AppBar(title: Text(widget.summary.title)),
-            body: const Center(child: CircularProgressIndicator()),
+            body: const CookLogLoader(label: '레시피 여는 중'),
           );
         }
         if (snapshot.hasError || snapshot.data == null) {
@@ -1850,8 +1857,8 @@ class _RecipeLoading extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const Padding(
-      padding: EdgeInsets.only(top: 48),
-      child: Center(child: CircularProgressIndicator()),
+      padding: EdgeInsets.only(top: 56, bottom: 24),
+      child: CookLogLoader(label: '불 올리는 중'),
     );
   }
 }

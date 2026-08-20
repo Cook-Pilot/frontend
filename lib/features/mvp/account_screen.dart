@@ -32,6 +32,8 @@ class _AccountScreenState extends State<AccountScreen> {
     final name = AuthSession.current?.displayName ?? '게스트';
 
     return PageShell(
+      homeLogo: true,
+      title: '내 정보',
       children: [
         const SizedBox(height: 12),
         Center(

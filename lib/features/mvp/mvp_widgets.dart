@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../app/app_theme.dart';
+import '../../app/cooklog_mark.dart';
 import '../recipe/domain/recipe.dart';
 import 'shell_tab.dart';
 
@@ -64,25 +65,9 @@ class HomeLogoButton extends StatelessWidget {
         key: const Key('home-logo'),
         customBorder: const CircleBorder(),
         onTap: () => goHome(context),
-        child: Padding(
-          padding: const EdgeInsets.all(8),
-          child: Container(
-            width: 28,
-            height: 28,
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [AppColors.accent, AppColors.accentDeep],
-              ),
-              borderRadius: BorderRadius.circular(9),
-            ),
-            child: const Icon(
-              Icons.local_fire_department_rounded,
-              color: Colors.white,
-              size: 17,
-            ),
-          ),
+        child: const Padding(
+          padding: EdgeInsets.all(8),
+          child: CookLogMark(size: 26),
         ),
       ),
     );
@@ -124,8 +109,24 @@ class PageShell extends StatelessWidget {
           ? null
           : AppBar(
               leading: leading,
-              title: Text(title!, maxLines: 1, overflow: TextOverflow.ellipsis),
-              actions: [...?actions, if (homeLogo) const HomeLogoButton()],
+              titleSpacing: leading == null && homeLogo ? 0 : null,
+              title: Row(
+                children: [
+                  // 넷플릭스처럼 상단 왼쪽. 뒤로가기가 있으면 그 옆에 붙는다.
+                  if (homeLogo) ...[
+                    const HomeLogoButton(),
+                    const SizedBox(width: 2),
+                  ],
+                  Flexible(
+                    child: Text(
+                      title!,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+              actions: actions,
               backgroundColor: accentHeader ? AppColors.accent : null,
               foregroundColor: accentHeader ? Colors.white : null,
               titleTextStyle: accentHeader
