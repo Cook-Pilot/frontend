@@ -54,7 +54,7 @@ void main() {
     );
   });
 
-  testWidgets('앱바의 이전 단계 버튼은 첫 단계에서 비활성, 이후 단계에서 뒤로 이동한다', (tester) async {
+  testWidgets('이전 단계 버튼은 첫 단계에서 비활성, 이후 단계에서 뒤로 이동한다', (tester) async {
     const twoStepRecipe = Recipe(
       id: '10000000-0000-0000-0000-000000000004',
       title: '이전 단계 테스트 레시피',
@@ -95,17 +95,7 @@ void main() {
     final previousButton = find.byKey(const Key('previous-step-button'));
     expect(previousButton, findsOneWidget);
     // 첫 단계에서는 비활성이다.
-    expect(
-      tester
-          .widget<TextButton>(
-            find.ancestor(
-              of: find.text('이전 단계'),
-              matching: find.byType(TextButton),
-            ),
-          )
-          .onPressed,
-      isNull,
-    );
+    expect(tester.widget<OutlinedButton>(previousButton).onPressed, isNull);
 
     // 2단계로 이동한 뒤 이전 단계를 누르면 1단계로 돌아온다.
     await tester.tap(find.text('다음 단계'));
