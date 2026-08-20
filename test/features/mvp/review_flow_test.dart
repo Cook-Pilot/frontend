@@ -26,6 +26,65 @@ void main() {
   });
 
   group('조리 완료 전환', () {
+    testWidgets('완료 후 후기에서 뒤로 돌아오면 단계 둘러보기와 후기 재진입이 된다', (tester) async {
+      const browseRecipe = Recipe(
+        id: '10000000-0000-0000-0000-000000000093',
+        title: '완료 후 둘러보기 레시피',
+        description: '완료 뒤 단계 이동을 검증한다.',
+        baseServings: 2,
+        imageUrl: '',
+        ingredients: <Ingredient>[],
+        steps: <CookStep>[
+          CookStep(
+            stepIndex: 0,
+            instruction: '재료를 손질하세요.',
+            timerSeconds: null,
+            cautionNote: null,
+            imageUrl: '',
+          ),
+          CookStep(
+            stepIndex: 1,
+            instruction: '팬에 볶으세요.',
+            timerSeconds: null,
+            cautionNote: null,
+            imageUrl: '',
+          ),
+        ],
+        hasPersonalVersion: false,
+      );
+      final pendingStore = _FakePendingReviewDraftStore();
+
+      await _pumpLastCookingStep(
+        tester,
+        pendingStore: pendingStore,
+        recipe: browseRecipe,
+      );
+      await tester.tap(find.text('다음 단계'));
+      await tester.pump();
+      await tester.tap(find.text('조리 완료'));
+      await _pumpAsyncWork(tester);
+      expect(find.byType(ReviewScreen), findsOneWidget);
+
+      // 후기에서 뒤로 → 방금 끝낸 조리의 마지막 단계로 돌아온다.
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+      expect(find.byType(ReviewScreen), findsNothing);
+      expect(find.text('2 / 2 단계'), findsOneWidget);
+
+      // 완료 뒤에도 단계 둘러보기가 된다.
+      await tester.tap(find.byKey(const Key('previous-step-button')));
+      await tester.pump();
+      expect(find.text('1 / 2 단계'), findsOneWidget);
+      await tester.tap(find.text('다음 단계'));
+      await tester.pump();
+      expect(find.text('2 / 2 단계'), findsOneWidget);
+
+      // 완료 버튼을 다시 누르면 후기로 재진입한다.
+      await tester.tap(find.text('조리 완료'));
+      await tester.pumpAndSettle();
+      expect(find.byType(ReviewScreen), findsOneWidget);
+    });
+
     testWidgets('pending draft 저장 실패 뒤 같은 완료 동작을 재시도할 수 있다', (tester) async {
       final pendingStore = _FakePendingReviewDraftStore(
         saveFailuresRemaining: 1,

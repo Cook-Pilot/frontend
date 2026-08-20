@@ -2324,12 +2324,6 @@ class _CookSessionScreenState extends State<CookSessionScreen>
   }
 
   void _moveCookingStep(int delta, {required bool fromVoice}) {
-    if (_completed || _completionLocked) {
-      return;
-    }
-    // 화면 버튼 이동도 완료 확인의 번복이다(음성 경로는 _applyVoiceIntent가
-    // 이미 취소함).
-    _voiceFinishPending = false;
     final target = step + delta;
     if (target < 1) {
       _setVoiceMessage('첫 단계예요. 이전 단계가 없어요.');
@@ -2339,6 +2333,34 @@ class _CookSessionScreenState extends State<CookSessionScreen>
       _setVoiceMessage('마지막 단계예요. 완료했다면 “조리 완료”라고 말해주세요.');
       return;
     }
+    if (_completed || _completionLocked) {
+      // 완료 잠금(_completionLocked)은 완료 초안이 캐시되는 순간부터 영구라,
+      // 후기에서 뒤로 돌아온 '둘러보기'까지 막아 버린다. 저장이 진행 중일 때만
+      // 잠그고, 그 외에는 이동만 허용한다 — 세션 저장·음성·알람은 완료 상태
+      // 그대로다(_scheduleAlarm 과 _persist 계열은 자체 가드가 막는다).
+      if (_finishing) {
+        return;
+      }
+      setState(() {
+        step = target;
+        _helpAnswer = null;
+        _helpLoading = false;
+        _voiceMessage = null;
+      });
+      // _resetTimerForStep 은 완료 잠금에 막히므로 표시용 리셋만 직접 한다.
+      final recordedSeconds = _timerSecondsByStep[step - 1];
+      _timer.reset(
+        recordedSeconds != null
+            ? Duration(seconds: recordedSeconds)
+            : widget.recipe.steps[step - 1].timerDuration,
+        autoStart: false,
+      );
+      _lastStatus = _timer.status;
+      return;
+    }
+    // 화면 버튼 이동도 완료 확인의 번복이다(음성 경로는 _applyVoiceIntent가
+    // 이미 취소함).
+    _voiceFinishPending = false;
     // 화면 버튼으로 이동할 때도 진행 중인 음성 세션을 끊어, 이전 단계에서
     // 시작된 인식 결과가 새 단계에 적용되지 않도록 한다.
     _manualSpeechStartPending = false;
