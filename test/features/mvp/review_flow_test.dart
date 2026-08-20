@@ -695,6 +695,29 @@ void main() {
       expect(await store.load(), isNull);
     });
 
+    testWidgets('게스트가 다음에 할게요를 누르면 초안을 보관하고 홈으로 나간다', (tester) async {
+      resetAuthForTest();
+      final store = _FakePendingReviewDraftStore();
+      await _pumpReview(tester, store: store);
+
+      await tester.tap(find.text('조리 기록 저장'));
+      await tester.pumpAndSettle();
+      // 로그인 게이트 시트가 뜬다.
+      expect(find.text('후기를 저장하려면 로그인이 필요해요'), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('login-gate-later-button')));
+      await tester.pumpAndSettle();
+
+      // 화면에 갇히지 않고 홈으로 나가며, 초안은 기기에 남는다.
+      expect(find.byType(ReviewScreen), findsNothing);
+      expect(find.text('테스트 홈 화면'), findsOneWidget);
+      expect(
+        find.byKey(const Key('guest-review-draft-kept-snack-bar')),
+        findsOneWidget,
+      );
+      expect(await store.load(), isNotNull);
+    });
+
     testWidgets('저장에 성공하면 버튼을 더 누르지 않아도 홈으로 이동하고 결과를 스낵바로 알린다', (tester) async {
       final store = _FakePendingReviewDraftStore();
       await _pumpReview(tester, store: store);

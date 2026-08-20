@@ -3641,9 +3641,25 @@ class _ReviewScreenState extends State<ReviewScreen>
       );
       if (!mounted) return;
       if (!loggedIn) {
-        setState(() {
-          _saveError = '로그인하면 후기가 계정에 저장돼요. 저장 전까지 초안은 이 기기에 남아 있어요.';
-        });
+        // 게스트를 이 화면에 가두지 않는다. 초안을 기기에 보관하고 홈으로 보낸다 —
+        // 홈의 '후기 작성 이어가기' 카드로 언제든 돌아올 수 있고, 로그인하면 이어서 저장된다.
+        if (!_finalized && !await _flushDraft()) {
+          // 초안 저장에 실패하면 내보내지 않는다 — 나가는 순간 후기를 잃는다.
+          return;
+        }
+        if (!mounted) return;
+        final messenger = ScaffoldMessenger.of(context);
+        _goHome();
+        messenger
+          ..hideCurrentSnackBar()
+          ..showSnackBar(
+            const SnackBar(
+              key: Key('guest-review-draft-kept-snack-bar'),
+              content: Text(
+                "후기 초안을 이 기기에 보관했어요. 홈의 '후기 작성 이어가기'에서 로그인하고 저장할 수 있어요.",
+              ),
+            ),
+          );
         return;
       }
     }
