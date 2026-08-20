@@ -945,7 +945,9 @@ class _MemoryScreenState extends State<MemoryScreen> {
     if (!mounted || loggedIn != true || !AuthSession.isLoggedIn) return;
     unawaited(ProfileOnboardingCache.refresh());
     widget.onLoggedIn?.call();
-    setState(() => _history = _loadMonth());
+    setState(() {
+      _history = _loadMonth();
+    });
   }
 
   Future<List<CookingHistoryEntry>> _loadMonth() {
@@ -964,7 +966,9 @@ class _MemoryScreenState extends State<MemoryScreen> {
   }
 
   void _retry() {
-    setState(() => _history = _loadMonth());
+    setState(() {
+      _history = _loadMonth();
+    });
   }
 
   void _openHistoryDetail(
