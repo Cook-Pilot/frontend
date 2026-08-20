@@ -127,6 +127,9 @@ void main() {
     await signInForTest();
   });
 
+  // 전역 세션 상태가 다른 테스트로 새지 않게 되돌린다.
+  tearDown(resetAuthForTest);
+
   group('CookSessionScreen 복원', () {
     testWidgets('저장된 단계에서 세션을 다시 시작한다', (tester) async {
       await pumpSession(tester, restoredSession: buildSession(stepIndex: 2));

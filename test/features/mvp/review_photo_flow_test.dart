@@ -21,6 +21,9 @@ void main() {
     await signInForTest();
   });
 
+  // 전역 세션 상태가 다른 테스트로 새지 않게 되돌린다.
+  tearDown(resetAuthForTest);
+
   testWidgets('사진을 첨부하면 즉시 업로드를 시작하고 draft에 보존하며 삭제할 수 있다', (tester) async {
     final picker = FakeReviewPhotoPicker()
       ..queuedResults.add('/cache/picked-1.jpg');

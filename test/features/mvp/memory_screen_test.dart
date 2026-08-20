@@ -12,6 +12,9 @@ void main() {
     await signInForTest();
   });
 
+  // 전역 세션 상태가 다른 테스트로 새지 않게 되돌린다.
+  tearDown(resetAuthForTest);
+
   const recipeId = '10000000-0000-0000-0000-000000000001';
 
   CookingHistoryEntry history({

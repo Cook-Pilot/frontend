@@ -25,6 +25,9 @@ void main() {
     await signInForTest();
   });
 
+  // 전역 세션 상태가 다른 테스트로 새지 않게 되돌린다.
+  tearDown(resetAuthForTest);
+
   group('조리 완료 전환', () {
     testWidgets('완료 후 후기에서 뒤로 돌아오면 단계 둘러보기와 후기 재진입이 된다', (tester) async {
       const browseRecipe = Recipe(
