@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../app/app_theme.dart';
+import '../user/data/profile_onboarding_cache.dart';
 import '../user/data/user_profile_repository.dart';
 import 'main_shell.dart';
 import 'mvp_widgets.dart';
@@ -51,6 +52,7 @@ class _ProfileOnboardingScreenState extends State<ProfileOnboardingScreen> {
   /// 건너뛰기: 화면은 바로 넘기고 뒤에서 조용히 빈 body PATCH.
   /// 실패는 무시한다 — 다음 로그인에서 온보딩이 다시 뜰 뿐이다.
   void _skip() {
+    ProfileOnboardingCache.markAsked();
     _goHome();
     unawaited(_repository.updateProfile().catchError((Object _) {}));
   }
@@ -66,6 +68,7 @@ class _ProfileOnboardingScreenState extends State<ProfileOnboardingScreen> {
       return;
     }
     if (!mounted) return;
+    ProfileOnboardingCache.markAsked();
     _goHome();
   }
 

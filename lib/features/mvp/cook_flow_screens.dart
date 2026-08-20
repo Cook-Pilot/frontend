@@ -488,7 +488,9 @@ class _CookSetupScreenState extends State<CookSetupScreen> {
     servings = widget.recipe.baseServings.round().clamp(1, 99);
     _applySelectedRecipe();
     unawaited(_loadPersonalVersions());
-    if (_recommendationDataSource != null) {
+    // 추천은 조리 기록 기반이라 게스트에겐 없다. 요청을 보내 봐야 401 이
+    // '추천 오류'로 보이므로 부르지 않고, 화면에서 로그인 안내로 대신한다.
+    if (_recommendationDataSource != null && AuthSession.isLoggedIn) {
       unawaited(_loadRecommendations());
     }
   }
@@ -815,7 +817,14 @@ class _CookSetupScreenState extends State<CookSetupScreen> {
         ),
         if (_recommendationDataSource != null) ...[
           const SectionTitle('내 기록에서 찾은 추천'),
-          if (_loadingRecommendations)
+          if (!AuthSession.isLoggedIn)
+            const InfoStrip(
+              key: Key('cook-setup-guest-recommendation'),
+              icon: Icons.lock_open_rounded,
+              title: '로그인하면 맞춤 추천이 나와요',
+              body: '내 조리 기록을 바탕으로 재료 변경안을 제안해 드려요.',
+            )
+          else if (_loadingRecommendations)
             const InfoStrip(
               icon: Icons.auto_awesome_rounded,
               title: '내 조리 기록을 확인하고 있어요',

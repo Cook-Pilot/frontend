@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../app/app_theme.dart';
+import '../../user/data/profile_onboarding_cache.dart';
 import '../data/auth_session.dart';
 
 /// 홈 우상단 아바타에서 여는 계정 시트.
@@ -80,6 +81,7 @@ Future<void> showAccountSheet(
       ).push<bool>(MaterialPageRoute<bool>(builder: (_) => loginScreen()));
     case _AccountAction.signOut:
       await AuthSession.signOut();
+      ProfileOnboardingCache.clear();
       if (!context.mounted) return;
       // 게스트 홈으로 스택을 재구성한다 — 개인화된 화면 상태를 남기지 않는다.
       await Navigator.of(context).pushAndRemoveUntil(

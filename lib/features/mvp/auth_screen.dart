@@ -8,6 +8,7 @@ import '../auth/data/auth_session.dart';
 import '../auth/data/google_login.dart';
 import '../auth/data/kakao_login.dart';
 import '../auth/presentation/developer_login.dart';
+import '../user/data/profile_onboarding_cache.dart';
 import 'main_shell.dart';
 import 'mvp_widgets.dart';
 
@@ -165,6 +166,8 @@ class AuthScreen extends StatelessWidget {
   /// 그대로 복귀한다. 프로필(성별·연령대) 입력은 로그인 흐름에 끼우지 않는다 —
   /// 우상단 사람 버튼(마이)에서 한다. 하던 일을 끊지 않기 위해서다.
   Future<void> _openHome(BuildContext context) async {
+    // 마이 진입 시 온보딩 여부를 캐시로 즉답할 수 있게 뒤에서 채워 둔다.
+    unawaited(ProfileOnboardingCache.refresh());
     Navigator.of(context).pop(true);
   }
 }

@@ -13,7 +13,7 @@ import '../recipe/data/recipe_api.dart';
 import '../recipe/domain/recipe.dart';
 import '../review/application/pending_review_draft_store.dart';
 import '../review/data/review_api.dart';
-import '../user/data/user_profile_repository.dart';
+import '../user/data/profile_onboarding_cache.dart';
 import 'auth_screen.dart';
 import 'cook_flow_screens.dart';
 import 'profile_onboarding_screen.dart';
@@ -38,9 +38,19 @@ class MainShell extends StatefulWidget {
 class _MainShellState extends State<MainShell> {
   int index = 0;
 
+  // 로그인 상태가 바뀔 때마다 올린다. 홈의 key 가 바뀌면서 개인화 데이터를
+  // 다시 불러온다 — 메모리 탭에서 로그인해도 홈이 낡은 게스트 화면으로 남지 않는다.
+  int _sessionEpoch = 0;
+
+  void _onSessionChanged() => setState(() => _sessionEpoch++);
+
   @override
   Widget build(BuildContext context) {
-    const pages = [HomeScreen(), SearchScreen(), MemoryScreen()];
+    final pages = [
+      HomeScreen(key: ValueKey('home-session-$_sessionEpoch')),
+      const SearchScreen(),
+      MemoryScreen(onLoggedIn: _onSessionChanged),
+    ];
 
     return Scaffold(
       body: pages[index],
@@ -171,29 +181,35 @@ class _HomeScreenState extends State<HomeScreen> {
     _retry();
   }
 
+  /// 홈의 게스트 안내 카드에서 로그인으로. 성공하면 개인화 데이터를 다시 그린다.
+  Future<void> _signInFromHome() async {
+    final loggedIn = await Navigator.of(
+      context,
+    ).push<bool>(MaterialPageRoute<bool>(builder: (_) => const AuthScreen()));
+    if (!mounted || loggedIn != true || !AuthSession.isLoggedIn) return;
+    unawaited(ProfileOnboardingCache.refresh());
+    _refreshHome();
+  }
+
   /// 마이(아바타) 진입점.
   ///
-  /// 로그인 상태인데 아직 프로필(성별·연령대)을 안 물어봤으면 계정 시트 대신
-  /// 온보딩을 바로 띄운다 — 세션 복원으로 들어와 온보딩을 건너뛴 사용자를
-  /// 여기서 다시 만난다. 확인이 실패하면 그냥 시트로 간다(마이 진입을 막지 않는다).
+  /// 아직 프로필(성별·연령대)을 안 물어본 로그인 사용자에게는 계정 시트 대신
+  /// 온보딩을 바로 띄운다. 판단은 캐시로만 한다 — 여기서 서버를 기다리면
+  /// 아바타 버튼이 응답까지 막힌다. 캐시가 비어 있으면 시트를 먼저 열고,
+  /// 다음 진입을 위해 뒤에서 캐시를 채운다.
   Future<void> _openAccount() async {
-    if (AuthSession.isLoggedIn) {
-      try {
-        final needsOnboarding = await UserProfileRepository(
-          requestTimeout: const Duration(seconds: 3),
-        ).needsOnboarding();
-        if (!mounted) return;
-        if (needsOnboarding) {
-          await Navigator.of(context).push<void>(
-            MaterialPageRoute<void>(
-              builder: (_) => const ProfileOnboardingScreen(),
-            ),
-          );
-          return;
-        }
-      } on Object {
-        // 확인 실패는 무시하고 시트로 간다.
-      }
+    if (ProfileOnboardingCache.shouldAutoShow) {
+      await Navigator.of(context).push<void>(
+        MaterialPageRoute<void>(
+          builder: (_) => const ProfileOnboardingScreen(),
+        ),
+      );
+      if (mounted) _refreshHome();
+      return;
+    }
+    if (AuthSession.isLoggedIn &&
+        ProfileOnboardingCache.needsOnboarding == null) {
+      unawaited(ProfileOnboardingCache.refresh());
     }
     if (!mounted) return;
     await showAccountSheet(
@@ -567,7 +583,15 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                       ],
                       const SectionTitle('최근 조리'),
-                      if (catalog.recent.isEmpty)
+                      if (!AuthSession.isLoggedIn)
+                        _GuestLoginInvite(
+                          inviteKey: const Key('home-recent-login-invite'),
+                          icon: Icons.history_rounded,
+                          title: '로그인하면 조리 기록이 여기 남아요',
+                          body: '요리를 마치고 남긴 후기가 최근 조리로 쌓여요.',
+                          onLogin: _signInFromHome,
+                        )
+                      else if (catalog.recent.isEmpty)
                         const _HomeDataEmpty(
                           icon: Icons.history_rounded,
                           title: '아직 최근 조리 데이터가 없어요',
@@ -583,7 +607,15 @@ class _HomeScreenState extends State<HomeScreen> {
                             ),
                           ),
                       const SectionTitle('즐겨찾기'),
-                      if (catalog.favorites.isEmpty)
+                      if (!AuthSession.isLoggedIn)
+                        _GuestLoginInvite(
+                          inviteKey: const Key('home-favorites-login-invite'),
+                          icon: Icons.bookmark_outline_rounded,
+                          title: '로그인하면 즐겨찾기를 모아볼 수 있어요',
+                          body: '마음에 드는 레시피를 저장해 두고 바로 꺼내 봐요.',
+                          onLogin: _signInFromHome,
+                        )
+                      else if (catalog.favorites.isEmpty)
                         const _HomeDataEmpty(
                           icon: Icons.bookmark_outline_rounded,
                           title: '아직 즐겨찾기 데이터가 없어요',
@@ -868,7 +900,15 @@ class _RecipePagination extends StatelessWidget {
 }
 
 class MemoryScreen extends StatefulWidget {
-  const MemoryScreen({super.key, this.reviewRepository, this.initialDate});
+  const MemoryScreen({
+    super.key,
+    this.reviewRepository,
+    this.initialDate,
+    this.onLoggedIn,
+  });
+
+  /// 이 탭에서 로그인에 성공했을 때. 셸이 홈을 다시 그리는 데 쓴다.
+  final VoidCallback? onLoggedIn;
 
   final ReviewRepository? reviewRepository;
   final DateTime? initialDate;
@@ -903,6 +943,8 @@ class _MemoryScreenState extends State<MemoryScreen> {
       context,
     ).push<bool>(MaterialPageRoute<bool>(builder: (_) => const AuthScreen()));
     if (!mounted || loggedIn != true || !AuthSession.isLoggedIn) return;
+    unawaited(ProfileOnboardingCache.refresh());
+    widget.onLoggedIn?.call();
     setState(() => _history = _loadMonth());
   }
 
@@ -1823,6 +1865,34 @@ class _RecipeEmpty extends StatelessWidget {
           style: const TextStyle(color: AppColors.slate),
         ),
       ),
+    );
+  }
+}
+
+/// 게스트에게 보여주는 안내형 로그인 유도 카드. 팝업으로 방해하지 않고,
+/// 계정 데이터가 놓일 빈 자리에서 이유와 함께 권한다.
+class _GuestLoginInvite extends StatelessWidget {
+  const _GuestLoginInvite({
+    required this.inviteKey,
+    required this.icon,
+    required this.title,
+    required this.body,
+    required this.onLogin,
+  });
+
+  final Key inviteKey;
+  final IconData icon;
+  final String title;
+  final String body;
+  final Future<void> Function() onLogin;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      key: inviteKey,
+      borderRadius: BorderRadius.circular(16),
+      onTap: () => unawaited(onLogin()),
+      child: InfoStrip(icon: icon, title: title, body: '$body 눌러서 로그인하기'),
     );
   }
 }
