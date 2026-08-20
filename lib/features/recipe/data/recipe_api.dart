@@ -326,7 +326,8 @@ class RecipeRepository {
     return _translateTransportErrors(() async {
       final uri = Uri.parse('$_baseUrl$path');
       final response = await _client
-          .get(uri, headers: AuthSession.requestHeaders)
+          // 읽기는 게스트도 허용 — 세션이 없으면 헤더 없이 보낸다.
+          .get(uri, headers: AuthSession.optionalRequestHeaders)
           .timeout(const Duration(seconds: 8));
       if (response.statusCode != 200) {
         throw RecipeApiException(

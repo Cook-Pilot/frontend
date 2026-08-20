@@ -9,8 +9,14 @@ import 'package:cookpilot/features/recipe/domain/recipe.dart';
 import 'package:cookpilot/features/review/application/pending_review_draft_store.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import '../../helpers/auth_fakes.dart';
 
 void main() {
+  setUp(() async {
+    // 후기 저장 경로가 로그인 게이트를 지나므로 로그인 상태로 돌린다.
+    await signInForTest();
+  });
+
   testWidgets('저장된 후기 초안이 있으면 홈에 후기 작성 이어가기를 표시한다', (tester) async {
     final draft = _buildDraft();
 

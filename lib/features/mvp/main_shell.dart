@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../app/app_theme.dart';
 import '../../design/cookpilot_spacing.dart';
+import '../auth/data/auth_session.dart';
 import '../auth/presentation/account_sheet.dart';
 import '../cooking/application/cooking_session_store.dart';
 import '../cooking/data/exception_advice_api.dart';
@@ -12,8 +13,10 @@ import '../recipe/data/recipe_api.dart';
 import '../recipe/domain/recipe.dart';
 import '../review/application/pending_review_draft_store.dart';
 import '../review/data/review_api.dart';
+import '../user/data/user_profile_repository.dart';
 import 'auth_screen.dart';
 import 'cook_flow_screens.dart';
+import 'profile_onboarding_screen.dart';
 import 'mvp_widgets.dart';
 
 final _recipeRepository = RecipeRepository();
@@ -123,14 +126,17 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<_HomeCatalog> _loadCatalog() async {
+    // 최근 조리·즐겨찾기는 계정에 속한 데이터라 게스트에게는 없다.
+    // 요청을 보내 봐야 401 이므로 아예 부르지 않는다.
+    final loggedIn = AuthSession.isLoggedIn;
     final results = await Future.wait<List<RecipeSummary>>([
       _homeRecipeRepository.findAll(),
-      _homeRecipeRepository.findRecent(),
-      _homeRecipeRepository.findFavorites(),
+      if (loggedIn) _homeRecipeRepository.findRecent(),
+      if (loggedIn) _homeRecipeRepository.findFavorites(),
     ]);
     final summaries = results[0];
-    final recent = results[1];
-    final favorites = results[2];
+    final recent = loggedIn ? results[1] : const <RecipeSummary>[];
+    final favorites = loggedIn ? results[2] : const <RecipeSummary>[];
     if (summaries.isEmpty) {
       return _HomeCatalog(
         summaries: summaries,
@@ -163,6 +169,40 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _refreshHome() {
     _retry();
+  }
+
+  /// 마이(아바타) 진입점.
+  ///
+  /// 로그인 상태인데 아직 프로필(성별·연령대)을 안 물어봤으면 계정 시트 대신
+  /// 온보딩을 바로 띄운다 — 세션 복원으로 들어와 온보딩을 건너뛴 사용자를
+  /// 여기서 다시 만난다. 확인이 실패하면 그냥 시트로 간다(마이 진입을 막지 않는다).
+  Future<void> _openAccount() async {
+    if (AuthSession.isLoggedIn) {
+      try {
+        final needsOnboarding = await UserProfileRepository(
+          requestTimeout: const Duration(seconds: 3),
+        ).needsOnboarding();
+        if (!mounted) return;
+        if (needsOnboarding) {
+          await Navigator.of(context).push<void>(
+            MaterialPageRoute<void>(
+              builder: (_) => const ProfileOnboardingScreen(),
+            ),
+          );
+          return;
+        }
+      } on Object {
+        // 확인 실패는 무시하고 시트로 간다.
+      }
+    }
+    if (!mounted) return;
+    await showAccountSheet(
+      context,
+      firstScreen: () => const MainShell(),
+      loginScreen: () => const AuthScreen(),
+    );
+    // 시트에서 로그인/로그아웃이 일어났을 수 있다 — 개인화 플래그를 다시 그린다.
+    if (mounted) _refreshHome();
   }
 
   bool _isCurrentRecovery(int generation) {
@@ -446,12 +486,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   PressableScale(
                     child: InkWell(
                       customBorder: const CircleBorder(),
-                      onTap: () => unawaited(
-                        showAccountSheet(
-                          context,
-                          firstScreen: () => const AuthScreen(),
-                        ),
-                      ),
+                      onTap: () => unawaited(_openAccount()),
                       child: Container(
                         width: 44,
                         height: 44,

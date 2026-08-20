@@ -14,12 +14,15 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../helpers/cooking_fakes.dart';
+import '../../helpers/auth_fakes.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  setUp(() {
+  setUp(() async {
     SharedPreferences.setMockInitialValues(<String, Object>{});
+    // 후기 저장이 로그인 게이트를 지나야 하므로 로그인 상태로 돌린다.
+    await signInForTest();
   });
 
   group('조리 완료 전환', () {

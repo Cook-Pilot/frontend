@@ -16,18 +16,34 @@ void main() {
 
   tearDown(resetAuthForTest);
 
-  test('사용자 세션이 없으면 HTTP 요청을 보내지 않는다', () async {
+  test('세션이 없어도 읽기는 헤더 없이 요청을 보낸다 — 게스트 열람', () async {
+    resetAuthForTest();
+    final repository = RecipeRepository(
+      baseUrl: baseUrl,
+      client: MockClient((request) async {
+        expect(request.headers.containsKey('Authorization'), isFalse);
+        return _jsonResponse('[]');
+      }),
+    );
+
+    await expectLater(repository.findAll(), completion(isEmpty));
+  });
+
+  test('세션이 없으면 쓰기는 HTTP 요청 전에 던진다', () async {
     resetAuthForTest();
     var requestCount = 0;
     final repository = RecipeRepository(
       baseUrl: baseUrl,
       client: MockClient((_) async {
         requestCount++;
-        return _jsonResponse('[]');
+        return _jsonResponse('{}');
       }),
     );
 
-    await expectLater(repository.findAll(), throwsA(isA<AuthException>()));
+    await expectLater(
+      repository.addFavorite('r-1'),
+      throwsA(isA<AuthException>()),
+    );
     expect(requestCount, 0);
   });
 

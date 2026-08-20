@@ -20,9 +20,9 @@ Future<void> main() async {
     debugPrint('[카카오] 이 빌드의 키 해시 = ${KakaoSdk.platformInfo.origin}');
   }
 
-  // 복원에 성공하면 로그인 화면을 건너뛴다. 실패(토큰 없음·만료·저장소 오류)는
-  // 예외가 아니라 false 로 돌아오므로 앱은 항상 뜬다.
-  final restored = await AuthSession.restore();
+  // 저장된 세션이 있으면 복원한다. 실패(토큰 없음·만료·저장소 오류)는 예외가 아니라
+  // false 라 앱은 항상 뜬다 — 게스트든 로그인이든 첫 화면은 홈이다.
+  await AuthSession.restore();
 
-  runApp(CookPilotApp(startLoggedIn: restored));
+  runApp(const CookPilotApp());
 }

@@ -7,6 +7,8 @@ import 'package:cookpilot/features/review/application/pending_review_draft_store
 import 'package:cookpilot/features/review/data/review_api.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import '../../../helpers/auth_fakes.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
@@ -119,8 +121,10 @@ void main() {
     await tester.pump();
   }
 
-  setUp(() {
+  setUp(() async {
     SharedPreferences.setMockInitialValues(<String, Object>{});
+    // 후기 저장이 로그인 게이트를 지나야 하므로 로그인 상태로 돌린다.
+    await signInForTest();
   });
 
   group('CookSessionScreen 복원', () {

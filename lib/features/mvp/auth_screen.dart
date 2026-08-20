@@ -55,7 +55,17 @@ class AuthScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return PageShell(
       children: [
-        const SizedBox(height: 40),
+        // 홈이 항상 아래에 있으므로 이 화면은 언제나 '위에 얹힌' 화면이다.
+        // 닫으면 게스트인 채 하던 일로 돌아간다.
+        Align(
+          alignment: Alignment.centerLeft,
+          child: IconButton(
+            key: const Key('auth-close-button'),
+            onPressed: () => Navigator.of(context).pop(false),
+            icon: const Icon(Icons.close_rounded, color: AppColors.slate),
+          ),
+        ),
+        const SizedBox(height: 8),
         Center(
           // 로고 7번 연타 = 개발자 로그인 입구. 방어는 서버 시크릿이 한다.
           child: DeveloperLoginGate(
@@ -123,6 +133,17 @@ class AuthScreen extends StatelessWidget {
           textAlign: TextAlign.center,
           style: TextStyle(color: AppColors.muted, fontSize: 13, height: 1.5),
         ),
+        const SizedBox(height: 6),
+        Center(
+          child: TextButton(
+            key: const Key('auth-browse-as-guest-button'),
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text(
+              '로그인 없이 둘러보기',
+              style: TextStyle(color: AppColors.slate),
+            ),
+          ),
+        ),
       ],
     );
   }
@@ -162,13 +183,25 @@ class AuthScreen extends StatelessWidget {
     }
   }
 
+  /// 로그인 성공 뒤 다음 행선지.
+  ///
+  /// 이 화면은 항상 홈 위에 얹혀 있으므로, 온보딩이 필요 없으면 pop(true) 로
+  /// 로그인을 요구했던 화면(후기 저장·마이 등)에 그대로 복귀한다.
+  /// 온보딩이 필요하면 스택을 온보딩으로 교체한다 — 온보딩 완료가 홈으로 보낸다.
+  /// 이때 하던 작업 화면은 사라지지만, 후기 초안은 로컬에 저장돼 있어
+  /// 홈의 '이어서' 경로로 되찾을 수 있다.
   Future<void> _openHome(BuildContext context) async {
     final next = await homeAfterLogin();
     if (!context.mounted) return;
+    if (next is MainShell) {
+      Navigator.of(context).pop(true);
+      return;
+    }
     unawaited(
-      Navigator.of(
-        context,
-      ).pushReplacement(MaterialPageRoute<void>(builder: (_) => next)),
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute<void>(builder: (_) => next),
+        (route) => false,
+      ),
     );
   }
 }

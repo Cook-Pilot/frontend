@@ -18,6 +18,8 @@ import '../cooking/presentation/native_speech_input.dart';
 import '../cooking/presentation/native_speech_output.dart';
 import '../cooking/presentation/timer_alarm_provider.dart';
 import '../cooking/presentation/widgets/help_question_sheet.dart';
+import '../auth/data/auth_session.dart';
+import '../auth/presentation/login_gate.dart';
 import '../recipe/data/recipe_api.dart';
 import '../recipe/domain/recipe.dart';
 import '../recommendation/data/recommendation_api.dart';
@@ -29,6 +31,7 @@ import '../review/data/review_api.dart';
 import '../review/data/review_photo_upload_api.dart';
 import '../review/presentation/review_photo_picker.dart';
 import 'main_shell.dart';
+import 'auth_screen.dart';
 import 'mvp_widgets.dart';
 
 class RecipeDetailScreen extends StatefulWidget {
@@ -55,6 +58,15 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
 
   Future<void> _toggleFavorite() async {
     if (_savingFavorite) return;
+    // 즐겨찾기는 계정에 저장된다 — 게스트면 여기서 로그인을 권한다.
+    if (!AuthSession.isLoggedIn) {
+      final loggedIn = await ensureLoggedIn(
+        context,
+        reason: '즐겨찾기는 로그인하면 저장할 수 있어요',
+        loginScreen: () => const AuthScreen(),
+      );
+      if (!loggedIn || !mounted) return;
+    }
     setState(() => _savingFavorite = true);
     try {
       if (_isFavorite) {
@@ -3610,6 +3622,22 @@ class _ReviewScreenState extends State<ReviewScreen>
 
   Future<void> _save({bool completeBlockedAsReviewOnly = false}) async {
     if (_saving || _leaving || _saved != null) return;
+    // 후기는 계정에 저장된다 — 게스트면 저장 직전에 로그인을 권한다.
+    // 초안은 이미 로컬에 저장돼 있어 로그인 화면을 다녀와도 잃지 않는다.
+    if (!AuthSession.isLoggedIn) {
+      final loggedIn = await ensureLoggedIn(
+        context,
+        reason: '후기를 저장하려면 로그인이 필요해요',
+        loginScreen: () => const AuthScreen(),
+      );
+      if (!mounted) return;
+      if (!loggedIn) {
+        setState(() {
+          _saveError = '로그인하면 후기가 계정에 저장돼요. 저장 전까지 초안은 이 기기에 남아 있어요.';
+        });
+        return;
+      }
+    }
     setState(() {
       _saving = true;
       _saveError = null;

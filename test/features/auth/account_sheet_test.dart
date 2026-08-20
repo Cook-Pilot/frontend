@@ -24,6 +24,13 @@ class _FirstScreen extends StatelessWidget {
   Widget build(BuildContext context) => const Scaffold(body: Text('첫 화면'));
 }
 
+class _LoginScreen extends StatelessWidget {
+  const _LoginScreen();
+
+  @override
+  Widget build(BuildContext context) => const Scaffold(body: Text('로그인 화면'));
+}
+
 Widget hostWith(GlobalKey<NavigatorState> navigatorKey) {
   return MaterialApp(
     navigatorKey: navigatorKey,
@@ -34,6 +41,7 @@ Widget hostWith(GlobalKey<NavigatorState> navigatorKey) {
             onPressed: () => showAccountSheet(
               context,
               firstScreen: () => const _FirstScreen(),
+              loginScreen: () => const _LoginScreen(),
             ),
             child: const Text('열기'),
           ),

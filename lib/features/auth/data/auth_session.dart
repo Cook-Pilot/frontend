@@ -90,6 +90,15 @@ class AuthSession {
     return {'Authorization': 'Bearer ${token.token}'};
   }
 
+  /// 게스트 열람이 허용된 읽기 API 용. 세션이 없으면 빈 헤더로 보낸다 —
+  /// 서버가 카탈로그 열람을 게스트에 열어 두었고, 개인화 플래그만 기본값으로 온다.
+  /// 쓰기 경로는 계속 [requestHeaders] 를 써서 요청 전에 막는다.
+  static Map<String, String> get optionalRequestHeaders {
+    final token = _token;
+    if (token == null || token.isExpired) return const {};
+    return {'Authorization': 'Bearer ${token.token}'};
+  }
+
   /// 테스트 전용. 저장소를 갈아끼운다.
   static void debugUseStorage(AuthTokenStorage storage) {
     _storage = storage;
