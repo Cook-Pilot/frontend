@@ -457,6 +457,69 @@ class CookSetupScreen extends StatefulWidget {
   State<CookSetupScreen> createState() => _CookSetupScreenState();
 }
 
+/// 작성 중인 후기 초안이 있을 때 새 조리 시작 직전에 묻는다.
+///
+/// 초안 저장소는 한 개만 담으므로, 새 조리를 마치면 이전 초안을 덮어쓴다.
+/// 그래서 강제로 후기로 보내는 대신 선택하게 한다 — 단, 덮어쓴다는 사실은
+/// 시트에서 미리 고지한다.
+enum PendingReviewChoice { continueReview, startNewCooking }
+
+Future<PendingReviewChoice?> showPendingReviewChoiceSheet(
+  BuildContext context,
+) {
+  return showModalBottomSheet<PendingReviewChoice>(
+    context: context,
+    showDragHandle: true,
+    builder: (sheetContext) => SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 4, 20, 16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Icon(
+              Icons.rate_review_outlined,
+              color: AppColors.accent,
+              size: 36,
+            ),
+            const SizedBox(height: 10),
+            Text(
+              '작성 중인 후기가 있어요',
+              textAlign: TextAlign.center,
+              style: Theme.of(sheetContext).textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w800,
+                color: AppColors.ink,
+              ),
+            ),
+            const SizedBox(height: 6),
+            const Text(
+              '새 조리를 마치면 이전 후기 초안은 사라져요.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: AppColors.slate, fontSize: 13),
+            ),
+            const SizedBox(height: 16),
+            FilledButton(
+              key: const Key('pending-review-continue-button'),
+              onPressed: () => Navigator.of(
+                sheetContext,
+              ).pop(PendingReviewChoice.continueReview),
+              child: const Text('후기 이어가기'),
+            ),
+            const SizedBox(height: 8),
+            OutlinedButton(
+              key: const Key('pending-review-start-new-button'),
+              onPressed: () => Navigator.of(
+                sheetContext,
+              ).pop(PendingReviewChoice.startNewCooking),
+              child: const Text('새 조리 시작하기'),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
 class _CookSetupScreenState extends State<CookSetupScreen> {
   late int servings;
   late final RecipeRepository _recipeRepository;
@@ -520,22 +583,36 @@ class _CookSetupScreenState extends State<CookSetupScreen> {
         return;
       }
       if (pendingReviewDraft case final PendingReviewDraft draft) {
-        ScaffoldMessenger.of(context)
-          ..hideCurrentSnackBar()
-          ..showSnackBar(const SnackBar(content: Text('작성 중인 후기를 먼저 이어갈게요.')));
-        await Navigator.of(context).push(
-          MaterialPageRoute<void>(
-            builder: (_) =>
-                widget.pendingReviewScreenBuilder?.call(draft) ??
-                ReviewScreen(
-                  initialDraft: draft,
-                  pendingReviewDraftStore: _pendingReviewDraftStore,
-                ),
-          ),
-        );
-        return;
+        // 강제로 후기로 보내지 않는다 — 다른 요리를 못 하게 막던 지점.
+        // 대신 선택하게 하고, 새 조리를 고르면 완료 시점에 이전 초안이
+        // 덮어써진다는 사실을 시트에서 미리 알린다.
+        final choice = await showPendingReviewChoiceSheet(context);
+        if (!mounted) {
+          return;
+        }
+        switch (choice) {
+          case null:
+            return;
+          case PendingReviewChoice.continueReview:
+            await Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) =>
+                    widget.pendingReviewScreenBuilder?.call(draft) ??
+                    ReviewScreen(
+                      initialDraft: draft,
+                      pendingReviewDraftStore: _pendingReviewDraftStore,
+                    ),
+              ),
+            );
+            return;
+          case PendingReviewChoice.startNewCooking:
+            break; // 아래로 진행 — 초안은 새 조리 완료 시점에 덮어써진다.
+        }
       }
 
+      if (!mounted) {
+        return;
+      }
       final snapshot = _buildSnapshot();
       await Navigator.of(context).push(
         MaterialPageRoute<void>(
@@ -2436,7 +2513,9 @@ class _CookSessionScreenState extends State<CookSessionScreen>
     if (!mounted) {
       return;
     }
-    await Navigator.of(context).pushReplacement(
+    // 조리가 끝났으니 상세·조리설정 화면으로 돌아갈 일은 없다. 조리 스택을
+    // 전부 걷어내고 루트(홈) 위에 후기만 얹는다 — 뒤로가기가 홈으로 떨어진다.
+    await Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute<void>(
         builder: (_) => ReviewScreen(
           initialDraft: draft,
@@ -2444,6 +2523,7 @@ class _CookSessionScreenState extends State<CookSessionScreen>
           cookingSessionStore: _store,
         ),
       ),
+      (route) => route.isFirst,
     );
   }
 
