@@ -1,8 +1,10 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../app/app_theme.dart';
+import '../auth/data/apple_login.dart';
 import '../auth/data/auth_api.dart';
 import '../auth/data/auth_session.dart';
 import '../auth/data/google_login.dart';
@@ -87,6 +89,23 @@ class AuthScreen extends StatelessWidget {
           style: TextStyle(color: AppColors.slate, fontSize: 15),
         ),
         const SizedBox(height: 28),
+        // 애플 로그인은 iOS 에서만 보인다. iOS 앱이 다른 소셜 로그인을 제공하면 애플 로그인도
+        // 심사 요건이라 맨 위에 둔다. 안드로이드는 Services ID·서버 콜백이 더 필요해 아직 없다.
+        if (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS) ...[
+          PressableScale(
+            child: FilledButton.icon(
+              key: const Key('auth-apple-button'),
+              style: FilledButton.styleFrom(
+                backgroundColor: Colors.black,
+                foregroundColor: Colors.white,
+              ),
+              onPressed: () => unawaited(_loginWithApple(context)),
+              icon: const Icon(Icons.apple),
+              label: const Text('Apple로 시작하기'),
+            ),
+          ),
+          const SizedBox(height: 10),
+        ],
         PressableScale(
           child: FilledButton.icon(
             style: FilledButton.styleFrom(
@@ -156,6 +175,28 @@ class AuthScreen extends StatelessWidget {
       if (!context.mounted) return;
       await _openHome(context);
     } on GoogleLoginCancelled {
+      // 사용자가 직접 닫았다.
+    } on AuthException catch (error) {
+      messenger.showSnackBar(SnackBar(content: Text(error.message)));
+    }
+  }
+
+  /// 애플 로그인 → 서버 세션 토큰 발급 → 홈.
+  ///
+  /// 애플은 이름을 최초 로그인 1회만 주므로 그때 받은 이름을 같이 보낸다(POST /auth/apple).
+  Future<void> _loginWithApple(BuildContext context) async {
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final result = await const AppleLogin().obtainIdentityToken();
+      final session = await AuthApi().loginWithProvider(
+        'apple',
+        result.identityToken,
+        displayName: result.displayName,
+      );
+      await AuthSession.save(session);
+      if (!context.mounted) return;
+      await _openHome(context);
+    } on AppleLoginCancelled {
       // 사용자가 직접 닫았다.
     } on AuthException catch (error) {
       messenger.showSnackBar(SnackBar(content: Text(error.message)));
