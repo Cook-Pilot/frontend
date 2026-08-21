@@ -1,4 +1,4 @@
-/// 소셜 로그인 제공자 설정.
+﻿/// 소셜 로그인 제공자 설정.
 ///
 /// 카카오 네이티브 앱 키.
 ///
@@ -18,5 +18,5 @@ const kakaoNativeAppKey = String.fromEnvironment(
 const googleServerClientId = String.fromEnvironment(
   'GOOGLE_SERVER_CLIENT_ID',
   defaultValue:
-      '831666135740-oqqa485r1b5evhsbkcmutk2v8pgqarb6.apps.googleusercontent.com',
+      '60435838803-jtd8fpnonhknon7ikap7gtq5ubtlslrn.apps.googleusercontent.com',
 );

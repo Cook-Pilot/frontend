@@ -34,6 +34,18 @@ android {
                 ?: "49c1ac97b674198d1b8f7d47f38897f8"
     }
 
+    signingConfigs {
+        // 팀 공용 debug 키. PC마다 자동 생성되는 ~/.android/debug.keystore 대신 이걸로 서명해서
+        // 누가 빌드하든 SHA-1·카카오 키 해시가 같게 한다 — 구글 Android 클라이언트와 카카오
+        // 키 해시를 개발자(PC)마다 등록할 필요가 없어진다. 비밀번호가 공개된 debug 키라 비밀이 아니다.
+        getByName("debug") {
+            storeFile = file("debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+    }
+
     buildTypes {
         release {
             // TODO: Add your own signing config for the release build.
