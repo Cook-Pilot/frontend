@@ -26,15 +26,15 @@ class AppColors {
   /// 헤어라인·테두리.
   static const line = Color(0xFFE4E2E4);
 
-  /// 브랜드 포인트. 흰 바탕에서는 같은 주황도 세게 보이므로 기존 테라코타보다
-  /// 한 단계 밝고 선명하게 올렸다.
-  static const accent = Color(0xFFFF5A1F);
+  /// 브랜드 포인트. 캐치테이블 계열의 진한 주황(버밀리언)이다.
+  /// 밝은 주황(#FF5A1F)은 흰 바탕에서 뜨는 느낌이라 한 단계 눌렀다.
+  static const accent = Color(0xFFF04E23);
 
-  /// 눌림 상태와 그라데이션 깊이. 기존 브랜드 주황을 여기에 남겨 색이 끊기지 않게 한다.
-  static const accentDeep = Color(0xFFD4572E);
+  /// 눌림 상태와 그라데이션 깊이.
+  static const accentDeep = Color(0xFFC93C15);
 
   /// 포인트의 연한 배경 버전(선택 상태, 강조 스트립).
-  static const accentSoft = Color(0xFFFFF1EA);
+  static const accentSoft = Color(0xFFFDEDE8);
 
   /// 입력칸·칩 등 은은한 배경.
   static const wash = Color(0xFFF4F4F6);

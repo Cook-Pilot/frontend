@@ -46,3 +46,7 @@ app.*.map.json
 
 # 로컬 개발용 dart-define 값 (개인 서버 주소 등)
 env.dev.json
+
+# flutter run 이 남기는 스크린샷·툴 설정
+/flutter_*.png
+/devtools_options.yaml

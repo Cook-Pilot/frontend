@@ -116,21 +116,20 @@ class _CookLogPainter extends CustomPainter {
   bool shouldRepaint(_CookLogPainter oldDelegate) => oldDelegate.phase != phase;
 }
 
-/// 로딩 표시. 냄비에서 김이 하나씩 올라온다.
+/// 김이 계속 오르는 심볼. 티커를 여기 한 곳에서만 돌린다.
 ///
-/// 빙글빙글 도는 원 대신 이걸 쓰는 이유: 기다리는 동안에도 브랜드가 보이고,
-/// "끓고 있다"가 이 앱에서 기다림의 은유로 맞는다.
-class CookLogLoader extends StatefulWidget {
-  const CookLogLoader({super.key, this.size = 44, this.label});
+/// 모션을 끈 사용자에게는 티커를 아예 시작하지 않는다 — 보이지도 않는
+/// 애니메이션에 프레임을 쓰지 않는다.
+class SteamingCookLogMark extends StatefulWidget {
+  const SteamingCookLogMark({super.key, this.size = 28});
 
   final double size;
-  final String? label;
 
   @override
-  State<CookLogLoader> createState() => _CookLogLoaderState();
+  State<SteamingCookLogMark> createState() => _SteamingCookLogMarkState();
 }
 
-class _CookLogLoaderState extends State<CookLogLoader>
+class _SteamingCookLogMarkState extends State<SteamingCookLogMark>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller = AnimationController(
     vsync: this,
@@ -142,8 +141,7 @@ class _CookLogLoaderState extends State<CookLogLoader>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    // 설정을 읽을 수 있는 가장 이른 시점이 여기다. 모션을 끈 사용자에게는
-    // 티커를 아예 돌리지 않는다 — 보이지도 않는 애니메이션에 프레임을 쓰지 않는다.
+    // 설정을 읽을 수 있는 가장 이른 시점이 여기다.
     final motionOff = MediaQuery.disableAnimationsOf(context);
     if (motionOff == _motionOff && (motionOff || _controller.isAnimating)) {
       return;
@@ -165,21 +163,58 @@ class _CookLogLoaderState extends State<CookLogLoader>
   @override
   Widget build(BuildContext context) {
     // 모션을 끈 사용자에게는 원본 로고 그대로.
-    if (_motionOff) {
-      return _wrap(CookLogMark(size: widget.size));
-    }
-    return _wrap(
-      AnimatedBuilder(
-        animation: _controller,
-        builder: (context, _) {
-          return CookLogMark(size: widget.size, steam: _controller.value);
-        },
+    if (_motionOff) return CookLogMark(size: widget.size);
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, _) =>
+          CookLogMark(size: widget.size, steam: _controller.value),
+    );
+  }
+}
+
+/// 앱을 켰을 때 잠깐 보이는 화면. 냄비에서 김이 오르고 아래에 워드마크.
+///
+/// 네이티브 런치 화면(흰 바탕)에서 이 화면으로, 다시 홈으로 이어진다.
+/// 배경을 흰색으로 맞춰 두어 그 사이에 색이 튀지 않는다.
+class CookLogLanding extends StatelessWidget {
+  const CookLogLanding({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return const ColoredBox(
+      color: Colors.white,
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SteamingCookLogMark(size: 96),
+            SizedBox(height: 18),
+            Image(
+              image: AssetImage('assets/logo/cooklog-wordmark.png'),
+              height: 40,
+              fit: BoxFit.contain,
+            ),
+          ],
+        ),
       ),
     );
   }
+}
 
-  Widget _wrap(Widget mark) {
-    if (widget.label == null) return Center(child: mark);
+/// 로딩 표시. 냄비에서 김이 하나씩 올라온다.
+///
+/// 빙글빙글 도는 원 대신 이걸 쓰는 이유: 기다리는 동안에도 브랜드가 보이고,
+/// "끓고 있다"가 이 앱에서 기다림의 은유로 맞는다.
+class CookLogLoader extends StatelessWidget {
+  const CookLogLoader({super.key, this.size = 44, this.label});
+
+  final double size;
+  final String? label;
+
+  @override
+  Widget build(BuildContext context) {
+    final mark = SteamingCookLogMark(size: size);
+    if (label == null) return Center(child: mark);
     return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -187,7 +222,7 @@ class _CookLogLoaderState extends State<CookLogLoader>
           mark,
           const SizedBox(height: 10),
           Text(
-            widget.label!,
+            label!,
             style: const TextStyle(color: AppColors.muted, fontSize: 12.5),
           ),
         ],

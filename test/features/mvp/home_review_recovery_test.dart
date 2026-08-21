@@ -20,16 +20,16 @@ void main() {
   // 전역 세션 상태가 다른 테스트로 새지 않게 되돌린다.
   tearDown(resetAuthForTest);
 
-  testWidgets('저장된 후기 초안이 있으면 홈에 후기 작성 이어가기를 표시한다', (tester) async {
+  testWidgets('쓰다 만 후기는 홈이 아니라 기록 탭이 보여 준다', (tester) async {
     final draft = _buildDraft();
 
     await _pumpHome(tester, pendingReviewDraftLoader: () async => draft);
 
-    expect(find.text('후기 작성 이어가기'), findsOneWidget);
-    expect(find.text(draft.setupSnapshot.title), findsOneWidget);
+    expect(find.text('후기 작성 이어가기'), findsNothing);
+    expect(find.text(draft.setupSnapshot.title), findsNothing);
   });
 
-  testWidgets('후기 초안과 활성 조리 세션이 함께 있으면 후기만 표시한다', (tester) async {
+  testWidgets('후기 초안과 활성 조리 세션이 함께 있으면 조리 이어가기를 내보내지 않는다', (tester) async {
     final draft = _buildDraft();
     var cookingSessionLoadAttempts = 0;
 
@@ -42,12 +42,11 @@ void main() {
       },
     );
 
-    expect(find.text('후기 작성 이어가기'), findsOneWidget);
     expect(find.text('이어서 요리하기'), findsNothing);
     expect(cookingSessionLoadAttempts, 0);
   });
 
-  testWidgets('활성 세션 조회 중 새 후기 초안이 생기면 후기를 우선 표시한다', (tester) async {
+  testWidgets('활성 세션 조회 중 새 후기 초안이 생기면 조리 이어가기를 내보내지 않는다', (tester) async {
     final activeLoad = Completer<PersistedCookingSession?>();
     final draft = _buildDraft();
     var pendingLoadAttempts = 0;
@@ -71,11 +70,10 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(pendingLoadAttempts, 2);
-    expect(find.text('후기 작성 이어가기'), findsOneWidget);
     expect(find.text('이어서 요리하기'), findsNothing);
   });
 
-  testWidgets('활성 세션 조회 실패 중 새 후기 초안이 생겨도 후기를 우선 표시한다', (tester) async {
+  testWidgets('활성 세션 조회 실패 중 새 후기 초안이 생겨도 조리 이어가기를 내보내지 않는다', (tester) async {
     final activeLoad = Completer<PersistedCookingSession?>();
     final draft = _buildDraft();
     var pendingLoadAttempts = 0;
@@ -99,7 +97,6 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(pendingLoadAttempts, 2);
-    expect(find.text('후기 작성 이어가기'), findsOneWidget);
     expect(find.text('저장된 진행 상황을 불러오지 못했어요.'), findsNothing);
     expect(find.text('이어서 요리하기'), findsNothing);
   });
@@ -232,79 +229,6 @@ void main() {
     expect(find.text('조리 재개 화면'), findsOneWidget);
   });
 
-  testWidgets('후기 카드를 누르면 저장된 초안 객체를 그대로 후기 화면에 전달한다', (tester) async {
-    final draft = _buildDraft();
-    PendingReviewDraft? receivedDraft;
-
-    await _pumpHome(
-      tester,
-      pendingReviewDraftLoader: () async => draft,
-      reviewScreenBuilder: (initialDraft) {
-        receivedDraft = initialDraft;
-        return Scaffold(
-          body: Text(
-            '${initialDraft.rating}|${initialDraft.comment}|'
-            '${initialDraft.nextTimeNote}|'
-            '${initialDraft.approvedPersonalVersionCreation}',
-          ),
-        );
-      },
-    );
-    await tester.tap(find.text('후기 작성 이어가기'));
-    await tester.pumpAndSettle();
-
-    expect(receivedDraft, isNotNull);
-    expect(receivedDraft, same(draft));
-    expect(receivedDraft!.toJson(), equals(draft.toJson()));
-    expect(find.text('4|양념이 조금 진했다.|간장을 반 숟갈 줄이기|true'), findsOneWidget);
-  });
-
-  testWidgets('후기 카드를 연속으로 눌러도 후기 화면은 하나만 연다', (tester) async {
-    var reviewBuilds = 0;
-    await _pumpHome(
-      tester,
-      pendingReviewDraftLoader: () async => _buildDraft(),
-      reviewScreenBuilder: (_) {
-        reviewBuilds += 1;
-        return const Scaffold(body: Text('단일 후기 화면'));
-      },
-    );
-
-    final card = find.text('후기 작성 이어가기');
-    await tester.tap(card);
-    await tester.tap(card, warnIfMissed: false);
-    await tester.pumpAndSettle();
-
-    expect(reviewBuilds, 1);
-    expect(find.text('단일 후기 화면'), findsOneWidget);
-  });
-
-  testWidgets('후기 화면에서 돌아오면 초안을 다시 조회한다', (tester) async {
-    PendingReviewDraft? availableDraft = _buildDraft();
-    var loadAttempts = 0;
-
-    await _pumpHome(
-      tester,
-      pendingReviewDraftLoader: () async {
-        loadAttempts += 1;
-        return availableDraft;
-      },
-      reviewScreenBuilder: (_) => _ReviewCloseFixture(
-        beforeClose: () async {
-          availableDraft = null;
-        },
-      ),
-    );
-    await tester.tap(find.text('후기 작성 이어가기'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('후기 저장 완료'));
-    await tester.pumpAndSettle();
-
-    expect(find.text('후기 작성 이어가기'), findsNothing);
-    expect(find.text('이어서 요리하기'), findsNothing);
-    expect(loadAttempts, 3);
-  });
-
   testWidgets('복구 로드 오류는 활성 세션 대신 오류와 재시도를 표시한다', (tester) async {
     final draft = _buildDraft();
     var loadAttempts = 0;
@@ -334,7 +258,6 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(loadAttempts, 2);
-    expect(find.text('후기 작성 이어가기'), findsOneWidget);
     expect(find.text('이어서 요리하기'), findsNothing);
     expect(cookingSessionLoadAttempts, 0);
   });
@@ -357,6 +280,7 @@ void main() {
     final firstLoad = Completer<PendingReviewDraft?>();
     final latestDraft = _buildDraft();
     var loadAttempts = 0;
+    var cookingSessionLoadAttempts = 0;
 
     await tester.pumpWidget(
       MaterialApp(
@@ -370,23 +294,26 @@ void main() {
             }
             return Future<PendingReviewDraft?>.value(latestDraft);
           },
-          cookingSessionLoader: () async => null,
+          cookingSessionLoader: () async {
+            cookingSessionLoadAttempts += 1;
+            return _buildActiveSession();
+          },
         ),
       ),
     );
     await tester.pump();
 
-    await tester.drag(find.byType(ListView), const Offset(0, 500));
+    await tester.drag(find.byType(ListView).first, const Offset(0, 500));
     await tester.pumpAndSettle();
     expect(loadAttempts, 2);
-    expect(find.text('후기 작성 이어가기'), findsOneWidget);
+    expect(find.text('이어서 요리하기'), findsNothing);
 
     firstLoad.complete(null);
     await tester.pumpAndSettle();
 
-    expect(find.text('후기 작성 이어가기'), findsOneWidget);
-    expect(find.text(latestDraft.setupSnapshot.title), findsOneWidget);
+    // 늦게 끝난 null 이 이겼다면 활성 세션을 찾아 조리 카드를 띄웠을 것이다.
     expect(find.text('이어서 요리하기'), findsNothing);
+    expect(cookingSessionLoadAttempts, 0);
   });
 
   testWidgets('두 번째 초안 조회가 늦게 끝나도 최신 복구 결과를 덮어쓰지 않는다', (tester) async {
@@ -409,45 +336,45 @@ void main() {
             }
             return Future<PendingReviewDraft?>.value(latestDraft);
           },
-          cookingSessionLoader: () async => null,
+          cookingSessionLoader: () async => _buildActiveSession(),
         ),
       ),
     );
     await tester.pump();
     expect(loadAttempts, 2);
 
-    await tester.drag(find.byType(ListView), const Offset(0, 500));
+    await tester.drag(find.byType(ListView).first, const Offset(0, 500));
     await tester.pumpAndSettle();
 
     expect(loadAttempts, 3);
-    expect(find.text('후기 작성 이어가기'), findsOneWidget);
+    expect(find.text('이어서 요리하기'), findsNothing);
 
     delayedSecondLoad.complete(null);
     await tester.pumpAndSettle();
 
-    expect(find.text('후기 작성 이어가기'), findsOneWidget);
-    expect(find.text(latestDraft.setupSnapshot.title), findsOneWidget);
+    // 늦게 끝난 null 이 이겼다면 조리 카드가 되살아났을 것이다.
     expect(find.text('이어서 요리하기'), findsNothing);
   });
 
-  testWidgets('당겨서 새로고침하면 새로 생긴 후기 초안을 복구한다', (tester) async {
+  testWidgets('당겨서 새로고침하면 새로 생긴 후기 초안이 조리 카드를 밀어낸다', (tester) async {
     PendingReviewDraft? availableDraft;
     final recipeRepository = _EmptyRecipeRepository();
     await _pumpHome(
       tester,
       pendingReviewDraftLoader: () async => availableDraft,
+      cookingSessionLoader: () async => _buildActiveSession(),
       recipeRepository: recipeRepository,
     );
-    expect(find.text('후기 작성 이어가기'), findsNothing);
+    expect(find.text('이어서 요리하기'), findsOneWidget);
     expect(recipeRepository.findAllCalls, 1);
     expect(recipeRepository.findRecentCalls, 1);
     expect(recipeRepository.findFavoritesCalls, 1);
 
     availableDraft = _buildDraft();
-    await tester.drag(find.byType(ListView), const Offset(0, 500));
+    await tester.drag(find.byType(ListView).first, const Offset(0, 500));
     await tester.pumpAndSettle();
 
-    expect(find.text('후기 작성 이어가기'), findsOneWidget);
+    expect(find.text('이어서 요리하기'), findsNothing);
     expect(recipeRepository.findAllCalls, 2);
     expect(recipeRepository.findRecentCalls, 2);
     expect(recipeRepository.findFavoritesCalls, 2);
@@ -571,28 +498,5 @@ class _EmptyRecipeRepository extends RecipeRepository {
   @override
   Future<Recipe> findById(RecipeSummary summary) {
     throw StateError('빈 카탈로그에서는 상세 조회를 호출하면 안 됩니다.');
-  }
-}
-
-class _ReviewCloseFixture extends StatelessWidget {
-  const _ReviewCloseFixture({required this.beforeClose});
-
-  final Future<void> Function() beforeClose;
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: Center(
-        child: FilledButton(
-          onPressed: () async {
-            await beforeClose();
-            if (context.mounted) {
-              Navigator.of(context).pop();
-            }
-          },
-          child: const Text('후기 저장 완료'),
-        ),
-      ),
-    );
   }
 }

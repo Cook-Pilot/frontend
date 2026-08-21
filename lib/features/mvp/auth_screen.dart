@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../app/app_theme.dart';
-import '../../app/cooklog_mark.dart';
 import '../auth/data/auth_api.dart';
 import '../auth/data/auth_session.dart';
 import '../auth/data/google_login.dart';
@@ -45,21 +44,17 @@ class AuthScreen extends StatelessWidget {
             icon: const Icon(Icons.close_rounded, color: AppColors.slate),
           ),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 28),
         Center(
           // 로고 7번 연타 = 개발자 로그인 입구. 방어는 서버 시크릿이 한다.
           child: DeveloperLoginGate(
             onLoggedIn: () => unawaited(_openHome(context)),
-            child: const CookLogMark(size: 76),
-          ),
-        ),
-        const SizedBox(height: 20),
-        // 워드마크는 글자 모양 자체가 브랜드라 텍스트로 흉내 내지 않고 이미지를 쓴다.
-        Center(
-          child: Image.asset(
-            'assets/logo/cooklog-wordmark.png',
-            height: 44,
-            fit: BoxFit.contain,
+            // 워드마크는 글자 모양 자체가 브랜드라 텍스트로 흉내 내지 않고 이미지를 쓴다.
+            child: Image.asset(
+              'assets/logo/cooklog-wordmark.png',
+              height: 52,
+              fit: BoxFit.contain,
+            ),
           ),
         ),
         const SizedBox(height: 8),

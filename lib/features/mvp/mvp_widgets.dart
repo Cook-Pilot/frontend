@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../../app/app_theme.dart';
@@ -67,7 +69,8 @@ class HomeLogoButton extends StatelessWidget {
         onTap: () => goHome(context),
         child: const Padding(
           padding: EdgeInsets.all(8),
-          child: CookLogMark(size: 26),
+          // 헤더에서도 김이 계속 오른다. 정지한 로고보다 살아 있어 보인다.
+          child: SteamingCookLogMark(size: 34),
         ),
       ),
     );
@@ -84,7 +87,14 @@ class PageShell extends StatelessWidget {
     this.leading,
     this.accentHeader = false,
     this.homeLogo = false,
+    this.bleed,
   });
+
+  /// 좌우 여백 없이 화면 끝까지 채우는 요소. 목록 맨 위에 놓인다.
+  ///
+  /// 본문은 여백 안에서 읽히는 편이 낫지만, 히어로는 사진이 화면을 꽉 채워야
+  /// 시선을 잡는다. 여백 안에 두면 카드 하나로 보인다.
+  final Widget? bleed;
 
   /// 상단 오른쪽에 홈으로 가는 로고를 붙인다.
   final bool homeLogo;
@@ -141,13 +151,19 @@ class PageShell extends StatelessWidget {
             ),
       body: SafeArea(
         child: ListView(
-          padding: EdgeInsets.fromLTRB(
-            horizontalPadding,
-            12,
-            horizontalPadding,
-            24,
-          ),
-          children: children,
+          // 자식을 하나로 묶지 않는다. Column 으로 싸면 목록이 지연 배치를 잃어
+          // 화면 밖 열까지 전부 배치된다(홈은 열이 열두 개다).
+          padding: EdgeInsets.zero,
+          children: [
+            ?bleed,
+            SizedBox(height: bleed == null ? 12 : 4),
+            for (final child in children)
+              Padding(
+                padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
+                child: child,
+              ),
+            const SizedBox(height: 24),
+          ],
         ),
       ),
       bottomNavigationBar: bottom == null
@@ -415,113 +431,159 @@ class FoodTile extends StatelessWidget {
   }
 }
 
-/// 홈 상단 '오늘의 메뉴' — 풀블리드 이미지 위에 그라데이션과 텍스트를 얹은
-/// 몰입형 히어로 카드. 이 화면의 시그니처 요소.
+/// 홈 상단 '오늘의 추천' — 화면 끝까지 닿는 히어로. 이 화면의 시그니처 요소다.
+/// 목업(cookpilot-netflix-ui.html)의 `.hero` 를 그대로 옮긴 것이라
+/// 눈썹 문구 → 큰 제목 → 메타 한 줄 → 버튼 두 개 순서를 유지한다.
 class RecipeHeroCard extends StatelessWidget {
-  const RecipeHeroCard({super.key, required this.recipe, this.onTap});
+  const RecipeHeroCard({
+    super.key,
+    required this.recipe,
+    this.onTap,
+    this.onStart,
+    this.onSave,
+    this.saving = false,
+    this.favorite,
+  });
 
   final Recipe recipe;
   final VoidCallback? onTap;
+  final VoidCallback? onStart;
+  final VoidCallback? onSave;
+
+  /// 저장 요청이 도는 동안 버튼을 잠근다.
+  final bool saving;
+
+  /// 저장 여부를 화면에서 먼저 뒤집어 보여줄 때 쓴다.
+  /// null 이면 레시피가 들고 온 값을 그대로 쓴다.
+  final bool? favorite;
 
   @override
   Widget build(BuildContext context) {
-    return PressableScale(
-      child: GestureDetector(
-        onTap: onTap,
-        child: Container(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(AppShape.container),
-            boxShadow: const [
-              BoxShadow(
-                color: AppColors.shadow,
-                blurRadius: 24,
-                offset: Offset(0, 10),
+    final servings = recipe.baseServings.toStringAsFixed(
+      recipe.baseServings % 1 == 0 ? 0 : 1,
+    );
+    final saved = favorite ?? recipe.favorite;
+    final meta =
+        '${recipe.timerMinutes}분 · ${recipe.steps.length}단계 · $servings인분';
+
+    return GestureDetector(
+      onTap: onTap,
+      // 히어로는 화면 끝까지 간다. 모서리를 둥글리거나 그림자를 주면
+      // 가장자리에 카드 테두리가 생겨 꽉 찬 느낌이 깨진다.
+      child: ClipRect(
+        child: AspectRatio(
+          aspectRatio: 3 / 2,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              // 사진이 없으면 아이콘 자리표시자 대신 붉은 그라데이션을 깐다.
+              // 히어로에 빈 아이콘이 뜨면 로딩 실패처럼 보인다.
+              const DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [Color(0xFFE8442B), Color(0xFF8E1F14)],
+                  ),
+                ),
               ),
-            ],
-          ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(AppShape.container),
-            child: AspectRatio(
-              aspectRatio: 16 / 11,
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  FoodImage(image: recipe.imageUrl, radius: 0),
-                  // 하단 텍스트 가독성을 위한 딥브라운 그라데이션.
-                  const DecoratedBox(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        stops: [0.45, 1],
-                        colors: [Colors.transparent, Color(0xCC1F1209)],
+              if (recipe.imageUrl.isNotEmpty)
+                FoodImage(image: recipe.imageUrl, radius: 0),
+              // 하단 텍스트 가독성을 위한 어둠. 위쪽 62%는 건드리지 않는다.
+              const DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.bottomCenter,
+                    end: Alignment.topCenter,
+                    stops: [0, 0.62],
+                    colors: [Color(0x8C000000), Colors.transparent],
+                  ),
+                ),
+              ),
+              Positioned(
+                left: 16,
+                right: 16,
+                bottom: 16,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      '오늘의 추천',
+                      style: TextStyle(
+                        color: Colors.white70,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 1.4,
                       ),
                     ),
-                  ),
-                  if (recipe.badge != null)
-                    Positioned(
-                      left: 14,
-                      top: 14,
-                      child: ImageLabelChip(recipe.badge!),
+                    const SizedBox(height: 8),
+                    Text(
+                      recipe.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 30,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: -0.8,
+                      ),
                     ),
-                  Positioned(
-                    left: 16,
-                    right: 16,
-                    bottom: 16,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                    const SizedBox(height: 6),
+                    Text(
+                      meta,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 13,
+                        height: 1.2,
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    Row(
                       children: [
-                        Text(
-                          recipe.title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 26,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: -0.5,
+                        FilledButton.icon(
+                          key: const Key('home-hero-start'),
+                          onPressed: onStart ?? onTap,
+                          style: FilledButton.styleFrom(
+                            backgroundColor: Colors.white,
+                            foregroundColor: AppColors.ink,
+                            // 테마 기본값이 Size.fromHeight(56) — 폭이 무한이다.
+                            // 가로로 늘어놓는 자리라 그대로 두면 레이아웃이 터진다.
+                            minimumSize: const Size(0, 44),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 18,
+                              vertical: 12,
+                            ),
                           ),
+                          icon: const Icon(Icons.play_arrow_rounded, size: 20),
+                          label: const Text('요리 시작'),
                         ),
-                        const SizedBox(height: 6),
-                        Row(
-                          children: [
-                            const Icon(
-                              Icons.schedule_rounded,
-                              color: Colors.white70,
-                              size: 15,
+                        const SizedBox(width: 8),
+                        FilledButton.icon(
+                          key: const Key('home-hero-save'),
+                          onPressed: saving ? null : onSave,
+                          style: FilledButton.styleFrom(
+                            backgroundColor: Colors.white24,
+                            foregroundColor: Colors.white,
+                            disabledBackgroundColor: Colors.white10,
+                            disabledForegroundColor: Colors.white54,
+                            minimumSize: const Size(0, 44),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 18,
+                              vertical: 12,
                             ),
-                            const SizedBox(width: 4),
-                            Text(
-                              '${recipe.timerMinutes}분 타이머',
-                              style: const TextStyle(
-                                color: Colors.white70,
-                                fontSize: 13,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            const Icon(
-                              Icons.people_alt_rounded,
-                              color: Colors.white70,
-                              size: 15,
-                            ),
-                            const SizedBox(width: 4),
-                            Text(
-                              '${recipe.baseServings.toStringAsFixed(recipe.baseServings % 1 == 0 ? 0 : 1)}인분',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ],
+                          ),
+                          icon: Icon(
+                            saved ? Icons.bookmark_rounded : Icons.add_rounded,
+                            size: 20,
+                          ),
+                          label: Text(saved ? '저장됨' : '저장'),
                         ),
                       ],
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
+            ],
           ),
         ),
       ),
@@ -561,6 +623,91 @@ class Pill extends StatelessWidget {
       ),
     );
   }
+}
+
+/// 가로 열에 보여 줄 게 없을 때 대신 놓는 자리. 시안의 `.empty-day` —
+/// 점선 테두리에 가운데 정렬, 색을 쓰지 않는다. 채워진 카드처럼 보이면
+/// 비어 있다는 사실이 묻힌다.
+class RailEmptyNote extends StatelessWidget {
+  const RailEmptyNote({
+    super.key,
+    required this.message,
+    this.actionLabel,
+    this.onAction,
+  });
+
+  final String message;
+  final String? actionLabel;
+  final VoidCallback? onAction;
+
+  @override
+  Widget build(BuildContext context) {
+    final note = CustomPaint(
+      painter: const _DashedBorderPainter(),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 20),
+        child: Column(
+          children: [
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 12.5,
+                height: 1.5,
+                color: AppColors.muted,
+              ),
+            ),
+            if (actionLabel != null) ...[
+              const SizedBox(height: 8),
+              Text(
+                '$actionLabel →',
+                style: const TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.accent,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+    if (onAction == null) return note;
+    return InkWell(
+      borderRadius: BorderRadius.circular(12),
+      onTap: onAction,
+      child: note,
+    );
+  }
+}
+
+/// 점선 테두리. Flutter 의 Border 는 점선을 지원하지 않아 직접 그린다.
+class _DashedBorderPainter extends CustomPainter {
+  const _DashedBorderPainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rect = RRect.fromRectAndRadius(
+      Offset.zero & size,
+      const Radius.circular(12),
+    );
+    final paint = Paint()
+      ..color = AppColors.line
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1;
+    for (final metric in (Path()..addRRect(rect)).computeMetrics()) {
+      var distance = 0.0;
+      while (distance < metric.length) {
+        final end = math.min(distance + 5, metric.length);
+        canvas.drawPath(metric.extractPath(distance, end), paint);
+        distance = end + 4;
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(_DashedBorderPainter oldDelegate) => false;
 }
 
 class InfoStrip extends StatelessWidget {
@@ -614,8 +761,8 @@ class InfoStrip extends StatelessWidget {
 
 /// 가로로 넘기는 포스터 카드. 넷플릭스식 홈의 기본 단위다.
 ///
-/// 세로 3:4 로 잡았다. 영화 포스터는 2:3 이 표준이지만 음식 사진은 가로가 표준이라,
-/// 그대로 세로로 길게 자르면 음식이 잘린다.
+/// 정사각형으로 잡았다. 세로로 길게 자르면 접시가 잘리고, 가로로 눕히면 한 줄에
+/// 두 장밖에 못 넣는다. 요리 사진은 접시가 가운데 오는 구도가 대부분이라 1:1 이 가장 덜 잘린다.
 class RecipePosterCard extends StatelessWidget {
   const RecipePosterCard({
     super.key,
@@ -625,8 +772,15 @@ class RecipePosterCard extends StatelessWidget {
     this.badge,
     this.progress,
     this.width = 116,
+    this.thumbRatio = defaultThumbRatio,
     required this.onTap,
   });
+
+  /// 카드 사진 비율. 정사각형이다.
+  static const defaultThumbRatio = 1.0;
+
+  /// 이어하기 열처럼 가로로 넓은 변형에서 바꿔 준다.
+  final double thumbRatio;
 
   final String title;
   final String image;
@@ -653,7 +807,7 @@ class RecipePosterCard extends StatelessWidget {
               // 높이를 폭에서 계산하지 않는다. 그리드 셀에서는 폭이 무한으로 들어와
               // (부모가 정해 줌) 곱셈이 무한 높이를 만든다.
               AspectRatio(
-                aspectRatio: 3 / 4,
+                aspectRatio: thumbRatio,
                 child: Stack(
                   fit: StackFit.expand,
                   children: [
@@ -740,7 +894,7 @@ class RecipePosterCard extends StatelessWidget {
                 const SizedBox(height: 6),
                 Text(
                   meta!,
-                  maxLines: 2,
+                  maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                     color: AppColors.muted,
@@ -767,13 +921,29 @@ class RecipeRail extends StatelessWidget {
     required this.title,
     required this.children,
     this.trailing,
-    this.cardHeight = 210,
+    this.cardWidth = 116,
+    this.thumbRatio = RecipePosterCard.defaultThumbRatio,
+    this.hasMeta = false,
   });
 
   final String title;
   final List<Widget> children;
   final String? trailing;
-  final double cardHeight;
+
+  /// 카드 폭. 사진 높이는 여기에 비율을 적용해 구한다.
+  final double cardWidth;
+
+  /// 카드 사진 비율. 카드에 준 값과 같아야 열 높이가 맞는다.
+  final double thumbRatio;
+
+  /// 카드 아래 한 줄짜리 설명이 붙는지. 붙는 만큼만 높이를 더한다.
+  final bool hasMeta;
+
+  /// 열 높이는 카드에서 구한다. 고정값을 쓰면 카드보다 커진 만큼
+  /// 열 아래에 빈 띠가 생긴다.
+  double get _cardHeight =>
+      cardWidth / thumbRatio + (hasMeta ? _metaHeight : 0);
+  static const _metaHeight = 6 + 10.5 * 1.35;
 
   @override
   Widget build(BuildContext context) {
@@ -781,7 +951,9 @@ class RecipeRail extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(0, 18, 0, 10),
+          // 열 사이 여백은 좁게 둔다 — 넓으면 한 화면에 한 열밖에 안 들어와
+          // 카탈로그가 작아 보인다.
+          padding: const EdgeInsets.fromLTRB(0, 14, 0, 8),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.baseline,
             textBaseline: TextBaseline.alphabetic,
@@ -800,13 +972,17 @@ class RecipeRail extends StatelessWidget {
               if (trailing != null)
                 Text(
                   trailing!,
-                  style: const TextStyle(fontSize: 11, color: AppColors.muted),
+                  style: const TextStyle(
+                    fontSize: 10,
+                    letterSpacing: 0.5,
+                    color: AppColors.muted,
+                  ),
                 ),
             ],
           ),
         ),
         SizedBox(
-          height: cardHeight,
+          height: _cardHeight,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
             clipBehavior: Clip.none,
