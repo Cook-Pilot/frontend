@@ -31,18 +31,23 @@ Sign in with Apple (sign_in_with_apple) → identity token + (최초 1회) 이�
 - iOS 프로젝트: `ios/Runner/Runner.entitlements` 에 `com.apple.developer.applesignin = [Default]` 를 추가하고
   `project.pbxproj` 의 Runner 타깃 세 구성(Debug/Release/Profile)에 `CODE_SIGN_ENTITLEMENTS` 를 걸었다.
   Xcode 에서 "Sign in with Apple" capability 를 켜면 생기는 것과 같은 변경이다.
-- 클라이언트에 둘 ID 는 없다. 토큰의 aud 가 번들 ID(`com.cookpilot.cookpilot`)로 찍히고 서버
-  `APPLE_CLIENT_IDS` 가 그걸 검사한다(`social_config.dart` 주석).
+- 클라이언트에 둘 ID 는 없다. 토큰의 aud 가 iOS 번들 ID 로 찍히고 서버 `APPLE_CLIENT_IDS` 가 그걸 검사한다
+  (`social_config.dart` 주석).
+- **iOS 번들 ID 를 `com.cookpilot.cookpilot` → `kr.cooklog.app` 으로 바꿨다.** Apple Developer 콘솔(Team `Y9VWJ3KA86`)에
+  팀원이 이미 `kr.cooklog.app` 으로 App ID 를 등록해 둔 상태였고, `com.cookpilot.cookpilot` 은 Flutter 가 찍어 준 기본값일 뿐
+  실제 도메인도 아니다. 콘솔 App ID 와 Xcode 번들 ID 가 같아야 토큰이 발급되므로, 스토어 출시 전(= 바꿀 수 있는 마지막
+  시점)에 브랜드 도메인 쪽으로 맞췄다. 안드로이드 `applicationId` 는 구글·카카오 콘솔 등록과 묶여 있어 이번엔 안 건드렸다.
+- 콘솔 쪽: `kr.cooklog.app` App ID 에 Sign In with Apple capability 를 켰다(2026-08-21). 기존 프로비저닝 프로파일은
+  무효화되지만 Xcode 자동 서명이 다시 만든다.
 
 ## 검증
 
 - `flutter analyze` 경고 0, `dart format` 변경 없음, `flutter test` 통과.
 - `auth_api_test` — `displayName` 이 있을 때만 본문에 실리는지.
-- **실기기 검증은 아직 못 했다.** Apple Developer 계정이 없어 번들 ID 에 Sign in with Apple 을 켤 수 없고,
-  그 전에는 `getAppleIDCredential` 이 `AuthorizationErrorCode.unknown/failed` 로 실패한다. 계정이 생기면:
-  1. developer.apple.com → Identifiers → `com.cookpilot.cookpilot` App ID → Sign in with Apple 체크
-  2. Xcode 에서 팀 선택(자동 서명)
-  3. 서버 `.env` 에 `APPLE_CLIENT_IDS=com.cookpilot.cookpilot`
+- **실기기 검증은 Mac 에서 해야 한다** (이 PC 는 Windows). 콘솔·서버는 준비됐다:
+  1. ~~developer.apple.com → Identifiers → `kr.cooklog.app` → Sign in with Apple 체크~~ (완료)
+  2. Xcode 에서 팀 `Y9VWJ3KA86` 선택(자동 서명) — 번들 ID 가 바뀌었으니 프로파일이 새로 만들어진다
+  3. ~~서버 `.env` 에 `APPLE_CLIENT_IDS=kr.cooklog.app`~~ (완료)
   4. 실기기에서 'Apple로 시작하기' → 첫 로그인에 이름이 계정에 들어가는지, 두 번째 로그인에 같은 계정인지 확인
 
 ## openapi 사본

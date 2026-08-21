@@ -10,8 +10,8 @@ const kakaoNativeAppKey = String.fromEnvironment(
   defaultValue: '49c1ac97b674198d1b8f7d47f38897f8',
 );
 
-/// 애플 로그인은 여기에 둘 값이 없다 — 앱이 받는 identity token 의 대상(aud)이 번들 ID
-/// (`com.cookpilot.cookpilot`)로 찍히고, 서버 `APPLE_CLIENT_IDS` 가 그 값을 검사한다.
+/// 애플 로그인은 여기에 둘 값이 없다 — 앱이 받는 identity token 의 대상(aud)이 iOS 번들 ID
+/// (`kr.cooklog.app`, Apple Developer 콘솔에 등록된 App ID)로 찍히고, 서버 `APPLE_CLIENT_IDS` 가 그 값을 검사한다.
 /// 대신 Xcode 의 Sign in with Apple capability(`ios/Runner/Runner.entitlements`)가 필요하다.
 
 /// 구글 **웹 애플리케이션** 클라이언트 ID.
