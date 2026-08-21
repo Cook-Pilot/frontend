@@ -10,7 +10,9 @@ import '../cooking/application/cooking_session_store.dart';
 import '../cooking/data/exception_advice_api.dart';
 import '../cooking/presentation/native_speech_output.dart';
 import '../recipe/data/recipe_api.dart';
+import '../recipe/data/tag_api.dart';
 import '../recipe/domain/recipe.dart';
+import '../recipe/domain/tag_invitations.dart';
 import '../review/application/pending_review_draft_store.dart';
 import '../review/data/review_api.dart';
 import '../user/data/profile_onboarding_cache.dart';
@@ -21,6 +23,7 @@ import 'shell_tab.dart';
 import 'mvp_widgets.dart';
 
 final _recipeRepository = RecipeRepository();
+final _tagRepository = TagRepository();
 
 typedef HomeReviewScreenBuilder =
     Widget Function(PendingReviewDraft initialDraft);
@@ -160,6 +163,8 @@ class _HomeScreenState extends State<HomeScreen> {
     return '오늘 저녁, 뭐 해먹을까요?';
   }
 
+  static const _tagRowCount = 3;
+
   Future<_HomeCatalog> _loadCatalog() async {
     // 최근 조리·즐겨찾기는 계정에 속한 데이터라 게스트에게는 없다.
     // 요청을 보내 봐야 401 이므로 아예 부르지 않는다.
@@ -192,7 +197,46 @@ class _HomeScreenState extends State<HomeScreen> {
       featured: featured,
       recent: recent,
       favorites: favorites,
+      tagRows: await _loadTagRows(),
     );
+  }
+
+  /// 태그 열 세 개를 뽑는다.
+  ///
+  /// 태그를 무작위로 고르므로 홈을 열 때마다 구성이 달라진다 — 카탈로그가 1,150건으로
+  /// 고정돼 있어도 매번 다른 요리가 눈에 들어온다.
+  ///
+  /// 실패해도 홈 전체를 막지 않는다. 태그 열은 있으면 좋은 것이지 없으면 못 쓰는 화면이
+  /// 아니다(레시피 목록·최근 조리는 그대로 나온다).
+  Future<List<_TagRow>> _loadTagRows() async {
+    try {
+      final tags = await _tagRepository.findAll();
+      // 권유 문장을 준비해 둔 태그만 후보로 쓴다.
+      final candidates =
+          tags.where((tag) => TagInvitations.hasPhrase(tag.code)).toList()
+            ..shuffle();
+
+      final rows = <_TagRow>[];
+      for (final tag in candidates) {
+        if (rows.length >= _tagRowCount) break;
+        final page = await _homeRecipeRepository.search(
+          tags: [tag.code],
+          size: 12,
+        );
+        // 비어 있는 태그는 건너뛴다 — 빈 열은 고장으로 보인다.
+        if (page.items.isEmpty) continue;
+        rows.add(
+          _TagRow(
+            invitation: TagInvitations.forTag(tag.code, tag.label),
+            label: tag.label,
+            recipes: page.items,
+          ),
+        );
+      }
+      return rows;
+    } on Object {
+      return const [];
+    }
   }
 
   void _retry() {
@@ -649,6 +693,19 @@ class _HomeScreenState extends State<HomeScreen> {
                             ],
                           ),
                       ],
+                      for (final row in catalog.tagRows)
+                        RecipeRail(
+                          title: row.invitation,
+                          trailing: row.label,
+                          children: [
+                            for (final recipe in row.recipes)
+                              RecipePosterCard(
+                                title: recipe.title,
+                                image: recipe.imageUrl,
+                                onTap: () => _openRecipe(recipe),
+                              ),
+                          ],
+                        ),
                       RecipeRail(
                         title: '전체 레시피',
                         trailing: '${catalog.summaries.length}개',
@@ -1966,12 +2023,32 @@ class _HomeCatalog {
     required this.featured,
     required this.recent,
     required this.favorites,
+    this.tagRows = const [],
   });
 
   final List<RecipeSummary> summaries;
   final Recipe? featured;
   final List<RecipeSummary> recent;
   final List<RecipeSummary> favorites;
+
+  /// 태그로 뽑은 열. 홈을 열 때마다 다른 태그가 뽑힌다.
+  final List<_TagRow> tagRows;
+}
+
+/// 태그 하나로 만든 홈의 가로 열.
+class _TagRow {
+  const _TagRow({
+    required this.invitation,
+    required this.label,
+    required this.recipes,
+  });
+
+  /// '오늘은 한식 어때요?' 처럼 권유하는 문장.
+  final String invitation;
+
+  /// 태그 이름. 열 오른쪽에 작게 붙여 무엇으로 묶였는지 알려준다.
+  final String label;
+  final List<RecipeSummary> recipes;
 }
 
 class _ResumableCooking {

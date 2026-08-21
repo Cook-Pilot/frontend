@@ -189,13 +189,16 @@ class RecipeRepository {
   Future<RecipeSearchPage> search({
     String title = '',
     String ingredient = '',
+    List<String> tags = const [],
     int page = 1,
     int size = 9,
   }) async {
+    // 축 안은 OR, 축 사이는 AND 로 서버가 건다. 클라이언트는 코드만 넘긴다.
     final query = Uri(
       queryParameters: {
         'title': title.trim(),
         'ingredient': ingredient.trim(),
+        if (tags.isNotEmpty) 'tags': tags,
         'page': '$page',
         'size': '$size',
       },

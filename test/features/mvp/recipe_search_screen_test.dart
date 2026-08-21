@@ -99,6 +99,7 @@ class _FakeRecipeRepository extends RecipeRepository {
   Future<RecipeSearchPage> search({
     String title = '',
     String ingredient = '',
+    List<String> tags = const [],
     int page = 1,
     int size = 9,
   }) async {
