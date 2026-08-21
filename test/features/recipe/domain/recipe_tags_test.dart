@@ -10,7 +10,7 @@ void main() {
       '해시태그: 저염간장',
     );
 
-    expect(tags.labels, ['굽기', '반찬', '저염간장']);
+    expect(tags.labels, ['굽기', '반찬']);
     expect(tags.body, '월계수잎과 통후추 등을 사용해 깊은 맛을 냈어요.');
   });
 
@@ -29,9 +29,18 @@ void main() {
   });
 
   test('같은 값이 두 번 나와도 칩은 하나만 만든다', () {
-    final tags = RecipeTags.parse('조리방법: 굽기\n해시태그: 굽기');
+    final tags = RecipeTags.parse('조리방법: 굽기 | 요리종류: 굽기');
 
     expect(tags.labels, ['굽기']);
+  });
+
+  test('해시태그는 이름과 달리 주재료라 칩에도 본문에도 넣지 않는다', () {
+    // '저염간장'을 굽기·반찬 옆에 칩으로 두면 그런 카테고리가 있는 것처럼 읽히는데,
+    // 사전에 없는 값이라 눌러도 걸릴 필터가 없다. 값은 재료 목록에 이미 나온다.
+    final tags = RecipeTags.parse('담백해요.\n조리방법: 굽기 | 요리종류: 반찬\n해시태그: 저염간장');
+
+    expect(tags.labels, ['굽기', '반찬']);
+    expect(tags.body, '담백해요.');
   });
 
   test('빈 설명도 견딘다', () {
