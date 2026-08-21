@@ -12,3 +12,5 @@ GeneratedPluginRegistrant.java
 key.properties
 **/*.keystore
 **/*.jks
+# 팀 공용 debug 키는 예외 — 공개된 비밀번호(android)의 개발용 키라 비밀이 아니다. 출시 키는 여전히 금지.
+!app/debug.keystore
