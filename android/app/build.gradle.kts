@@ -1,8 +1,18 @@
+// Kotlin DSL 에서는 `java` 가 Gradle 의 java 확장으로 잡혀 java.util 을 직접 쓸 수 없다 — import 로 푼다.
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
 }
+
+// android/local.properties 의 값. 비밀(네이버 Client Secret)을 저장소 밖에 두기 위한 통로다.
+val localProperties = Properties().apply {
+    val file = rootProject.file("local.properties")
+    if (file.exists()) file.inputStream().use { load(it) }
+}
+fun localProperty(name: String): String? = localProperties.getProperty(name)?.takeIf { it.isNotBlank() }
 
 android {
     namespace = "com.cookpilot.cookpilot"
@@ -32,6 +42,18 @@ android {
         manifestPlaceholders["KAKAO_NATIVE_APP_KEY"] =
             (project.findProperty("kakaoNativeAppKey") as String?)
                 ?: "49c1ac97b674198d1b8f7d47f38897f8"
+
+        // 네이버 로그인. 플러그인이 Client ID/Secret 을 매니페스트 meta-data 에서 읽는다.
+        // Secret 은 저장소에 두지 않고 android/local.properties(gitignored) 에서 가져온다:
+        //   naver.clientId=...
+        //   naver.clientSecret=...
+        // 비어 있으면 메타데이터도 비어 SDK 초기화가 실패하지만, Dart 쪽(NAVER_CLIENT_ID
+        // dart-define)이 비어 있으면 버튼을 그리지 않으므로 앱은 정상 동작한다.
+        manifestPlaceholders["NAVER_CLIENT_ID"] =
+            localProperty("naver.clientId") ?: (project.findProperty("naverClientId") as String?) ?: ""
+        manifestPlaceholders["NAVER_CLIENT_SECRET"] =
+            localProperty("naver.clientSecret") ?: (project.findProperty("naverClientSecret") as String?) ?: ""
+        manifestPlaceholders["NAVER_CLIENT_NAME"] = "쿡로그"
     }
 
     buildTypes {

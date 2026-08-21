@@ -31,8 +31,9 @@
 | `features/mvp/auth_screen.dart` | 로고를 `DeveloperLoginGate` 로 감쌈 |
 | `features/auth/data/kakao_login.dart` | 카카오 액세스 토큰 획득(카카오톡/웹 분기) |
 | `features/auth/data/google_login.dart` | 구글 ID 토큰 획득 |
+| `features/auth/data/naver_login.dart` | 네이버 액세스 토큰 획득(취소=`loggedOut` 구분) |
 | `core/api/social_config.dart` | 카카오 네이티브 앱 키·구글 웹 클라이언트 ID(둘 다 공개 값) |
-| `pubspec.yaml` | `flutter_secure_storage`, `kakao_flutter_sdk_user`, `google_sign_in` 추가 |
+| `pubspec.yaml` | `flutter_secure_storage`, `kakao_flutter_sdk_user`, `google_sign_in`, `flutter_naver_login` 추가 |
 
 ## 앱 시작 시 세션 복원
 
@@ -91,6 +92,34 @@
 - **클라이언트 보안 비밀(client secret)은 쓰지 않는다.** 앱이 ID 토큰을 직접 받고 서버가 공개키로 검증하므로 개입할 자리가 없다. 저장소·서버 어디에도 두지 않는다.
 - 취소(`GoogleSignInExceptionCode.canceled`)는 오류로 다루지 않는다.
 - `initialize()` 는 한 번만 호출한다.
+
+## 네이버 로그인
+
+카카오와 같은 **액세스 토큰 방식**이다(네이버는 OIDC ID 토큰을 주지 않는다).
+
+```
+앱: FlutterNaverLogin.logIn() → NaverLoginResult.accessToken
+  → POST /auth/naver {"token": "..."}   서버가 네이버 프로필 API 에 되물어 검증(backend#91)
+```
+
+- **MainActivity 는 `FlutterFragmentActivity` 여야 한다.** 플러그인이 Activity 를 그 타입으로 캐스팅해 `registerForActivityResult` 를 쓴다. `FlutterActivity` 인 채로 두면 로그인 버튼을 누르기도 전에 **앱 시작 시 ClassCastException** 으로 죽는다.
+- **Client ID/Secret 은 Dart 가 아니라 Android 매니페스트 meta-data 로 읽는다.** `build.gradle.kts` 가 `android/local.properties`(gitignored)의 `naver.clientId` / `naver.clientSecret` 을 `manifestPlaceholders` 로 주입한다. Secret 이 APK 에 들어가는 것은 네이버 Android SDK 의 구조라 피할 수 없지만, 저장소에는 남기지 않는다.
+- **버튼은 `NAVER_CLIENT_ID` dart-define 이 있을 때만 그린다**(`social_config.dart`). 팀계정 애플리케이션이 아직 없어 기본값이 비어 있다. 발급되면 카카오 키처럼 기본값으로 박는다(ID 는 공개 값).
+- **취소는 `status == loggedOut` 으로 온다.** 플러그인이 `user_cancel` 을 그렇게 매핑한다. `NaverLoginCancelled` 로 구분해 실패 안내를 띄우지 않는다. `error` 는 `errorMessage` 를 로그로 남기고 일반 문구를 보인다.
+- **회원 식별자는 애플리케이션 단위다**(카카오와 같음). 실사용자 개방 전에 팀계정 애플리케이션으로 확정해야 한다.
+- **iOS 는 아직 안 붙였다** — 카카오도 iOS 설정(URL 스킴)이 없는 상태라 같이 한다. 필요 시 `Info.plist` 의 `NidUrlScheme`/`NidClientID`/`NidClientSecret`/`NidAppName` + `LSApplicationQueriesSchemes`(naversearchapp, naversearchthirdlogin) + AppDelegate `NidOAuth.shared.handleURL`.
+
+로컬에서 켜는 법:
+
+```
+# android/local.properties
+naver.clientId=발급받은_Client_ID
+naver.clientSecret=발급받은_Client_Secret
+
+flutter run --dart-define=NAVER_CLIENT_ID=발급받은_Client_ID
+```
+
+네이버 개발자센터에는 Android 패키지명 `com.cookpilot.cookpilot` 과 다운로드 URL(스토어 등록 전엔 아무 URL) 을 등록하고, 제공 정보는 회원 식별자(필수)·이메일·별명(선택)으로 둔다.
 
 ## openapi 사본 갱신
 
