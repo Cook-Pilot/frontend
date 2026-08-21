@@ -68,6 +68,9 @@ dependencies:
   # (Android KeyStore / iOS Keychain 사용).
   flutter_secure_storage: ^9.2.4
 
+  # 애플 로그인(iOS). 앱이 받은 identity token 을 서버가 애플 공개키로 검증한다.
+  sign_in_with_apple: ^8.1.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

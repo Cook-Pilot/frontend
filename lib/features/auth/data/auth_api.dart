@@ -73,12 +73,20 @@ class AuthApi {
   final http.Client _client;
   final String _baseUrl;
 
-  /// [provider] 는 서버 경로에 그대로 들어간다: google, kakao.
+  /// [provider] 는 서버 경로에 그대로 들어간다: google, kakao, apple.
+  ///
+  /// [displayName] 은 제공자가 토큰에 이름을 싣지 않을 때(애플) 같이 보낸다. 서버는 계정을
+  /// 처음 만들 때만 쓰고, 토큰에 이름이 있으면 무시한다.
   Future<AuthSessionToken> loginWithProvider(
     String provider,
-    String providerToken,
-  ) {
-    return _post('/api/v1/auth/$provider', {'token': providerToken});
+    String providerToken, {
+    String? displayName,
+  }) {
+    return _post('/api/v1/auth/$provider', {
+      'token': providerToken,
+      if (displayName != null && displayName.isNotEmpty)
+        'displayName': displayName,
+    });
   }
 
   Future<AuthSessionToken> loginAsDeveloper(String secret) {
