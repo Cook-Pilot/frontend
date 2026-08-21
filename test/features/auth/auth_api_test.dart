@@ -55,6 +55,10 @@ void main() {
     await api.loginWithProvider('kakao', 'provider-token');
 
     expect(requested.path, '/api/v1/auth/kakao');
+
+    await api.loginWithProvider('naver', 'provider-token');
+
+    expect(requested.path, '/api/v1/auth/naver');
   });
 
   test('401 은 안내 문구로 바뀐다', () async {

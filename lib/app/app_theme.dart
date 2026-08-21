@@ -36,6 +36,9 @@ class AppColors {
   /// 카카오 로그인 버튼 전용 브랜드 컬러.
   static const kakao = Color(0xFFFEE500);
 
+  /// 네이버 로그인 버튼 전용 브랜드 컬러.
+  static const naver = Color(0xFF03C75A);
+
   /// 완료·성공. 허브 그린.
   static const success = Color(0xFF5C8A4E);
 

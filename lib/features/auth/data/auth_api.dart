@@ -73,7 +73,7 @@ class AuthApi {
   final http.Client _client;
   final String _baseUrl;
 
-  /// [provider] 는 서버 경로에 그대로 들어간다: google, kakao.
+  /// [provider] 는 서버 경로에 그대로 들어간다: google, kakao, naver.
   Future<AuthSessionToken> loginWithProvider(
     String provider,
     String providerToken,

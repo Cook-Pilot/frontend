@@ -3,10 +3,12 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../app/app_theme.dart';
+import '../../core/api/social_config.dart';
 import '../auth/data/auth_api.dart';
 import '../auth/data/auth_session.dart';
 import '../auth/data/google_login.dart';
 import '../auth/data/kakao_login.dart';
+import '../auth/data/naver_login.dart';
 import '../auth/presentation/developer_login.dart';
 import '../user/data/profile_onboarding_cache.dart';
 import 'main_shell.dart';
@@ -98,6 +100,22 @@ class AuthScreen extends StatelessWidget {
             label: const Text('카카오로 시작하기'),
           ),
         ),
+        // 네이버는 팀계정 애플리케이션이 발급되기 전까지 꺼져 있다(social_config.dart).
+        if (naverLoginEnabled) ...[
+          const SizedBox(height: 10),
+          PressableScale(
+            child: FilledButton.icon(
+              key: const Key('auth-naver-button'),
+              style: FilledButton.styleFrom(
+                backgroundColor: AppColors.naver,
+                foregroundColor: Colors.white,
+              ),
+              onPressed: () => unawaited(_loginWithNaver(context)),
+              icon: const Icon(Icons.font_download_rounded),
+              label: const Text('네이버로 시작하기'),
+            ),
+          ),
+        ],
         const SizedBox(height: 10),
         PressableScale(
           child: OutlinedButton.icon(
@@ -141,6 +159,24 @@ class AuthScreen extends StatelessWidget {
       await _openHome(context);
     } on KakaoLoginCancelled {
       // 사용자가 직접 닫았다. 오류 안내를 띄우지 않는다.
+    } on AuthException catch (error) {
+      messenger.showSnackBar(SnackBar(content: Text(error.message)));
+    }
+  }
+
+  /// 네이버 로그인 → 서버 세션 토큰 발급 → 홈.
+  ///
+  /// 카카오와 같다 — 액세스 토큰을 서버가 네이버에 되물어 검증한다(POST /auth/naver).
+  Future<void> _loginWithNaver(BuildContext context) async {
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final naverToken = await const NaverLogin().obtainAccessToken();
+      final session = await AuthApi().loginWithProvider('naver', naverToken);
+      await AuthSession.save(session);
+      if (!context.mounted) return;
+      await _openHome(context);
+    } on NaverLoginCancelled {
+      // 사용자가 직접 닫았다.
     } on AuthException catch (error) {
       messenger.showSnackBar(SnackBar(content: Text(error.message)));
     }

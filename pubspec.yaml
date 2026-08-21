@@ -64,6 +64,11 @@ dependencies:
   # 카카오 로그인. 앱에서 받은 액세스 토큰을 서버로 보내면 서버가 카카오에 검증한다.
   kakao_flutter_sdk_user: ^2.0.0
 
+  # 네이버 로그인. 카카오와 같은 액세스 토큰 방식. Android 는 MainActivity 가
+  # FlutterFragmentActivity 여야 하고(플러그인이 강제 캐스팅), Client ID/Secret 은
+  # 매니페스트 meta-data 로 읽는다(android/local.properties 에서 주입).
+  flutter_naver_login: ^2.1.1
+
   # 로그인 세션 토큰 보관. SharedPreferences 는 평문이라 토큰에는 쓰지 않는다
   # (Android KeyStore / iOS Keychain 사용).
   flutter_secure_storage: ^9.2.4
