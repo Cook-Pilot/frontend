@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 
 import 'package:flutter/material.dart';
 
@@ -12,6 +13,7 @@ import '../cooking/presentation/native_speech_output.dart';
 import '../recipe/data/recipe_api.dart';
 import '../recipe/data/tag_api.dart';
 import '../recipe/domain/recipe.dart';
+import '../recipe/domain/recipe_tag.dart';
 import '../recipe/domain/tag_invitations.dart';
 import '../review/application/pending_review_draft_store.dart';
 import '../review/data/review_api.dart';
@@ -165,6 +167,20 @@ class _HomeScreenState extends State<HomeScreen> {
   /// 홈에 띄울 태그 열의 최대 수.
   static const _tagRowLimit = 12;
 
+  /// 상단 칩에서 고른 태그. null 이면 '전체'.
+  RecipeTag? _selectedTag;
+  Future<RecipeSearchPage>? _selectedTagPage;
+
+  void _selectTag(RecipeTag? tag) {
+    setState(() {
+      _selectedTag = tag;
+      _selectedTagPage = tag == null
+          ? null
+          // 칩은 한 화면을 채울 만큼만 가져온다. 더 보려면 검색 탭이 있다.
+          : _homeRecipeRepository.search(tags: [tag.code], size: 30);
+    });
+  }
+
   Future<_HomeCatalog> _loadCatalog() async {
     // 최근 조리·즐겨찾기는 계정에 속한 데이터라 게스트에게는 없다.
     // 요청을 보내 봐야 401 이므로 아예 부르지 않는다.
@@ -187,17 +203,23 @@ class _HomeScreenState extends State<HomeScreen> {
     }
     Recipe? featured;
     try {
-      featured = await _homeRecipeRepository.findById(summaries.first);
+      // 오늘의 추천은 매번 다르게 고른다. 첫 건으로 고정하면 1,150건이 있어도
+      // 홈을 열 때마다 같은 요리가 나온다.
+      featured = await _homeRecipeRepository.findById(
+        summaries[Random().nextInt(summaries.length)],
+      );
     } on Object {
       // 추천 상세가 실패해도 조회 가능한 전체 목록은 유지한다.
       featured = null;
     }
+    final loaded = await _loadTagRows();
     return _HomeCatalog(
       summaries: summaries,
       featured: featured,
       recent: recent,
       favorites: favorites,
-      tagRows: await _loadTagRows(),
+      tagRows: loaded.rows,
+      tags: loaded.tags,
     );
   }
 
@@ -208,7 +230,7 @@ class _HomeScreenState extends State<HomeScreen> {
   ///
   /// 실패해도 홈 전체를 막지 않는다. 태그 열은 있으면 좋은 것이지 없으면 못 쓰는 화면이
   /// 아니다(레시피 목록·최근 조리는 그대로 나온다).
-  Future<List<_TagRow>> _loadTagRows() async {
+  Future<({List<_TagRow> rows, List<RecipeTag> tags})> _loadTagRows() async {
     try {
       final tags = await _tagRepository.findAll();
       // 권유 문장을 준비해 둔 태그만 후보로 쓴다.
@@ -243,9 +265,9 @@ class _HomeScreenState extends State<HomeScreen> {
           );
         }
       }
-      return rows;
+      return (rows: rows, tags: tags);
     } on Object {
-      return const [];
+      return (rows: const <_TagRow>[], tags: const <RecipeTag>[]);
     }
   }
 
@@ -608,59 +630,86 @@ class _HomeScreenState extends State<HomeScreen> {
                   return Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      if (catalog.featured != null)
-                        RecipeHeroCard(
-                          recipe: catalog.featured!,
-                          onTap: () => _openFeatured(catalog.featured!),
+                      if (catalog.tags.isNotEmpty)
+                        _TagChipBar(
+                          tags: catalog.tags,
+                          selected: _selectedTag,
+                          onSelected: _selectTag,
                         ),
-                      // 게스트는 개인화 열을 채울 데이터가 없다. 열을 비워 두는 대신
-                      // 로그인 안내로 갈아 끼운다 — 빈 가로 열은 고장으로 보인다.
-                      if (!AuthSession.isLoggedIn) ...[
-                        const SectionTitle('내가 만든 요리'),
-                        _GuestLoginInvite(
-                          inviteKey: const Key('home-recent-login-invite'),
-                          icon: Icons.history_rounded,
-                          title: '로그인하면 조리 기록이 여기 남아요',
-                          body: '요리를 마치고 남긴 후기가 최근 조리로 쌓여요.',
-                          onLogin: _signInFromHome,
-                        ),
-                        const SectionTitle('다시 만들까요'),
-                        _GuestLoginInvite(
-                          inviteKey: const Key('home-favorites-login-invite'),
-                          icon: Icons.bookmark_outline_rounded,
-                          title: '로그인하면 즐겨찾기를 모아볼 수 있어요',
-                          body: '마음에 드는 레시피를 저장해 두고 바로 꺼내 봐요.',
-                          onLogin: _signInFromHome,
-                        ),
-                      ] else ...[
-                        if (catalog.recent.isNotEmpty)
-                          RecipeRail(
-                            title: '내가 만든 요리',
-                            trailing: '전체 ${catalog.recent.length}',
-                            children: [
-                              for (final recipe in catalog.recent)
-                                RecipePosterCard(
-                                  title: recipe.title,
-                                  image: recipe.imageUrl,
-                                  meta: recipe.hasPersonalVersion
-                                      ? '내 버전 있음'
-                                      : null,
-                                  onTap: () => _openRecipe(recipe),
-                                ),
-                            ],
-                          )
-                        else
-                          const _HomeDataEmpty(
+                      if (_selectedTag case final RecipeTag tag)
+                        _TagFilterResult(
+                          key: ValueKey(tag.code),
+                          page: _selectedTagPage!,
+                          onOpen: _openRecipe,
+                        )
+                      else ...[
+                        if (catalog.featured != null)
+                          RecipeHeroCard(
+                            recipe: catalog.featured!,
+                            onTap: () => _openFeatured(catalog.featured!),
+                          ),
+                        // 게스트는 개인화 열을 채울 데이터가 없다. 열을 비워 두는 대신
+                        // 로그인 안내로 갈아 끼운다 — 빈 가로 열은 고장으로 보인다.
+                        if (!AuthSession.isLoggedIn) ...[
+                          const SectionTitle('내가 만든 요리'),
+                          _GuestLoginInvite(
+                            inviteKey: const Key('home-recent-login-invite'),
                             icon: Icons.history_rounded,
-                            title: '아직 만든 요리가 없어요',
-                            body: '첫 요리를 마치고 후기를 남기면 여기에 모여요.',
+                            title: '로그인하면 조리 기록이 여기 남아요',
+                            body: '요리를 마치고 남긴 후기가 최근 조리로 쌓여요.',
+                            onLogin: _signInFromHome,
                           ),
-                        if (catalog.favorites.isNotEmpty)
+                          const SectionTitle('다시 만들까요'),
+                          _GuestLoginInvite(
+                            inviteKey: const Key('home-favorites-login-invite'),
+                            icon: Icons.bookmark_outline_rounded,
+                            title: '로그인하면 즐겨찾기를 모아볼 수 있어요',
+                            body: '마음에 드는 레시피를 저장해 두고 바로 꺼내 봐요.',
+                            onLogin: _signInFromHome,
+                          ),
+                        ] else ...[
+                          if (catalog.recent.isNotEmpty)
+                            RecipeRail(
+                              title: '내가 만든 요리',
+                              trailing: '전체 ${catalog.recent.length}',
+                              children: [
+                                for (final recipe in catalog.recent)
+                                  RecipePosterCard(
+                                    title: recipe.title,
+                                    image: recipe.imageUrl,
+                                    meta: recipe.hasPersonalVersion
+                                        ? '내 버전 있음'
+                                        : null,
+                                    onTap: () => _openRecipe(recipe),
+                                  ),
+                              ],
+                            )
+                          else
+                            const _HomeDataEmpty(
+                              icon: Icons.history_rounded,
+                              title: '아직 만든 요리가 없어요',
+                              body: '첫 요리를 마치고 후기를 남기면 여기에 모여요.',
+                            ),
+                          if (catalog.favorites.isNotEmpty)
+                            RecipeRail(
+                              title: '다시 만들까요',
+                              trailing: '즐겨찾기 ${catalog.favorites.length}',
+                              children: [
+                                for (final recipe in catalog.favorites)
+                                  RecipePosterCard(
+                                    title: recipe.title,
+                                    image: recipe.imageUrl,
+                                    onTap: () => _openRecipe(recipe),
+                                  ),
+                              ],
+                            ),
+                        ],
+                        for (final row in catalog.tagRows)
                           RecipeRail(
-                            title: '다시 만들까요',
-                            trailing: '즐겨찾기 ${catalog.favorites.length}',
+                            title: row.invitation,
+                            trailing: row.label,
                             children: [
-                              for (final recipe in catalog.favorites)
+                              for (final recipe in row.recipes)
                                 RecipePosterCard(
                                   title: recipe.title,
                                   image: recipe.imageUrl,
@@ -668,13 +717,11 @@ class _HomeScreenState extends State<HomeScreen> {
                                 ),
                             ],
                           ),
-                      ],
-                      for (final row in catalog.tagRows)
                         RecipeRail(
-                          title: row.invitation,
-                          trailing: row.label,
+                          title: '전체 레시피',
+                          trailing: '${catalog.summaries.length}개',
                           children: [
-                            for (final recipe in row.recipes)
+                            for (final recipe in catalog.summaries)
                               RecipePosterCard(
                                 title: recipe.title,
                                 image: recipe.imageUrl,
@@ -682,19 +729,8 @@ class _HomeScreenState extends State<HomeScreen> {
                               ),
                           ],
                         ),
-                      RecipeRail(
-                        title: '전체 레시피',
-                        trailing: '${catalog.summaries.length}개',
-                        children: [
-                          for (final recipe in catalog.summaries)
-                            RecipePosterCard(
-                              title: recipe.title,
-                              image: recipe.imageUrl,
-                              onTap: () => _openRecipe(recipe),
-                            ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
+                        const SizedBox(height: 8),
+                      ],
                     ],
                   );
                 },
@@ -2000,6 +2036,7 @@ class _HomeCatalog {
     required this.recent,
     required this.favorites,
     this.tagRows = const [],
+    this.tags = const [],
   });
 
   final List<RecipeSummary> summaries;
@@ -2009,6 +2046,9 @@ class _HomeCatalog {
 
   /// 태그로 뽑은 열. 홈을 열 때마다 다른 태그가 뽑힌다.
   final List<_TagRow> tagRows;
+
+  /// 상단 칩에 쓸 태그 사전.
+  final List<RecipeTag> tags;
 }
 
 /// 태그 하나로 만든 홈의 가로 열.
@@ -2032,4 +2072,115 @@ class _ResumableCooking {
 
   final PersistedCookingSession session;
   final Recipe recipe;
+}
+
+/// 홈 상단의 태그 칩 줄.
+///
+/// 사전 전체를 넣는다. 24개라 가로로 넘치지만, 몇 개만 고르면 "왜 이것만 있나"를
+/// 설명해야 한다 — 넷플릭스도 카테고리를 줄여 보여주지 않는다.
+class _TagChipBar extends StatelessWidget {
+  const _TagChipBar({
+    required this.tags,
+    required this.selected,
+    required this.onSelected,
+  });
+
+  final List<RecipeTag> tags;
+  final RecipeTag? selected;
+  final ValueChanged<RecipeTag?> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 46,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        clipBehavior: Clip.none,
+        padding: EdgeInsets.zero,
+        children: [
+          _chip(
+            context,
+            label: '전체',
+            on: selected == null,
+            onTap: () => onSelected(null),
+          ),
+          for (final tag in tags) ...[
+            const SizedBox(width: 7),
+            _chip(
+              context,
+              label: tag.label,
+              on: selected?.code == tag.code,
+              onTap: () => onSelected(tag),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _chip(
+    BuildContext context, {
+    required String label,
+    required bool on,
+    required VoidCallback onTap,
+  }) {
+    return Center(
+      child: PressableScale(
+        child: InkWell(
+          borderRadius: BorderRadius.circular(999),
+          onTap: onTap,
+          child: Pill(label, selected: on),
+        ),
+      ),
+    );
+  }
+}
+
+/// 칩으로 고른 태그의 레시피. 홈의 열들을 대신한다.
+class _TagFilterResult extends StatelessWidget {
+  const _TagFilterResult({super.key, required this.page, required this.onOpen});
+
+  final Future<RecipeSearchPage> page;
+  final ValueChanged<RecipeSummary> onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<RecipeSearchPage>(
+      future: page,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState != ConnectionState.done) {
+          return const _RecipeLoading();
+        }
+        final items = snapshot.data?.items ?? const <RecipeSummary>[];
+        if (snapshot.hasError || items.isEmpty) {
+          return const _RecipeEmpty(message: '이 카테고리의 레시피가 아직 없어요.');
+        }
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            SectionTitle('${snapshot.data!.totalItems}개'),
+            GridView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              padding: EdgeInsets.zero,
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 3,
+                crossAxisSpacing: 8,
+                mainAxisSpacing: 8,
+                childAspectRatio: 0.72,
+              ),
+              itemCount: items.length,
+              itemBuilder: (context, index) => RecipePosterCard(
+                title: items[index].title,
+                image: items[index].imageUrl,
+                width: double.infinity,
+                onTap: () => onOpen(items[index]),
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
+        );
+      },
+    );
+  }
 }
