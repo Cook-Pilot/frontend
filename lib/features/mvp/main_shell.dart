@@ -156,14 +156,14 @@ class _HomeScreenState extends State<HomeScreen> {
     unawaited(_refreshRecovery(markLoading: false));
   }
 
-  String get _greeting {
-    final hour = DateTime.now().hour;
-    if (hour < 11) return '좋은 아침이에요';
-    if (hour < 17) return '점심은 챙기셨나요?';
-    return '오늘 저녁, 뭐 해먹을까요?';
-  }
+  /// 한 번에 보낼 태그 조회 수. 서버가 EC2 한 대라 24개를 동시에 던지지 않는다.
+  static const _tagFetchBatch = 6;
 
-  static const _tagRowCount = 3;
+  /// 열 하나에 담을 레시피 수. 가로 열은 지연 생성이라 화면 밖 카드는 그리지 않는다.
+  static const _tagRowSize = 12;
+
+  /// 홈에 띄울 태그 열의 최대 수.
+  static const _tagRowLimit = 12;
 
   Future<_HomeCatalog> _loadCatalog() async {
     // 최근 조리·즐겨찾기는 계정에 속한 데이터라 게스트에게는 없다.
@@ -217,21 +217,31 @@ class _HomeScreenState extends State<HomeScreen> {
             ..shuffle();
 
       final rows = <_TagRow>[];
-      for (final tag in candidates) {
-        if (rows.length >= _tagRowCount) break;
-        final page = await _homeRecipeRepository.search(
-          tags: [tag.code],
-          size: 12,
-        );
-        // 비어 있는 태그는 건너뛴다 — 빈 열은 고장으로 보인다.
-        if (page.items.isEmpty) continue;
-        rows.add(
-          _TagRow(
-            invitation: TagInvitations.forTag(tag.code, tag.label),
-            label: tag.label,
-            recipes: page.items,
+      for (var from = 0; from < candidates.length; from += _tagFetchBatch) {
+        if (rows.length >= _tagRowLimit) break;
+        final batch = candidates.skip(from).take(_tagFetchBatch).toList();
+        final pages = await Future.wait(
+          batch.map(
+            (tag) => _homeRecipeRepository
+                .search(tags: [tag.code], size: _tagRowSize)
+                .then<RecipeSearchPage?>((page) => page)
+                // 한 태그가 실패해도 나머지 열은 살린다.
+                .onError((_, _) => null),
           ),
         );
+        for (var i = 0; i < batch.length; i++) {
+          final page = pages[i];
+          // 비어 있는 태그는 건너뛴다 — 빈 열은 고장으로 보인다.
+          if (page == null || page.items.isEmpty) continue;
+          final tag = batch[i];
+          rows.add(
+            _TagRow(
+              invitation: TagInvitations.forTag(tag.code, tag.label),
+              label: tag.label,
+              recipes: page.items,
+            ),
+          );
+        }
       }
       return rows;
     } on Object {
@@ -540,50 +550,16 @@ class _HomeScreenState extends State<HomeScreen> {
             children: [
               Row(
                 children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Padding(
-                          padding: EdgeInsets.only(bottom: 8),
-                          child: CookLogMark(size: 26),
-                        ),
-                        const Text(
-                          '셰프님 👋',
-                          style: TextStyle(
-                            color: AppColors.slate,
-                            fontSize: 14,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                        const SizedBox(height: 3),
-                        Text(
-                          _greeting,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: Theme.of(
-                            context,
-                          ).textTheme.headlineSmall?.copyWith(fontSize: 22),
-                        ),
-                      ],
-                    ),
+                  // 인사말 대신 워드마크만 둔다. 넷플릭스 좌상단과 같은 자리다.
+                  // 검색은 하단 탭에 있으므로 여기에 또 두지 않는다.
+                  const CookLogMark(size: 28),
+                  const SizedBox(width: 8),
+                  Image.asset(
+                    'assets/logo/cooklog-wordmark.png',
+                    height: 22,
+                    fit: BoxFit.contain,
                   ),
-                  // 계정은 하단 '내 정보' 탭으로 내려갔다. 이 자리는 검색이 받는다.
-                  PressableScale(
-                    child: InkWell(
-                      customBorder: const CircleBorder(),
-                      onTap: () => shellTabIndex.value = shellSearchTab,
-                      child: Container(
-                        width: 44,
-                        height: 44,
-                        decoration: const BoxDecoration(shape: BoxShape.circle),
-                        child: const Icon(
-                          Icons.search_rounded,
-                          color: AppColors.ink,
-                        ),
-                      ),
-                    ),
-                  ),
+                  const Spacer(),
                 ],
               ),
               if (_recoveryLoading) ...[
