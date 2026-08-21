@@ -1,37 +1,43 @@
 import 'package:flutter/material.dart';
 
-/// "따뜻한 키친" 팔레트.
-/// 순검정·순백·차가운 회색을 쓰지 않고, 크림 바탕 위에 에스프레소 브라운과
-/// 파프리카 포인트 하나로 통일한다. 회색 계열은 전부 웜 톤으로 맞춘다.
+/// 흰 바탕 + 주황 포인트 팔레트.
+///
+/// 크림 바탕(#FAF5EE)에서 흰색으로 옮겼다. 사진을 카드로 늘어놓는 화면에서는
+/// 바탕에 색이 섞여 있으면 음식 사진의 색과 싸운다 — 흰 바탕이 사진을 앞으로 낸다.
+/// 대신 중성색을 아주 살짝 차갑게 잡았다. 크림 계열을 남기면 흰 바탕이 탁해 보인다.
 class AppColors {
   const AppColors._();
 
-  /// 본문·제목 텍스트. 순검정 대신 깊은 에스프레소 브라운.
-  static const ink = Color(0xFF33261A);
+  /// 본문·제목 텍스트. 순검정 대신 아주 살짝 따뜻한 먹색.
+  static const ink = Color(0xFF17130F);
 
   /// 보조 텍스트.
-  static const slate = Color(0xFF7A6A58);
+  static const slate = Color(0xFF55504B);
 
   /// 힌트·비활성 텍스트.
-  static const muted = Color(0xFFA8988A);
+  static const muted = Color(0xFF8D867F);
 
-  /// 앱 배경. 크림 아이보리.
-  static const surface = Color(0xFFFAF5EE);
+  /// 앱 배경.
+  static const surface = Color(0xFFFFFFFF);
 
   /// 카드 표면.
   static const card = Color(0xFFFFFFFF);
 
   /// 헤어라인·테두리.
-  static const line = Color(0xFFEFE5D8);
+  static const line = Color(0xFFE4E2E4);
 
-  /// 브랜드 포인트. 파프리카(테라코타 오렌지).
-  static const accent = Color(0xFFD4572E);
+  /// 브랜드 포인트. 캐치테이블 계열의 진한 주황(버밀리언)이다.
+  /// 밝은 주황(#FF5A1F)은 흰 바탕에서 뜨는 느낌이라 한 단계 눌렀다.
+  static const accent = Color(0xFFF04E23);
+
+  /// 눌림 상태와 그라데이션 깊이.
+  static const accentDeep = Color(0xFFC93C15);
 
   /// 포인트의 연한 배경 버전(선택 상태, 강조 스트립).
-  static const accentSoft = Color(0xFFF9E8DD);
+  static const accentSoft = Color(0xFFFDEDE8);
 
-  /// 정보 스트립 등 은은한 웜 배경.
-  static const wash = Color(0xFFF5EDE2);
+  /// 입력칸·칩 등 은은한 배경.
+  static const wash = Color(0xFFF4F4F6);
 
   /// 카카오 로그인 버튼 전용 브랜드 컬러.
   static const kakao = Color(0xFFFEE500);
@@ -39,8 +45,8 @@ class AppColors {
   /// 완료·성공. 허브 그린.
   static const success = Color(0xFF5C8A4E);
 
-  /// 그림자. 브라운 틴트를 섞어 배경과 어우러지게.
-  static const shadow = Color(0x1F8A6A45);
+  /// 그림자.
+  static const shadow = Color(0x1A17130F);
 }
 
 /// Shared easing curves and durations, tuned per the "ease-out for entering,

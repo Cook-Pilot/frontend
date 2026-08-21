@@ -22,6 +22,7 @@ import '../auth/data/auth_session.dart';
 import '../auth/presentation/login_gate.dart';
 import '../recipe/data/recipe_api.dart';
 import '../recipe/domain/recipe.dart';
+import '../recipe/domain/recipe_tags.dart';
 import '../recommendation/data/recommendation_api.dart';
 import '../review/application/pending_review_draft_store.dart';
 import '../review/application/review_photo_file_store.dart';
@@ -90,6 +91,7 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final tags = RecipeTags.parse(recipe.description);
     final canCook = recipe.steps.isNotEmpty;
 
     return PopScope(
@@ -114,6 +116,14 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
                 ),
                 const SizedBox(width: 6),
                 const _CircleAction(icon: Icons.ios_share_rounded),
+                const SizedBox(width: 6),
+                // 어디서든 홈으로. 상세 → 설정 → … 로 깊어져도 한 번에 처음으로 돌아온다.
+                _CircleAction(
+                  key: const Key('home-logo'),
+                  icon: Icons.local_fire_department_rounded,
+                  highlight: true,
+                  onTap: () => goHome(context),
+                ),
                 const SizedBox(width: 12),
               ],
               flexibleSpace: FlexibleSpaceBar(
@@ -162,9 +172,19 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      recipe.description,
+                      tags.body,
                       style: const TextStyle(color: AppColors.slate),
                     ),
+                    if (tags.labels.isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 6,
+                        children: [
+                          for (final label in tags.labels) Pill(label),
+                        ],
+                      ),
+                    ],
                     const SizedBox(height: 18),
                     // 핵심 스탯 타일 3개
                     Row(
@@ -302,7 +322,15 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
 
 /// SliverAppBar 위에 얹는 반투명 원형 아이콘 버튼.
 class _CircleAction extends StatelessWidget {
-  const _CircleAction({required this.icon, this.onTap});
+  const _CircleAction({
+    required this.icon,
+    this.onTap,
+    this.highlight = false,
+    super.key,
+  });
+
+  /// 브랜드 로고로 쓸 때. 나머지 아이콘과 구분되게 주황으로 채운다.
+  final bool highlight;
 
   final IconData icon;
   final VoidCallback? onTap;
@@ -316,11 +344,15 @@ class _CircleAction extends StatelessWidget {
           child: Container(
             width: 38,
             height: 38,
-            decoration: const BoxDecoration(
-              color: Color(0xD9FFFFFF),
+            decoration: BoxDecoration(
+              color: highlight ? AppColors.accent : const Color(0xD9FFFFFF),
               shape: BoxShape.circle,
             ),
-            child: Icon(icon, color: AppColors.ink, size: 22),
+            child: Icon(
+              icon,
+              color: highlight ? Colors.white : AppColors.ink,
+              size: 22,
+            ),
           ),
         ),
       ),
@@ -842,6 +874,7 @@ class _CookSetupScreenState extends State<CookSetupScreen> {
         .toList(growable: false);
 
     return PageShell(
+      homeLogo: true,
       title: '조리 설정',
       leading: IconButton(
         onPressed: () => Navigator.of(context).pop(),
@@ -2931,6 +2964,12 @@ class _CookSessionScreenState extends State<CookSessionScreen>
 
     final screen = Scaffold(
       appBar: AppBar(
+        titleTextStyle: const TextStyle(
+          fontFamily: 'Pretendard',
+          fontSize: 14,
+          fontWeight: FontWeight.w600,
+          color: AppColors.muted,
+        ),
         leading: IconButton(
           onPressed: _finishing ? null : _closeCookingSession,
           icon: const Icon(Icons.close_rounded),
@@ -2940,267 +2979,317 @@ class _CookSessionScreenState extends State<CookSessionScreen>
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
         ),
-        actions: [
-          // 이전 단계로. 화면을 닫는 뒤로가기(X)와 헷갈리지 않게 라벨을 붙인다.
-          TextButton.icon(
-            key: const Key('previous-step-button'),
-            onPressed: (_finishing || step <= 1)
-                ? null
-                : () => _moveCookingStep(-1, fromVoice: false),
-            icon: const Icon(Icons.arrow_back_rounded, size: 18),
-            label: const Text('이전 단계'),
-          ),
-          const SizedBox(width: 4),
-        ],
       ),
       body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
-          children: [
-            Row(
-              children: [
-                Text(
-                  '$step / ${widget.recipe.steps.length} 단계',
-                  style: const TextStyle(fontWeight: FontWeight.w900),
-                ),
-                const SizedBox(width: 12),
-                const Expanded(
-                  child: Text(
-                    '자동 저장됨',
-                    textAlign: TextAlign.right,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(color: AppColors.slate),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            LinearProgressIndicator(value: step / widget.recipe.steps.length),
-            const SizedBox(height: 18),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                FoodImage(
-                  image: current.imageUrl.isNotEmpty
-                      ? current.imageUrl
-                      : widget.recipe.imageUrl,
-                  width: double.infinity,
-                  height: 210,
-                  radius: AppShape.container,
-                ),
-                const SizedBox(height: 18),
-                Text(
-                  current.title,
-                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                    color: AppColors.ink,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  current.description,
-                  style: const TextStyle(color: AppColors.slate),
-                ),
-              ],
-            ),
-            const SizedBox(height: 18),
-            Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: AppColors.ink,
-                borderRadius: BorderRadius.circular(AppShape.container),
-                boxShadow: const [
-                  BoxShadow(
-                    color: AppColors.shadow,
-                    blurRadius: 22,
-                    offset: Offset(0, 8),
-                  ),
-                ],
-              ),
-              child: Column(
+        // 좌우로 밀어 단계를 넘긴다. 손에 재료가 묻은 채로 작은 버튼을 겨냥하는 것보다
+        // 화면 아무 데나 밀어내는 편이 쉽다. 세로 스크롤과 겹치지 않게 가로 제스처만 본다.
+        child: GestureDetector(
+          key: const Key('cook-step-swipe'),
+          behavior: HitTestBehavior.translucent,
+          onHorizontalDragEnd: _finishing ? null : _onStepSwipe,
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+            children: [
+              Row(
                 children: [
-                  const Text(
-                    '남은 시간',
-                    style: TextStyle(color: Color(0xB3FFFFFF)),
+                  Text(
+                    '$step / ${widget.recipe.steps.length} 단계',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w800,
+                      fontSize: 12,
+                      letterSpacing: 1.2,
+                      color: AppColors.accent,
+                    ),
                   ),
-                  const SizedBox(height: 8),
-                  // 시계만 실제로 동작하는 부분: 타이머 상태에 맞춰 매초 갱신된다.
-                  AnimatedBuilder(
-                    animation: _timer,
-                    builder: (context, _) => Text(
-                      _formatRemaining(_timer.remaining),
+                  const SizedBox(width: 12),
+                  const Expanded(
+                    child: Text(
+                      '자동 저장됨',
+                      textAlign: TextAlign.right,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 44,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: -1,
-                        fontFeatures: [FontFeature.tabularFigures()],
-                      ),
+                      style: TextStyle(color: AppColors.slate),
                     ),
-                  ),
-                  const SizedBox(height: 10),
-                  AnimatedBuilder(
-                    animation: _timer,
-                    builder: (context, _) => PressableScale(
-                      child: FilledButton(
-                        onPressed:
-                            !_completionLocked &&
-                                hasTimer &&
-                                _timer.status != TimerStatus.elapsed
-                            ? _toggleTimer
-                            : null,
-                        style: FilledButton.styleFrom(
-                          backgroundColor: AppColors.accent,
-                          minimumSize: const Size.fromHeight(48),
-                        ),
-                        child: Text(_timerLabel(current.minutes)),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  // 시계 보조 컨트롤: 1분 추가 / 리셋. 다크 카드에 맞춘 아웃라인 버튼.
-                  AnimatedBuilder(
-                    animation: _timer,
-                    builder: (context, _) {
-                      final style = OutlinedButton.styleFrom(
-                        foregroundColor: Colors.white,
-                        side: const BorderSide(color: Color(0x33FFFFFF)),
-                        minimumSize: const Size.fromHeight(44),
-                      );
-                      return Row(
-                        children: [
-                          Expanded(
-                            child: OutlinedButton.icon(
-                              onPressed: !_completionLocked && hasTimer
-                                  ? _addMinute
-                                  : null,
-                              icon: const Icon(Icons.add_rounded, size: 18),
-                              label: const Text('1분 추가'),
-                              style: style,
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: OutlinedButton.icon(
-                              onPressed:
-                                  !_completionLocked &&
-                                      hasTimer &&
-                                      _timer.status != TimerStatus.idle
-                                  ? _resetTimerForStep
-                                  : null,
-                              icon: const Icon(Icons.refresh_rounded, size: 18),
-                              label: const Text('리셋'),
-                              style: style,
-                            ),
-                          ),
-                        ],
-                      );
-                    },
                   ),
                 ],
               ),
-            ),
-            const SizedBox(height: 14),
-            InfoStrip(
-              key: const Key('voice-input-status'),
-              icon: _speechIcon,
-              title: _speechTitle,
-              body: _speechBody,
-            ),
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                Expanded(
-                  child: FilledButton.icon(
-                    key: const Key('voice-input-toggle'),
-                    onPressed:
-                        _completionLocked ||
-                            _speechPhase == _CookSpeechPhase.stopping
-                        ? null
-                        : _toggleSpeechInput,
-                    icon: Icon(
-                      _speechPhase == _CookSpeechPhase.starting ||
-                              _speechPhase == _CookSpeechPhase.listening
-                          ? Icons.stop_rounded
-                          : Icons.mic_rounded,
-                      size: 20,
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  for (var i = 0; i < widget.recipe.steps.length; i++) ...[
+                    if (i > 0) const SizedBox(width: 4),
+                    Expanded(
+                      child: Container(
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: i < step ? AppColors.accent : AppColors.line,
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
                     ),
-                    label: Text(_speechButtonLabel),
+                  ],
+                ],
+              ),
+              const SizedBox(height: 18),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    current.title,
+                    style: const TextStyle(
+                      fontFamily: 'Pretendard',
+                      fontSize: 25,
+                      height: 1.45,
+                      letterSpacing: -0.6,
+                      color: AppColors.ink,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    current.description,
+                    style: const TextStyle(color: AppColors.slate),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 18),
+              // 타이머가 없는 단계에서는 시계와 조작 버튼을 통째로 감춘다.
+              // 00:00 과 비활성 버튼이 화면 한가운데를 차지하면 정작 읽어야 할
+              // 안내가 아래로 밀린다.
+              if (!hasTimer)
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(vertical: 22),
+                  decoration: BoxDecoration(
+                    border: Border.all(color: AppColors.line),
+                    borderRadius: BorderRadius.circular(AppShape.container),
+                  ),
+                  child: const Text(
+                    '이 단계는 타이머 없음',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: AppColors.muted),
+                  ),
+                )
+              else
+                Container(
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: AppColors.card,
+                    border: Border.all(color: AppColors.line),
+                    borderRadius: BorderRadius.circular(AppShape.container),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: AppColors.shadow,
+                        blurRadius: 22,
+                        offset: Offset(0, 8),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    children: [
+                      const Text(
+                        '남은 시간',
+                        style: TextStyle(color: AppColors.muted),
+                      ),
+                      const SizedBox(height: 8),
+                      // 시계만 실제로 동작하는 부분: 타이머 상태에 맞춰 매초 갱신된다.
+                      AnimatedBuilder(
+                        animation: _timer,
+                        builder: (context, _) => Text(
+                          _formatRemaining(_timer.remaining),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: AppColors.ink,
+                            fontSize: 44,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: -1,
+                            fontFeatures: [FontFeature.tabularFigures()],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      AnimatedBuilder(
+                        animation: _timer,
+                        builder: (context, _) => PressableScale(
+                          child: FilledButton(
+                            onPressed:
+                                !_completionLocked &&
+                                    hasTimer &&
+                                    _timer.status != TimerStatus.elapsed
+                                ? _toggleTimer
+                                : null,
+                            style: FilledButton.styleFrom(
+                              backgroundColor: AppColors.accent,
+                              minimumSize: const Size.fromHeight(48),
+                            ),
+                            child: Text(_timerLabel(current.minutes)),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      // 시계 보조 컨트롤: 1분 추가 / 리셋.
+                      AnimatedBuilder(
+                        animation: _timer,
+                        builder: (context, _) {
+                          final style = OutlinedButton.styleFrom(
+                            foregroundColor: AppColors.ink,
+                            side: const BorderSide(color: AppColors.line),
+                            minimumSize: const Size.fromHeight(44),
+                          );
+                          return Row(
+                            children: [
+                              Expanded(
+                                child: OutlinedButton.icon(
+                                  onPressed: !_completionLocked && hasTimer
+                                      ? _addMinute
+                                      : null,
+                                  icon: const Icon(Icons.add_rounded, size: 18),
+                                  label: const Text('1분 추가'),
+                                  style: style,
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: OutlinedButton.icon(
+                                  onPressed:
+                                      !_completionLocked &&
+                                          hasTimer &&
+                                          _timer.status != TimerStatus.idle
+                                      ? _resetTimerForStep
+                                      : null,
+                                  icon: const Icon(
+                                    Icons.refresh_rounded,
+                                    size: 18,
+                                  ),
+                                  label: const Text('리셋'),
+                                  style: style,
+                                ),
+                              ),
+                            ],
+                          );
+                        },
+                      ),
+                    ],
                   ),
                 ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: OutlinedButton.icon(
-                    key: const Key('help-request'),
-                    onPressed: _completionLocked || _helpRequestInFlight
-                        ? null
-                        : _openHelpSheet,
-                    icon: const Icon(Icons.keyboard_rounded, size: 20),
-                    label: const Text('직접 입력'),
-                  ),
+              const SizedBox(height: 14),
+              InfoStrip(
+                key: const Key('voice-input-status'),
+                icon: _speechIcon,
+                title: _speechTitle,
+                body: _speechBody,
+              ),
+              const SizedBox(height: 10),
+              FilledButton.icon(
+                key: const Key('voice-input-toggle'),
+                onPressed:
+                    _completionLocked ||
+                        _speechPhase == _CookSpeechPhase.stopping
+                    ? null
+                    : _toggleSpeechInput,
+                icon: Icon(
+                  _speechPhase == _CookSpeechPhase.starting ||
+                          _speechPhase == _CookSpeechPhase.listening
+                      ? Icons.stop_rounded
+                      : Icons.mic_rounded,
+                  size: 20,
+                ),
+                label: Text(_speechButtonLabel),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'AI 질문은 답변 생성을 위해 Google Gemini로 전송될 수 있어요. '
+                '개인정보·건강정보는 말하거나 입력하지 마세요.',
+                key: const Key('ai-data-disclosure'),
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+              if (_helpLoading) ...[
+                const SizedBox(height: 12),
+                const InfoStrip(
+                  icon: Icons.hourglass_top_rounded,
+                  title: '답변 준비 중',
+                  body: '현재 단계에 맞는 답을 확인하고 있어요.',
+                ),
+              ] else if (_helpAnswer case final String answer) ...[
+                const SizedBox(height: 12),
+                InfoStrip(
+                  icon: Icons.support_agent_rounded,
+                  title: '도움 답변',
+                  body: answer,
                 ),
               ],
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'AI 질문은 답변 생성을 위해 Google Gemini로 전송될 수 있어요. '
-              '개인정보·건강정보는 말하거나 입력하지 마세요.',
-              key: const Key('ai-data-disclosure'),
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
-            ),
-            if (_helpLoading) ...[
-              const SizedBox(height: 12),
-              const InfoStrip(
-                icon: Icons.hourglass_top_rounded,
-                title: '답변 준비 중',
-                body: '현재 단계에 맞는 답을 확인하고 있어요.',
-              ),
-            ] else if (_helpAnswer case final String answer) ...[
-              const SizedBox(height: 12),
-              InfoStrip(
-                icon: Icons.support_agent_rounded,
-                title: '도움 답변',
-                body: answer,
-              ),
+              if (_finishError case final String error) ...[
+                const SizedBox(height: 12),
+                InfoStrip(
+                  key: const Key('cooking-completion-error'),
+                  icon: Icons.error_outline_rounded,
+                  title: '완료 정보를 저장하지 못했어요',
+                  body: error,
+                ),
+              ],
             ],
-            if (_finishError case final String error) ...[
-              const SizedBox(height: 12),
-              InfoStrip(
-                key: const Key('cooking-completion-error'),
-                icon: Icons.error_outline_rounded,
-                title: '완료 정보를 저장하지 못했어요',
-                body: error,
-              ),
-            ],
-          ],
+          ),
         ),
       ),
+      // 조리 중에는 손이 젖어 있다. 세 동작을 모두 스크롤 밖 고정 자리에 둔다 —
+      // 본문에 섞여 있으면 버튼을 찾으려 화면을 훑어야 한다.
       bottomNavigationBar: SafeArea(
-        minimum: const EdgeInsets.fromLTRB(20, 8, 20, 20),
-        child: PressableScale(
-          child: FilledButton(
-            onPressed: _finishing
-                ? null
-                : () {
-                    if (isLast) {
-                      unawaited(_finishCooking());
-                    } else {
-                      _moveCookingStep(1, fromVoice: false);
-                    }
-                  },
-            child: Text(
-              isLast && _finishing
-                  ? '완료 저장 중'
-                  : isLast
-                  ? '조리 완료'
-                  : '다음 단계',
+        minimum: const EdgeInsets.fromLTRB(16, 8, 16, 20),
+        child: Row(
+          children: [
+            OutlinedButton(
+              key: const Key('previous-step-button'),
+              onPressed: (_finishing || step <= 1)
+                  ? null
+                  : () => _moveCookingStep(-1, fromVoice: false),
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size(64, 56),
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+              ),
+              child: const Text('이전', maxLines: 1),
             ),
-          ),
+            const SizedBox(width: 8),
+            Expanded(
+              flex: 4,
+              child: OutlinedButton(
+                key: const Key('help-request'),
+                onPressed: _completionLocked || _helpRequestInFlight
+                    ? null
+                    : _openHelpSheet,
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 6),
+                ),
+                child: const Text('질문하기', maxLines: 1),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              flex: 5,
+              child: PressableScale(
+                child: FilledButton(
+                  onPressed: _finishing
+                      ? null
+                      : () {
+                          if (isLast) {
+                            unawaited(_finishCooking());
+                          } else {
+                            _moveCookingStep(1, fromVoice: false);
+                          }
+                        },
+                  child: Text(
+                    isLast && _finishing
+                        ? '완료 저장 중'
+                        : isLast
+                        ? '조리 완료'
+                        : '다음 단계',
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -3214,6 +3303,23 @@ class _CookSessionScreenState extends State<CookSessionScreen>
       },
       child: screen,
     );
+  }
+
+  /// 왼쪽으로 밀면 다음, 오른쪽으로 밀면 이전.
+  ///
+  /// 마지막 단계에서 왼쪽으로 미는 건 무시한다 — 조리 완료는 되돌리기 어려운 동작이라
+  /// 실수로 스친 제스처로 끝나면 안 된다. 완료는 버튼으로만 한다.
+  void _onStepSwipe(DragEndDetails details) {
+    final velocity = details.primaryVelocity ?? 0;
+    if (velocity.abs() < 200) return;
+
+    if (velocity < 0) {
+      if (step < widget.recipe.steps.length) {
+        _moveCookingStep(1, fromVoice: false);
+      }
+    } else if (step > 1) {
+      _moveCookingStep(-1, fromVoice: false);
+    }
   }
 
   CookingSetupSnapshot _reviewSnapshot() {
@@ -4010,6 +4116,7 @@ class _ReviewScreenState extends State<ReviewScreen>
         ? '개인 버전 기반'
         : '원본 기반';
     final screen = PageShell(
+      accentHeader: true,
       title: '조리 후 리뷰',
       children: [
         Text(

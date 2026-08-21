@@ -44,40 +44,17 @@ class AuthScreen extends StatelessWidget {
             icon: const Icon(Icons.close_rounded, color: AppColors.slate),
           ),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 28),
         Center(
           // 로고 7번 연타 = 개발자 로그인 입구. 방어는 서버 시크릿이 한다.
           child: DeveloperLoginGate(
             onLoggedIn: () => unawaited(_openHome(context)),
-            child: Container(
-              width: 64,
-              height: 64,
-              decoration: BoxDecoration(
-                color: AppColors.accent,
-                borderRadius: BorderRadius.circular(20),
-                boxShadow: const [
-                  BoxShadow(
-                    color: AppColors.shadow,
-                    blurRadius: 18,
-                    offset: Offset(0, 6),
-                  ),
-                ],
-              ),
-              child: const Icon(
-                Icons.local_fire_department_rounded,
-                color: Colors.white,
-                size: 36,
-              ),
+            // 워드마크는 글자 모양 자체가 브랜드라 텍스트로 흉내 내지 않고 이미지를 쓴다.
+            child: Image.asset(
+              'assets/logo/cooklog-wordmark.png',
+              height: 52,
+              fit: BoxFit.contain,
             ),
-          ),
-        ),
-        const SizedBox(height: 18),
-        Text(
-          'CookPilot',
-          textAlign: TextAlign.center,
-          style: Theme.of(context).textTheme.headlineLarge?.copyWith(
-            color: AppColors.ink,
-            fontWeight: FontWeight.w900,
           ),
         ),
         const SizedBox(height: 8),

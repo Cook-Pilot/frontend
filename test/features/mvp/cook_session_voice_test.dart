@@ -828,7 +828,7 @@ void main() {
     final advice = FakeExceptionAdvicePort();
     await pumpSession(tester, speechInput: speech, advicePort: advice);
 
-    expect(find.text('직접 입력'), findsOneWidget);
+    expect(find.text('질문하기'), findsOneWidget);
     await tapVoiceButton(tester);
     expect(speech.startCount, 1);
     expect(find.text('듣는 중'), findsOneWidget);
@@ -905,7 +905,7 @@ void main() {
     speech.emitUtterance('타이머 시작', utteranceId: 'timerless');
     await tester.pump();
     expect(find.textContaining('설정된 타이머가 없어요'), findsOneWidget);
-    expect(find.text('타이머 없음'), findsOneWidget);
+    expect(find.text('이 단계는 타이머 없음'), findsOneWidget);
 
     await tapVoiceButton(tester);
     speech.emitUtterance('다음 단계', utteranceId: 'next');
